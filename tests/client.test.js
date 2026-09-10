@@ -99,7 +99,9 @@ test("giriş ekranı yeniden tasarlandı ve uygulama içeriğine dair ifade içe
     assert.ok(!new RegExp(bad, "i").test(login), `giriş ekranında yer almamalı: ${bad}`);
 
   assert.match(login, /class="brand-logo/, "kurumsal logo");
-  assert.match(js, /const LOGO = "data:image\/png;base64/, "logo gömülü, dış kaynak yok");
+  /* Logo aynı kaynaktan (statik dosya) gelir; dış bağlantı yoktur. */
+  assert.match(js, /LOGO_LIGHT = "\/logo-white\.png"/, "logo yerel dosyadan");
+  assert.ok(!/https?:\/\/(?!127\.0\.0\.1)[a-z]/i.test(login), "giriş ekranında dış bağlantı yok");
   assert.match(login, /\$\{esc\(BRAND\.slogan\)/, "slogan parametreden geliyor");
   assert.match(login, /BRAND\.signature/, "silik imza parametreden geliyor");
   assert.match(js, /signature: "powered by bayelmas"/, "varsayılan imza tanımlı");

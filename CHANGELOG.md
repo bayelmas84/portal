@@ -1,5 +1,14 @@
 # Değişiklik günlüğü
 
+## 1.10.3
+- **Sol üstteki beyaz dikdörtgen giderildi.** Kurumsal logo PNG'sinin zemini saydam değil beyazdı;
+  koyu ekranda beyaz bir kutu olarak görünüyordu. Zemin şeffaflaştırıldı ve iki sürüm üretildi:
+  koyu zeminler için beyaz logo, açık zeminler için lacivert logo
+- CSS filtresi (`brightness(0) invert(1)`) kaldırıldı — filtre beyaz zemini de beyaza çevirdiği
+  için sorunun kaynağıydı
+- Üretimde logolar statik dosya olarak servis edilir (`client/logo-white.png`, `client/logo.png`);
+  gömülü veri URI kaldırıldığı için app.js 6 KB küçüldü
+
 ## 1.10.2
 - Giriş ekranındaki açık renkli iki bölge kaldırıldı: form üstündeki beyaz marka kutusu ve
   açık zeminli düğmeler. Fotoğraf üstündeki tüm öğeler koyu zemine uyarlandı

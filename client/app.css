@@ -171,7 +171,7 @@ font-size:12px;color:var(--t2)}
 
 /* Kurumsal logo: koyu zeminde beyaza çevrilir */
 .brand-logo{height:26px;width:auto;display:block}
-.brand-logo.on-dark{filter:brightness(0) invert(1)}
+/* Koyu zemin için ayrı beyaz logo dosyası kullanılır; filtre gerekmez. */
 .login-legal .sig{opacity:.35;margin-left:10px}
 
 /* Giriş ekranı fotoğraf üstünde: açık renkli düğme veya kutu kalmasın */
