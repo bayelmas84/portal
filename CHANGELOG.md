@@ -1,5 +1,20 @@
 # Değişiklik günlüğü
 
+## 1.8.0
+- Kurumsal Tera Yatırım logosu (veri URI olarak gömülü) giriş ve ana ekranda; ürün adı **Tera Bir**
+- Giriş sloganı: "Her şey bir arada, tek bir yerde"; ana ekrandaki modül listesi metni kaldırıldı
+- Proje Yönetim Direktörü Admin Panel'in tamamını görür, hiçbir ekranında değişiklik yapamaz (salt okunur)
+- Sol menü ve üst bant sabit; yalnızca içerik alanı kayar
+- Jira hiyerarşisi: Epic → Story → Task/Bug. Task ve Bug doğrudan Epic altına açılamaz;
+  alt kayıtları kapanmayan üst kayıt Done'a taşınamaz
+- Board'da sürükle-bırak ile durum değiştirme
+- Proje dokümanları: sabit tip listesi (Proje Kartı, BRD, FRD, UAT, Go Live, Risk ve Uyumluluk, Kapanış),
+  üç kademeli onay (proje sahibi birim yöneticisi, Teftiş yöneticisi, IT yöneticisi), UAT'ta ek olarak iş birimi,
+  onaycı ünvanı Direktör ve üzeri, sıra kuralı (önceki doküman onaylanmadan sonraki onaylanamaz),
+  kick-off ilk üç dokümana, go-live UAT onayına bağlı, görüntülemeden onay verilemez,
+  proje kolonu ve proje filtresi, yalnızca PDF
+- Change request detay ekranı; talep sahibinin yöneticisi ve proje ekibi onayı birlikte zorunlu
+
 ## 1.7.0
 - Yeni rol ve ünvan: **Proje Yönetim Direktörü** (Bayram Elmas). Proje Yönetimi'nde tam yetki
   (okuma, yazma, ekleme, silme) ve faz kapısını tek imzayla onaylama yetkisi

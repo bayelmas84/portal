@@ -118,7 +118,7 @@ test("geçilmiş kapıda kriter değiştirilemez ve yeniden imzalanamaz", async 
   assert.equal((await bayram.post(`/api/gates/${gid}/sign`).send({})).status, 409);
 });
 
-test("Bayram Elmas Proje Yönetimi'nin tamamında yazma yetkisine sahip, Admin Panel'de değil", async () => {
+test("Bayram Elmas Proje Yönetimi'nde tam yetkili, Admin Panel'de salt okunur", async () => {
   const { app } = await boot();
   const a = agentFor(app); await a.login("bayram.elmas");
   const me = (await a.get("/api/me")).body;
@@ -130,7 +130,19 @@ test("Bayram Elmas Proje Yönetimi'nin tamamında yazma yetkisine sahip, Admin P
     assert.ok(sc, `${k} ekranı görünmeli`);
     assert.equal(sc.level, "write", `${k} yazma yetkisi olmalı`);
   }
-  assert.ok(!me.modules.some((m) => m.key === "admin"), "Admin Panel yetkisi verilmedi");
+  /* Admin Panel'in tamamını görür ama hiçbir ekranında değişiklik yapamaz. */
+  const admin = me.modules.find((m) => m.key === "admin");
+  assert.ok(admin, "Admin Panel menüde görünür");
+  assert.ok(admin.screens.length >= 10, `admin ekranlarının tamamı görünür (${admin.screens.length})`);
+  for (const sc of admin.screens)
+    assert.equal(sc.level, "read", `${sc.key} salt okunur olmalı`);
+
+  /* Yazma denemeleri reddedilir. */
+  assert.equal((await a.put("/api/admin/screens").send({ key: "announce", state: "acik" })).status, 403);
+  assert.equal((await a.post("/api/admin/users").send({
+    username: "deneme.kullanici", displayName: "Deneme", roleKey: "staff", unitCode: "BT", titleCode: "UZM",
+  })).status, 403);
+  assert.equal((await a.get("/api/admin/directory")).status, 200, "okuma açık");
 });
 
 test("Bayram Elmas yönetici özetini görebilir (PYD ünvanı)", async () => {

@@ -98,8 +98,9 @@ test("giriş ekranı yeniden tasarlandı ve uygulama içeriğine dair ifade içe
                      "\\bmodül", "\\bduyuru", "\\bdoküman", "\\bonay", "\\brapor"])
     assert.ok(!new RegExp(bad, "i").test(login), `giriş ekranında yer almamalı: ${bad}`);
 
-  assert.match(login, /TERA YATIRIM/, "marka adı");
-  assert.match(login, /Sermaye piyasalarında/, "kurumsal başlık");
+  assert.match(login, /alt="Tera Yatırım"/, "kurumsal logo");
+  assert.match(login, /Her şey bir arada/, "kurumsal başlık");
+  assert.match(login, /powered by bayelmas/, "silik imza");
   assert.match(login, /login-art/, "görsel katman");
   assert.match(login, /Oturum açın/, "form başlığı");
   assert.match(login, /togglePw/, "parola göster/gizle");

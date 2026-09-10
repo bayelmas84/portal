@@ -24,6 +24,9 @@ const PERMS = {
     training: R, "t.un": W, "t.done": W,
     reports: R, "r.list": R, "r.view": R, "r.usage": R,
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
+    /* Admin Panel: tüm ekranlar görünür, ancak salt okunur — değişiklik yapamaz. */
+    admin: R, "m.ann": R, "m.users": R, "m.units": R, "m.titles": R, "m.roles": R,
+    "m.access": R, "m.notif": R, "m.mail": R, "m.dir": R, "m.avail": R, "m.short": R,
   },
   admin: {
     delivery: R, "d.my": R, "d.projects": R, "d.board": R, "d.backlog": R, "d.sprint": R, "d.gate": R,

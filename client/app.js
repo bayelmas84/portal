@@ -1,4 +1,7 @@
 "use strict";
+
+/* Tera Yatırım kurumsal logosu — veri URI, dış bağlantı yok (CSP uyumlu) */
+const LOGO = "data:image/png;base64,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";
 /* Tera Portal istemcisi.
    Kural: yetki kararı burada verilmez. Menü ve veri sunucudan gelir; bu dosya yalnızca gösterir.
    Sunucu her isteği yeniden denetler, istemci kısıtları kullanıcı kolaylığı içindir. */
@@ -142,11 +145,10 @@
         </svg>
         <div class="login-art-text">
           <div class="brand">
-            <span class="brand-mark">T</span>
-            <span class="brand-name">TERA YATIRIM</span>
-            <span class="brand-sub">PORTAL</span>
+            <img class="brand-logo on-dark" src="${LOGO}" alt="Tera Yatırım" height="26">
+            <span class="brand-sub">BİR</span>
           </div>
-          <h1>Sermaye piyasalarında<br>1991'den beri.</h1>
+          <h1>Her şey bir arada,<br>tek bir yerde.</h1>
           <p>Tera Yatırım Menkul Değerler A.Ş.</p>
         </div>
       </div>
@@ -154,8 +156,8 @@
       <div class="login-form">
         <form id="loginForm" autocomplete="on">
           <div class="brand brand-mobile">
-            <span class="brand-mark">T</span><span class="brand-name">TERA YATIRIM</span>
-            <span class="brand-sub">PORTAL</span>
+            <img class="brand-logo" src="${LOGO}" alt="Tera Yatırım" height="26">
+            <span class="brand-sub" style="color:var(--gold)">BİR</span>
           </div>
           <h2>Oturum açın</h2>
           <p class="login-hint">Kurum hesabınızla devam edin.</p>
@@ -181,7 +183,7 @@
 
           <button class="b g login-submit" type="submit">Giriş yap</button>
         </form>
-        <div class="login-legal m">© ${new Date().getFullYear()} Tera Yatırım Menkul Değerler A.Ş.</div>
+        <div class="login-legal m">© ${new Date().getFullYear()} Tera Yatırım Menkul Değerler A.Ş.<span class="sig">powered by bayelmas</span></div>
       </div>
     </div>`;
   }

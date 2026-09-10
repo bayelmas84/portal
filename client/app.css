@@ -150,3 +150,8 @@ font-size:12px;color:var(--t2)}
   .brand-mobile{display:flex}
   .login-form{justify-content:flex-start;padding-top:56px}
 }
+
+/* Kurumsal logo: koyu zeminde beyaza çevrilir */
+.brand-logo{height:26px;width:auto;display:block}
+.brand-logo.on-dark{filter:brightness(0) invert(1)}
+.login-legal .sig{opacity:.35;margin-left:10px}
