@@ -30,7 +30,13 @@ module.exports = function (cfg) {
       if (!insp) throw Object.assign(new Error("Teftiş rolünde aktif kullanıcı tanımlı değil"), { status: 409 });
       return insp.username;
     }
-    if (!user.manager) throw Object.assign(new Error("Yöneticiniz tanımlı değil; Admin Panel'den atanmalı"), { status: 409 });
+    /* Yöneticisi olmayan kişi (örn. modül direktörü) için onay Teftiş'e düşer:
+       hiç kimse kendi duyurusunu onaylamış olmaz. */
+    if (!user.manager) {
+      const insp = await db.one("SELECT username FROM users WHERE role_key='inspection' AND active ORDER BY username LIMIT 1");
+      if (!insp) throw Object.assign(new Error("Teftiş rolünde aktif kullanıcı tanımlı değil"), { status: 409 });
+      return insp.username;
+    }
     return user.manager;
   }
 

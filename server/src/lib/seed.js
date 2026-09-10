@@ -7,7 +7,8 @@ const access = require("../services/access");
 const ROLES = [
   ["admin", "Admin"], ["inspection", "Teftiş"], ["infosec", "Bilgi Güvenliği"],
   ["control", "İç Kontrol"], ["gmy", "Genel Müdür Yardımcısı"], ["opsdir", "Operasyon Direktörü"],
-  ["pm", "Proje Yöneticisi"], ["dev", "Geliştirici"], ["staff", "Personel"],
+  ["pm", "Proje Yöneticisi"], ["pmd", "Proje Yönetim Direktörü"],
+  ["dev", "Geliştirici"], ["staff", "Personel"],
 ];
 
 const R = "read", W = "write";
@@ -41,7 +42,8 @@ const PERMS = {
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },
   control: {
-    delivery: R, "d.my": R, "d.projects": R, "d.board": R, "d.sprint": R, "d.gate": R,
+    /* İç Kontrol faz kapısında ikinci imzayı atabilir: bağımsız gözden geçirme. */
+    delivery: R, "d.my": R, "d.projects": R, "d.board": R, "d.sprint": R, "d.gate": W,
     "d.charts": R,
     documents: W, "k.docs": W, "k.new": W, "k.mail": R,
     announce: W, "a.list": W, "a.new": W, "a.del": W,
@@ -50,7 +52,8 @@ const PERMS = {
     compliance: W, "c.read": W, "c.rem": W,
   },
   gmy: {
-    delivery: R, "d.my": R, "d.projects": R, "d.board": R, "d.sprint": R, "d.gate": R,
+    /* GMY faz kapısı imzalayabilir: iki imza kuralının ikinci ayağı yönetim kademesidir. */
+    delivery: R, "d.my": R, "d.projects": R, "d.board": R, "d.sprint": R, "d.gate": W,
     "d.charts": R, "d.exec": R,
     documents: R, "k.docs": R, announce: R, "a.list": R,
     training: R, "t.un": W, "t.done": W, reports: R, "r.list": R, "r.view": R,
@@ -61,6 +64,19 @@ const PERMS = {
     documents: R, "k.docs": R,
     announce: R, "a.list": R, training: R, "t.un": W, "t.done": W,
     reports: R, "r.list": R, "r.view": R, approvals: W, "p.in": W, "p.my": W, "p.done": W,
+  },
+  /* Proje Yönetim Direktörü: Proje Yönetimi modülünün tamamında tam yetki (okuma, ekleme,
+     değiştirme, silme). Diğer iş modüllerinde de yazma yetkisi vardır.
+     Admin Panel'e bilinçli olarak dahil edilmez: kullanıcı ve yetki yönetimi ayrı bir görevdir,
+     aksi hâlde kendi yetkisini de değiştirebilir hâle gelir (görevler ayrılığı). */
+  pmd: {
+    delivery: W, "d.my": W, "d.projects": W, "d.board": W, "d.backlog": W, "d.sprint": W,
+    "d.gate": W, "d.gate.approve": W, "d.charts": W, "d.exec": W, "d.delete": W,
+    documents: W, "k.docs": W, "k.new": W, "k.mail": R,
+    announce: W, "a.list": W, "a.new": W, "a.del": W,
+    training: R, "t.un": W, "t.done": W,
+    reports: R, "r.list": R, "r.view": R, "r.dev": W, "r.usage": R,
+    approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },
   pm: {
     delivery: W, "d.my": W, "d.projects": W, "d.board": W, "d.backlog": W, "d.sprint": W, "d.gate": W,
@@ -104,7 +120,8 @@ const UNITS = [
   ["OPR", "Operasyon ve Takas"], ["PRT", "Portföy Yönetimi"], ["ARC", "Aracılık Hizmetleri"],
 ];
 const TITLES = [
-  ["GMY", "Genel Müdür Yardımcısı", "gmy"], ["GDIR", "Grup Direktörü", "director"], ["DIR", "Direktör", "director"],
+  ["GMY", "Genel Müdür Yardımcısı", "gmy"], ["GDIR", "Grup Direktörü", "director"],
+  ["PYD", "Proje Yönetim Direktörü", "director"], ["DIR", "Direktör", "director"],
   ["MDR", "Müdür", "manager"], ["KUZ", "Kıdemli Uzman", "specialist"], ["UZM", "Uzman", "specialist"],
 ];
 const SHORTCUTS = [

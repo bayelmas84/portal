@@ -31,6 +31,10 @@ const SCREENS = {
   shortcuts: [["s.all", "Tüm kısayollar"]],
 };
 
+/* Menüde görünmeyen, yalnızca yetki kontrolünde kullanılan anahtarlar.
+   d.gate.approve: faz kapısı onay yetkisi. d.delete: proje/iş kalemi silme yetkisi. */
+const CAPABILITIES = ["d.gate.approve", "d.delete", "k.new", "a.new", "a.edit", "a.del"];
+
 /* Kapatılamayan anahtarlar: yönetici kendini dışarıda bırakamaz */
 const UNCLOSABLE = new Set(["admin", "m.avail"]);
 
@@ -77,6 +81,6 @@ const canRead = (ctx, key) => usable(ctx, key);
 const canWrite = (ctx, key) => usable(ctx, key) && level(ctx, key) === "write";
 
 module.exports = {
-  MODULES, SCREENS, UNCLOSABLE, moduleOfScreen,
+  MODULES, SCREENS, UNCLOSABLE, CAPABILITIES, moduleOfScreen,
   permissionsOf, screenStates, stateOf, context, level, visible, usable, canRead, canWrite,
 };

@@ -5,7 +5,10 @@ const db = require("./db");
 
 /* Yönetici özetini görebilecek ünvanlar. Rol değil ünvan bakılır: bir kişi
    Proje Yöneticisi rolünde olup Direktör ünvanında olabilir. */
-const EXEC_TITLES = ["DIR", "GDIR", "GMY"];
+const EXEC_TITLES = ["DIR", "GDIR", "GMY", "PYD"];
+/* Faz kapısı onay yetkisi olan ünvan: Proje Yönetim Direktörü. */
+const GATE_AUTHORITY_TITLES = ["PYD"];
+const isGateAuthority = (user) => GATE_AUTHORITY_TITLES.includes(String(user.title_code || "").toUpperCase());
 const isExec = (user) => EXEC_TITLES.includes(String(user.title_code || "").toUpperCase());
 
 const DONE = "done";
@@ -174,4 +177,4 @@ async function snapshotBurndown() {
   return { sprints: sprints.length, day: today };
 }
 
-module.exports = { EXEC_TITLES, isExec, projectMetrics, burndown, velocity, distribution, executiveSummary, snapshotBurndown, DONE };
+module.exports = { EXEC_TITLES, GATE_AUTHORITY_TITLES, isExec, isGateAuthority, projectMetrics, burndown, velocity, distribution, executiveSummary, snapshotBurndown, DONE };

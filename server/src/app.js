@@ -145,6 +145,7 @@ function build(cfg, deps = {}) {
   api.use("/documents", require("./routes/documents")(cfg));
   api.use("/training", require("./routes/training")(cfg));
   api.use("/projects", require("./routes/projects")(cfg));
+  api.use("/gates", require("./routes/gates")(cfg));
   api.use("/reports", require("./routes/reports")(cfg));
   api.use("/approvals", require("./routes/approvals")(cfg));
   api.use("/compliance", require("./routes/compliance")(cfg));

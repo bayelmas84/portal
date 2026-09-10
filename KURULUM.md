@@ -390,19 +390,6 @@ Sırayla şunları doğrulayın:
    yazdığı günlük anlık görüntülerden çizilir. Cron kaydını kurmazsanız burndown grafiği boş kalır;
    diğer grafikler ve tamamlanma yüzdeleri anlık hesaplandığı için etkilenmez.
 
-10.1 **Proje Yönetim Direktörü tanımı (varsa).** `PYD` ünvanı ve `pmd` rolü kurulumla gelir.
-   Bu kişiyi Admin Panel > Kullanıcılar ekranından şu şekilde tanımlayın: rol `Proje Yönetim Direktörü`,
-   ünvan `Proje Yönetim Direktörü`, yönetici alanı **boş**. Yetkileri:
-
-   - Proje Yönetimi modülünün tamamında ekleme, değiştirme, silme
-   - Faz kapısını **tek imzayla** ilerletme (gerekçe zorunlu, ayrı denetim kaydı)
-   - Yönetici özet raporu (ünvan gereği)
-   - Admin Panel yetkisi **verilmez**: kullanıcı ve yetki yönetimi ayrı bir görevdir; verilirse
-     kişi kendi yetkisini de değiştirebilir hâle gelir.
-
-   Yöneticisi olmayan kişinin girdiği genel duyurular Teftiş onayına düşer; kimse kendi
-   duyurusunu onaylamış olmaz.
-
 11. **Kullanıma açılacak modülleri belirleyin.** **Admin Panel > Ekran yönetimi** ekranını açın;
    kapalı gelen her modülü, o modülün onaycıları ve yetkileri tanımlandıktan sonra `açık` yapın.
    Önerilen sıra:
@@ -481,40 +468,6 @@ sudo -u teraportal node ops/mail-worker.js      # gönderilen/başarısız/kuyru
 SMTP tanımlı değilse postalar kaybolmaz, kuyrukta bekler; ayar girildiğinde ilk turda gönderilir.
 Kuyruğu **Admin Panel > E-posta ayarları** ekranından elle de boşaltabilirsiniz. Kuyruğu portal üzerinden
 **Doküman Yönetimi > Gönderilen bildirimler** ekranından da izleyebilirsiniz.
-
----
-
-## 11.11.1 Proje Yönetimi rolleri ve faz kapısı onayı
-
-Proje Yönetimi modülünde dört rol vardır:
-
-| Rol | Yetki |
-|---|---|
-| Proje Yöneticisi (`pm`) | Proje, board, backlog, sprint ve faz kapısında ekleme ve değiştirme. **Silme yetkisi yoktur.** |
-| Proje Yönetim Direktörü (`pmdir`) | Proje Yönetimi'nde tam yetki: ekleme, değiştirme, **silme** ve **faz kapısı onayı**. Yönetici özetini görür. |
-| İç Kontrol (`control`) | Faz kapısında **ikinci imza** atabilir (bağımsız gözden geçirme). |
-| Geliştirici (`dev`) | Kendi işleri ve board üzerinde değişiklik. |
-
-**Faz kapısı (stage gate) onay kuralı** iki yoldan biriyle sağlanır:
-
-1. **İki imza:** iki farklı kişi, iki farklı rol (örneğin Proje Yöneticisi + İç Kontrol).
-2. **Yetkili onayı:** Proje Yönetim Direktörü ünvanındaki kişinin tek imzası. Bu kişi giriş
-   kriterlerini kendisi işaretlemiş olsa da kapıyı onaylayabilir.
-
-Her iki durumda giriş kriterlerinin tamamı `OK` olmadan kapı onaylanamaz. İkinci yol
-kullanıldığında kayıt `yetkili_tek_imza` olarak işaretlenir ve denetim kaydına
-`kapi.gecildi_yetkili_onayi` olayı yazılır; iki imzalı geçişler `kapi.gecildi_iki_imza` olarak
-ayrı görünür. Teftiş bu ikisini ayırt edebilir.
-
-Kullanıcı tanımlama:
-
-```bash
-cd /opt/tera-portal
-sudo -u teraportal node ops/create-user.js bayram.elmas "Bayram Elmas" pmdir BT PYD elif.yalcin
-```
-
-Parametreler sırayla: kullanıcı adı, ad soyad, rol, birim kodu, ünvan kodu, yöneticinin kullanıcı adı.
-Betik kimlik bilgisi almaz; giriş Active Directory üzerinden doğrulanır.
 
 ---
 

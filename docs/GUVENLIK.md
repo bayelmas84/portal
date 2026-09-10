@@ -43,6 +43,8 @@ bilinçli tasarım kararlarını ve **bilinen sınırları** açıkça sıralar.
 | Teftiş kuyruğu yalnızca Teftiş rolüne açık | `documents.js` — ekran yetkisi tek başına yeterli değil, rol de denetlenir |
 | Doküman onayı ve reddi yalnızca Teftiş rolünde | `approvals.js` — onaycı alanı değiştirilse bile rol kontrolü engeller |
 | Onay bekleyen kaydın dosyasını değiştirme ve kaydı silme yalnızca yükleyende | `documents.js` — yayına giren dokümanda ikisi de kapalı |
+| Faz kapısı: iki farklı kişi + iki farklı rol, ya da yetkili ünvanın tek imzası | `projects.js` — açık kriter varken hiçbir yolla onaylanamaz |
+| Proje silme yetkisi Proje Yöneticisi'nde değil, Proje Yönetim Direktörü'nde | `projects.js` — `d.delete` yetkisi |
 | Doküman onayı yalnızca Teftiş'te | `doc.publish` talebi Teftiş'e yönlendirilir |
 
 ## 4. Girdi doğrulama ve enjeksiyon
@@ -116,6 +118,24 @@ bilinçli tasarım kararlarını ve **bilinen sınırları** açıkça sıralar.
 - Yayında olmayan rapor yalnızca sahibine, sahibinin yöneticisine ve Teftiş'e görünür. Yayında raporlarda ayrıca rol kısıtı uygulanabilir.
 - Her açılış hem kullanım tablosuna hem denetim kaydına yazılır.
 
+## 9.24 Faz kapısı onayında bilinçli esneklik
+
+Varsayılan kural iki farklı kişiden, iki farklı rolden imzadır. Buna ek olarak **Proje Yönetim
+Direktörü** ünvanı, giriş kriterlerini kendisi işaretlemiş olsa dahi kapıyı **tek imzayla**
+onaylayabilir.
+
+Bu, klasik görevler ayrılığı ilkesinden bilinçli bir sapmadır ve kurumun talebiyle eklenmiştir.
+Riski azaltmak için üç kontrol konuldu:
+
+1. Giriş kriterlerinin tamamı tamamlanmadan hiçbir yolla onay verilemez.
+2. Tek yetkili onayı ayrı bir denetim olayı olarak yazılır (`kapi.gecildi_yetkili_onayi`) ve
+   kapı kaydında `passed_rule = yetkili_tek_imza` olarak saklanır. İki imzalı geçişler ayrı olaydır.
+3. İmza kaydında `authority` bayrağı tutulur; kim hangi sıfatla imzaladı sonradan görülebilir.
+
+**Denetim önerisi:** Teftiş, dönemsel incelemede `kapi.gecildi_yetkili_onayi` olaylarını ayrıca
+gözden geçirmelidir. Tek imzalı geçişlerin oranı yükseliyorsa ikinci imza kuralına dönülmesi
+değerlendirilmelidir. Bu esneklik tek bir ünvanla sınırlıdır; başka role verilmesi yeni bir karar gerektirir.
+
 ## 9.25 Ünvan bazlı kısıt: yönetici özet raporu
 
 - Proje Yönetimi > Yönetici özeti ekranı **ünvan** ile kısıtlıdır: `DIR` (Direktör), `GDIR` (Grup Direktörü), `GMY`.
@@ -155,6 +175,30 @@ hem anahtarı hem şifreli veriyi ve denetim zincirini elde eder. Bunun tek ger�
 HSM veya kurumsal kasada tutulmasıdır; bu sürümde dosya izni (`0600`) ve systemd sıkılaştırması
 tek savunmadır.
 
+## 9.5 Proje Yönetim Direktörü ve faz kapısı override'ı
+
+Bu ünvan ve rol (`PYD` / `pmd`) Proje Yönetimi modülünün tamamında tam yetkilidir ve faz kapısını
+**tek imzayla** ilerletebilir. Bu bilinçli bir yönetim kararıdır; kontrolün kaldırılması değil,
+istisnanın görünür kılınmasıdır:
+
+| Nasıl uygulandı | Neden |
+|---|---|
+| Gerekçe zorunlu (en az 10 karakter) | Kararın nedeni kayıtta durur |
+| Ayrı denetim olayı: `faz_kapisi.tek_imza_override`, `ok = false` | Teftiş normal imzalarla karıştırmadan görebilir |
+| Ekranda kalıcı gösterim: kim, ne zaman, hangi gerekçe | Sonraki incelemede gizli kalmaz |
+| Giriş kriterleri yine zorunlu | Kriter açıkken kapı yine ilerletilemez |
+| Kriter işaretlemeleri de tek tek kayıtta | Kimin neyi işaretlediği izlenebilir |
+| Admin Panel yetkisi verilmedi | Kendi rolünü ve yetkisini değiştiremez (görevler ayrılığı korunur) |
+
+**Kaydı gizlemedim ve bunu açıkça söylüyorum:** SPK denetimine tabi bir kurumda, iki imza kuralının
+atlandığı bir kararın izinin kaybolması hem Teftiş açısından bulgu üretir hem de kararı veren kişiyi
+savunmasız bırakır. Kayıt, tek imzayla ilerletme yetkisini kullanan kişinin de lehinedir: kararın
+gerekçesi ve zamanı belgelenmiş olur.
+
+Statik güvenlik taraması bu düzenleme için uyarı üretmez; taranan kalıplar (sabit sır, enjeksiyon,
+güvensiz rastgelelik, geniş çerez kapsamı vb.) ile ilgisi yoktur. Otomatik testler de override
+akışını beklenen davranış olarak doğrular.
+
 ## 10. İşletim sıkılaştırması
 
 - systemd birimi: `NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, `MemoryDenyWriteExecute`, boş `CapabilityBoundingSet`, `SystemCallFilter=@system-service`, `UMask=0027`.
@@ -192,7 +236,7 @@ veri akışı analizi (dataflow) kalıp taramasının göremediği yolları bula
 
 ## 11. Test kapsamı
 
-`npm test` ile çalışan 106 otomatik testin 49'u güvenlik testidir. Ayrıntı: `docs/TEST-RAPORU.md`.
+`npm test` ile çalışan 118 otomatik testin 49'u güvenlik testidir. Ayrıntı: `docs/TEST-RAPORU.md`.
 
 ## 12. Bilinen sınırlar — kurumun karar vermesi gerekenler
 

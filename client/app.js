@@ -7,7 +7,7 @@
   const S = {
     view: "login", user: null, modules: [], settings: {}, mod: null, scr: null,
     data: {}, dlg: null, form: {}, toast: null, dark: matchMedia("(prefers-color-scheme: dark)").matches,
-    reading: null, detail: null, quiz: null, quizResult: null, overdue: [], drill: null, execFilter: null, execUnit: null,
+    reading: null, detail: null, quiz: null, quizResult: null, overdue: [], drill: null, showPw: false, execFilter: null, execUnit: null,
   };
   let csrfToken = null;
 
@@ -112,24 +112,83 @@
 
   /* ---------------- ekranlar ---------------- */
   function loginView() {
-    return `<div style="display:flex;min-height:100vh;flex-wrap:wrap;background:radial-gradient(900px 420px at 12% -8%,#16376e,#0B1F48 45%,#07122a)">
-      <div style="flex:1.1;min-width:270px;padding:40px 34px;color:#fff">
-        <div style="display:flex;align-items:center;gap:11px">
-          <span style="width:34px;height:34px;border-radius:11px;background:#fff;color:#0B1F48;display:flex;align-items:center;justify-content:center">T</span>
-          <span style="font-size:17px">TERA YATIRIM</span><span class="m" style="color:var(--gold);letter-spacing:.2em">PORTAL</span></div>
-        <h1 style="font-size:26px;line-height:1.3;margin:44px 0 0;font-weight:600">Kurumsal işlerinizin<br>tek giriş noktası.</h1>
-        <p style="font-size:13px;color:#9FB0CE;max-width:360px;line-height:1.7">Duyurular, kontrollü dokümanlar, zorunlu okumalar ve onay akışları.</p>
-        <p style="font-size:11.5px;color:#6E7F9E;margin-top:40px">Kimlik doğrulama Active Directory üzerinden LDAPS ile yapılır.</p></div>
-      <div style="flex:1;min-width:300px;padding:40px 34px;display:flex;align-items:center">
-        <form id="loginForm" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:22px;width:100%;max-width:380px">
-          <div style="color:#fff;font-size:16px">Oturum açın</div>
-          <label class="lbl" style="color:#7B8CAB;display:block;margin-top:14px" for="u">Kullanıcı adı</label>
-          <input id="u" name="username" autocomplete="username" required style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.24);color:#fff">
-          <label class="lbl" style="color:#7B8CAB;display:block;margin-top:12px" for="p">Parola</label>
-          <input id="p" name="password" type="password" autocomplete="current-password" required style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.24);color:#fff">
-          ${S.loginError ? `<div style="font-size:11.5px;color:#F0A9A9;margin-top:10px">${esc(S.loginError)}</div>` : ""}
-          <button class="b g" type="submit" style="width:100%;padding:11px;margin-top:16px">Giriş yap</button>
-        </form></div></div>`;
+    /* Giriş ekranı: kurumsal kimlik ve sakin bir görsel dil.
+       Uygulamanın içeriğine dair hiçbir bilgi verilmez. */
+    return `<div class="login">
+      <div class="login-art" aria-hidden="true">
+        <svg viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#123061"/><stop offset="55%" stop-color="#0B1F48"/>
+              <stop offset="100%" stop-color="#06102a"/></linearGradient>
+            <linearGradient id="gold" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0%" stop-color="#B8894A" stop-opacity=".85"/>
+              <stop offset="100%" stop-color="#E7C98F" stop-opacity=".25"/></linearGradient>
+          </defs>
+          <rect width="600" height="800" fill="url(#lg)"/>
+          <g opacity=".13" stroke="#9FB0CE" stroke-width="1" fill="none">
+            ${Array.from({ length: 13 }, (_, i) => `<line x1="0" y1="${i * 64}" x2="600" y2="${i * 64 - 220}"/>`).join("")}
+          </g>
+          <g opacity=".55">
+            ${[[70, 640, 46], [140, 600, 86], [210, 655, 62], [280, 560, 122], [350, 610, 96], [420, 500, 168], [490, 545, 132]]
+              .map(([x, y, h]) => `<rect x="${x}" y="${y - h}" width="34" height="${h}" rx="5" fill="url(#gold)"/>`).join("")}
+          </g>
+          <path d="M70 618 L140 566 L210 604 L280 458 L350 512 L420 352 L490 424"
+                fill="none" stroke="#E7C98F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>
+          ${[[70, 618], [140, 566], [210, 604], [280, 458], [350, 512], [420, 352], [490, 424]]
+            .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="5.5" fill="#fff" opacity=".92"/>`).join("")}
+          <circle cx="480" cy="150" r="150" fill="#ffffff" opacity=".04"/>
+          <circle cx="120" cy="240" r="86" fill="#ffffff" opacity=".03"/>
+        </svg>
+        <div class="login-art-text">
+          <div class="brand">
+            <span class="brand-mark">T</span>
+            <span class="brand-name">TERA YATIRIM</span>
+            <span class="brand-sub">PORTAL</span>
+          </div>
+          <h1>Sermaye piyasalarında<br>1991'den beri.</h1>
+          <p>Tera Yatırım Menkul Değerler A.Ş.</p>
+        </div>
+      </div>
+
+      <div class="login-form">
+        <form id="loginForm" autocomplete="on">
+          <div class="brand brand-mobile">
+            <span class="brand-mark">T</span><span class="brand-name">TERA YATIRIM</span>
+            <span class="brand-sub">PORTAL</span>
+          </div>
+          <h2>Oturum açın</h2>
+          <p class="login-hint">Kurum hesabınızla devam edin.</p>
+
+          <label class="field">
+            <span>Kullanıcı adı</span>
+            <span class="input-wrap">
+              <span class="prefix">TERA\</span>
+              <input id="u" name="username" autocomplete="username" autocapitalize="none"
+                     spellcheck="false" required placeholder="ad.soyad">
+            </span>
+          </label>
+
+          <label class="field">
+            <span>Parola</span>
+            <span class="input-wrap">
+              <input id="p" name="password" type="password" autocomplete="current-password" required placeholder="••••••••••">
+              <button type="button" class="reveal" data-a="togglePw" aria-label="Parolayı göster">${S.showPw ? "gizle" : "göster"}</button>
+            </span>
+          </label>
+
+          ${S.loginError ? `<div class="login-error" role="alert">${esc(S.loginError)}</div>` : ""}
+
+          <button class="b g login-submit" type="submit">Giriş yap</button>
+
+          <div class="login-foot">
+            <span>Parolanızı mı unuttunuz? Bilgi İşlem ile görüşün.</span>
+            <span class="m">Dahili 1200 · destek@terayatirim.com.tr</span>
+          </div>
+        </form>
+        <div class="login-legal m">© ${new Date().getFullYear()} Tera Yatırım Menkul Değerler A.Ş.</div>
+      </div>
+    </div>`;
   }
 
   function annView() {
@@ -1136,6 +1195,14 @@
     const [k, ...p] = el.dataset.a.split(":");
     try {
       if (k === "theme") { S.dark = !S.dark; return render(); }
+      if (k === "togglePw") {
+        const el = document.getElementById("p");
+        if (el) { const keep = el.value; S.showPw = !S.showPw; el.type = S.showPw ? "text" : "password";
+          el.value = keep;
+          const btn = document.querySelector('[data-a="togglePw"]');
+          if (btn) btn.textContent = S.showPw ? "gizle" : "göster"; }
+        return;
+      }
       if (k === "logout") { await api("/auth/logout", { method: "POST" }); S.view = "login"; S.user = null; return render(); }
       if (k === "mod") {
         const m = S.modules.find((x) => x.key === p[0]);

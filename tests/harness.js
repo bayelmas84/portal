@@ -30,6 +30,7 @@ const USERS = [
   ["gonul.aladag", "Gönül Aladağ", "control", "UYM", "MDR", "deniz.okur"],
   ["deniz.okur", "Deniz Okur", "gmy", "PRT", "GMY", null],
   ["meltem.aydin", "Meltem Aydın", "opsdir", "OPR", "DIR", "deniz.okur"],
+  ["bayram.elmas", "Bayram Elmas", "pmd", "BT", "PYD", null],
   ["tolga.firat", "Tolga Fırat", "pm", "BT", "MDR", "elif.yalcin"],
   ["mert.balkan", "Mert Balkan", "dev", "BT", "UZM", "tolga.firat"],
   ["nazli.han", "Nazlı Han", "staff", "OPR", "UZM", "meltem.aydin"],
@@ -51,7 +52,7 @@ async function boot() {
   const db = require("../server/src/lib/db");
   db.inject(pool);
 
-  for (const f of ["001_init.sql", "003_mail_settings.sql", "004_bi_reports.sql", "006_projects.sql", "007_directory_settings.sql"]) {
+  for (const f of ["001_init.sql", "003_mail_settings.sql", "004_bi_reports.sql", "006_projects.sql", "007_directory_settings.sql", "008_project_authority.sql"]) {
     await pool.query(fs.readFileSync(path.join(__dirname, "../server/migrations", f), "utf8"));
   }
   const { seed } = require("../server/src/lib/seed");

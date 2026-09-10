@@ -1,5 +1,25 @@
 # Değişiklik günlüğü
 
+## 1.7.0
+- Proje Yönetim Direktörü ünvanı (`PYD`) ve rolü (`pmd`): Proje Yönetimi modülünde tam yetki
+- Faz kapısı uçları: kriter işaretleme, iki imza kuralı ve gerekçeli tek imza override'ı
+- GMY faz kapısı imzalayabilir (iki imza kuralının ikinci ayağı)
+- Yöneticisi olmayan kişinin genel duyurusu Teftiş onayına düşer
+- Giriş ekranı yeniden tasarlandı; uygulama içeriğine dair ifade kaldırıldı
+- Stage Gates: salt okunur rollerde yanıltıcı toggle yerine durum göstergesi
+- Yönetici özetinde tıklanabilir göstergeler ve birim filtresi
+
+## 1.7.0
+- Proje Yönetim Direktörü rolü ve PYD ünvanı: Proje Yönetimi'nde tam yetki (ekleme, değiştirme, silme)
+- Faz kapısı (stage gate) uçları: kriter işaretleme, imza, iki farklı kural
+  (iki imza veya yetkili tek imzası); tek yetkili onayı denetim kaydında ayrı olay
+- Proje ekleme ve silme uçları; silme yalnızca Proje Yönetim Direktörü'nde
+- İç Kontrol faz kapısında ikinci imzayı atabilir
+- Yönetici özeti kutuları tıklanabilir, tablo filtrelenir (üretim ve prototip)
+- Stage Gates: yazma yetkisi olmayan rolde yanıltıcı toggle yerine salt okunur gösterge
+- Giriş ekranı yeniden tasarlandı; yetkilendirmeye dair ifade kaldırıldı
+- ops/create-user.js: kullanıcı tanımlama betiği (kimlik bilgisi almaz)
+
 ## 1.6.1
 - Stage Gates: yazma yetkisi olmayan rollerde toggle yerine salt okunur durum göstergesi
   (Admin ve GMY'de toggle "çalışmıyor" görünüyordu; aslında `disabled` çiziliyordu)

@@ -83,3 +83,28 @@ test("yönetici özeti kutuları tıklanabilir ve tablo filtrelenir", async () =
     assert.ok(js.includes(key), `filtre anahtarı eksik: ${key}`);
   assert.match(js, /No projects match this filter/, "boş filtre durumu ele alınıyor");
 });
+
+test("giriş ekranı yeniden tasarlandı ve uygulama içeriğine dair ifade içermiyor", async () => {
+  const { app } = await boot();
+  const js = (await request(app).get("/app.js")).text;
+  const css = (await request(app).get("/app.css")).text;
+  /* Yorumlar kullanıcıya görünmez; denetim yalnızca ekranda çıkan metinler üzerinde yapılır. */
+  const login = js.slice(js.indexOf("function loginView"), js.indexOf("function annView"))
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+
+  assert.ok(!js.includes("Kurumsal işlerinizin"), "eski slogan kaldırıldı");
+  /* Giriş ekranı uygulamanın içeriğini, modüllerini veya yetkilendirmesini anlatmaz. */
+  for (const bad of ["LDAPS", "Active Directory", "Kimlik doğrulama", "\\byetki", "\\brol\\b",
+                     "\\bmodül", "\\bduyuru", "\\bdoküman", "\\bonay", "\\brapor"])
+    assert.ok(!new RegExp(bad, "i").test(login), `giriş ekranında yer almamalı: ${bad}`);
+
+  assert.match(login, /TERA YATIRIM/, "marka adı");
+  assert.match(login, /Sermaye piyasalarında/, "kurumsal başlık");
+  assert.match(login, /login-art/, "görsel katman");
+  assert.match(login, /Oturum açın/, "form başlığı");
+  assert.match(login, /togglePw/, "parola göster/gizle");
+  for (const cls of [".login{", ".login-art{", ".login-form{", ".brand-mark{", ".input-wrap{", ".login-submit{"])
+    assert.ok(css.includes(cls), `stil eksik: ${cls}`);
+  assert.match(css, /@media\(max-width:880px\)/, "küçük ekranda tek kolona düşüyor");
+});
+
