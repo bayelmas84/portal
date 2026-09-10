@@ -1,5 +1,9 @@
 # Değişiklik günlüğü
 
+## 1.10.2
+- Giriş ekranındaki açık renkli iki bölge kaldırıldı: form üstündeki beyaz marka kutusu ve
+  açık zeminli düğmeler. Fotoğraf üstündeki tüm öğeler koyu zemine uyarlandı
+
 ## 1.10.1
 - Giriş ekranı görseli artık **tüm sayfayı** kaplıyor: form tarafının arkasında da manzara görünüyor,
   giriş düğmesinin altında su ve köprü açıkta kalıyor

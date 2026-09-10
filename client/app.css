@@ -173,3 +173,8 @@ font-size:12px;color:var(--t2)}
 .brand-logo{height:26px;width:auto;display:block}
 .brand-logo.on-dark{filter:brightness(0) invert(1)}
 .login-legal .sig{opacity:.35;margin-left:10px}
+
+/* Giriş ekranı fotoğraf üstünde: açık renkli düğme veya kutu kalmasın */
+.login-form .b:not(.login-submit){background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.20);color:#fff}
+.login-form .b:not(.login-submit):hover{background:rgba(255,255,255,.17)}
+.login-form .card{background:rgba(8,20,44,.55);border-color:rgba(255,255,255,.14);color:#fff}
