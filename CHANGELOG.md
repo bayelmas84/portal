@@ -1,5 +1,13 @@
 # Değişiklik günlüğü
 
+## 1.10.1
+- Giriş ekranı görseli artık **tüm sayfayı** kaplıyor: form tarafının arkasında da manzara görünüyor,
+  giriş düğmesinin altında su ve köprü açıkta kalıyor
+- Kademe iki yönlü: dikeyde metin okunabilirliği, yatayda form tarafında hafif koyulaşma
+- Form alanları koyu zemine uyarlandı (saydam koyu alan, beyaz yazı, altın odak çerçevesi),
+  giriş düğmesi altın
+- Yatay kompozisyonlu görsel (1600×900, 123 KB) metinsizdir; logo ve slogan HTML katmanında
+
 ## 1.10.0
 - Giriş ekranı kurumsal fotoğrafla yenilendi (gece İstanbul + piyasa grafiği). Görsel metinsizdir;
   logo, slogan ve kurum adı HTML ile yazılır — büyütmede bulanıklaşmaz, ekran okuyucu okur,

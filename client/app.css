@@ -51,19 +51,20 @@ textarea{min-height:74px;resize:vertical}
 /* ------------------------------ giriş ekranı ------------------------------ */
 .login{display:grid;grid-template-columns:1.15fr .85fr;min-height:100vh;position:relative;overflow:hidden;
  background:#07122a;color:#fff;isolation:isolate}
-.login::before{content:"";position:absolute;inset:0;z-index:-2;
- background:radial-gradient(1100px 520px at 8% -12%,#1b4487 0%,rgba(27,68,135,0) 60%),
-  radial-gradient(760px 460px at 88% 108%,#123061 0%,rgba(18,48,97,0) 62%),
-  linear-gradient(160deg,#0d2450 0%,#0B1F48 42%,#060f24 100%)}
+/* Fotoğraf yüklenene kadar görünen zemin */
+.login::before{content:"";position:absolute;inset:0;z-index:-1;
+ background:linear-gradient(160deg,#0d2450 0%,#0B1F48 42%,#060f24 100%)}
 .login::after{content:"";position:absolute;inset:0;z-index:-1;opacity:.35;
  background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),
   linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);
  background-size:64px 64px;mask-image:radial-gradient(720px 520px at 20% 20%,#000 0%,transparent 78%)}
-.login-art{position:relative;overflow:hidden}
-.login-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center bottom}
-/* Metnin okunur kalması için fotoğrafın üstünde koyu kademe */
-.login-scrim{position:absolute;inset:0;background:
- linear-gradient(180deg,rgba(4,12,30,.88) 0%,rgba(4,12,30,.62) 34%,rgba(4,12,30,.25) 62%,rgba(4,12,30,.55) 100%)}
+/* Fotoğraf her iki kolonun arkasında: form tarafında da manzara görünür */
+.login-photo{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;object-position:center 72%}
+/* Kademe: üstte metin için koyu, form tarafında biraz daha koyu, altta manzara açılır */
+.login-scrim{position:absolute;inset:0;z-index:1;pointer-events:none;background:
+ linear-gradient(180deg,rgba(4,12,30,.86) 0%,rgba(4,12,30,.56) 30%,rgba(4,12,30,.12) 58%,rgba(4,12,30,.40) 100%),
+ linear-gradient(90deg,rgba(4,12,30,.06) 0%,rgba(4,12,30,.08) 50%,rgba(4,12,30,.40) 66%,rgba(4,12,30,.48) 100%)}
+.login-art{position:relative;z-index:2;overflow:hidden;background:transparent}
 .login-art-text .rule{width:74px;height:3px;border-radius:3px;background:var(--gold);margin:22px 0 16px}
 .login-brand{padding:clamp(28px,5vw,64px);display:flex;flex-direction:column;justify-content:center;gap:22px}
 .mark{display:flex;align-items:center;gap:13px}
@@ -127,7 +128,8 @@ display:flex;align-items:center;justify-content:center;font-weight:600;font-size
 .brand-sub{font-family:"SFMono-Regular",Consolas,monospace;font-size:11px;letter-spacing:.26em;color:var(--gold)}
 .brand-mobile{display:none;margin-bottom:26px}
 .brand-mobile .brand-name{color:var(--t1)}
-.login-form{display:flex;flex-direction:column;justify-content:center;padding:48px clamp(24px,5vw,64px);position:relative}
+.login-form{display:flex;flex-direction:column;justify-content:center;padding:48px clamp(24px,5vw,64px);
+ position:relative;z-index:2;background:transparent;color:#fff}
 .login-form form{width:100%;max-width:390px;margin:0 auto}
 .login-form h2{margin:0;font-size:23px;font-weight:600;letter-spacing:-.01em}
 .login-hint{margin:7px 0 26px;font-size:13px;color:var(--t2)}
@@ -136,6 +138,17 @@ display:flex;align-items:center;justify-content:center;font-weight:600;font-size
 color:var(--tm);margin-bottom:7px}
 .input-wrap{display:flex;align-items:center;gap:8px;border:1px solid var(--bds);border-radius:11px;
 padding:0 12px;background:var(--s2);transition:border-color .15s,box-shadow .15s}
+/* Giriş ekranı fotoğraf üstünde: alanlar saydam koyu, yazılar beyaz */
+.login-form .input-wrap{border-color:rgba(255,255,255,.18);background:rgba(8,20,44,.62);backdrop-filter:blur(6px)}
+.login-form .input-wrap input{color:#fff}
+.login-form .input-wrap input::placeholder{color:rgba(255,255,255,.42)}
+.login-form .input-wrap .prefix{color:rgba(255,255,255,.55)}
+.login-form .input-wrap:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,137,74,.22)}
+.login-form .login-hint{color:#9FB0CE}
+.login-form .reveal{color:#9FB0CE}
+.login-submit{background:linear-gradient(180deg,#E0A94E,#C98F33);border-color:#C98F33;color:#20160a;font-weight:600}
+.login-submit:hover{background:linear-gradient(180deg,#E9B65C,#D2983A);border-color:#D2983A}
+.login-legal{color:rgba(255,255,255,.55);z-index:3}
 .input-wrap:focus-within{border-color:var(--navy);box-shadow:0 0 0 3px rgba(11,31,72,.1)}
 html.dark .input-wrap:focus-within{box-shadow:0 0 0 3px rgba(168,200,245,.15);border-color:var(--ta)}
 .input-wrap .prefix{font-family:"SFMono-Regular",Consolas,monospace;font-size:12px;color:var(--tm)}

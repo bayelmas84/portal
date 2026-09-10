@@ -142,9 +142,9 @@ const LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARgAAABBCAYAAAAKeLsH
     /* Giriş ekranı: kurumsal kimlik ve sakin bir görsel dil.
        Uygulamanın içeriğine dair hiçbir bilgi verilmez. */
     return `<div class="login">
+      <img class="login-photo" src="/login-art.jpg" alt="" aria-hidden="true">
+      <div class="login-scrim" aria-hidden="true"></div>
       <div class="login-art">
-        <img class="login-photo" src="/login-art.jpg" alt="" aria-hidden="true">
-        <div class="login-scrim" aria-hidden="true"></div>
         <div class="login-art-text">
           <div class="brand">
             <img class="brand-logo on-dark" src="${LOGO}" alt="${esc(BRAND.companyShort)}" height="26">

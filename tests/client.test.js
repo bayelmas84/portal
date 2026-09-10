@@ -118,6 +118,9 @@ test("giriş ekranı kurumsal görseli statik dosyadan yükler", async () => {
   const js = (await request(app).get("/app.js")).text;
   assert.match(js, /class="login-photo" src="\/login-art\.jpg"/, "fotoğraf katmanı var");
   assert.match(js, /class="login-scrim"/, "okunabilirlik kademesi var");
+  /* Fotoğraf iki kolonun da arkasında: markup'ta .login-art'tan ÖNCE gelir. */
+  const iPhoto = js.indexOf('class="login-photo"'), iArt = js.indexOf('<div class="login-art">');
+  assert.ok(iPhoto > -1 && iArt > iPhoto, "fotoğraf sanat kolonundan önce, yani her ikisinin arkasında");
   assert.ok(!/<svg viewBox="0 0 600 800"/.test(js), "eski çizim kaldırıldı");
 
   /* Görsel statik olarak servis edilir ve önbelleklenir. */
@@ -129,4 +132,7 @@ test("giriş ekranı kurumsal görseli statik dosyadan yükler", async () => {
   const css = (await request(app).get("/app.css")).text;
   assert.match(css, /object-fit:cover/, "fotoğraf alanı kaplar");
   assert.match(css, /\.login-art-text \.rule/, "altın çizgi tanımlı");
+  assert.match(css, /\.login-form\{[^}]*background:transparent/, "form paneli saydam — manzara görünür");
+  assert.match(css, /linear-gradient\(90deg/, "form tarafı için yatay kademe");
+  assert.match(css, /\.login-form \.input-wrap\{/, "alanlar koyu zemine uyarlanmış");
 });
