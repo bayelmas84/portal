@@ -1,5 +1,11 @@
 # Değişiklik günlüğü
 
+## 1.11.1
+- Giriş formu ölçüleri düzeltildi: `cqw` değerleri kaynak görseldeki gerçek piksel ölçülerinden
+  yeniden hesaplandı (başlık 27px → 1.82cqw, alan kutusu 57px → 3.85cqw, düğme 56px → 3.78cqw).
+  Önceki değerler yaklaşık 2,3 kat büyüktü; "Oturum açın" ve alanlar olması gerekenden iri görünüyordu
+- Panelin dikey konumu %30.2 olarak ayarlandı; alanlar ve düğme kaynak görseldeki y konumlarına oturuyor
+
 ## 1.11.0
 - Giriş ekranı artık **kaynak hero görselinden** oluşuyor: verilen PNG (1482×1061) bire bir,
   yeniden çizilmeden, dönüştürülmeden ve yeniden sıkıştırılmadan kullanılıyor

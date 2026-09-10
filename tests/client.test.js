@@ -114,3 +114,16 @@ test("giriş ekranı kaynak hero görselini değiştirmeden kullanır", async ()
   assert.equal(img.body.subarray(1, 4).toString(), "PNG");
   assert.ok(img.body.length > 1900000, `kaynak boyut korunmuş (${img.body.length} bayt)`);
 });
+
+test("giriş formu ölçüleri kaynak görselin oranlarına bağlı", async () => {
+  const { app } = await boot();
+  const css = (await request(app).get("/app.css")).text;
+  /* 1482 px referansta: başlık 27px, alan kutusu 57px, düğme 56px, kutu genişliği 510px. */
+  const pairs = [[/font-size:1\.82cqw/, "başlık 27px"], [/height:3\.85cqw/, "alan kutusu 57px"],
+                 [/height:3\.78cqw/, "düğme 56px"], [/width:34\.44%/, "kutu genişliği 510px"],
+                 [/top:30\.2%/, "dikey hizalama"]];
+  for (const [rx, label] of pairs) assert.match(css, rx, `ölçü eksik: ${label}`);
+  /* Panel container query birimleriyle ölçekleniyor; sabit px ile büyümüyor. */
+  const panel = css.slice(css.indexOf(".login-panel{"), css.indexOf(".login-legal{"));
+  assert.ok(!/font-size:\d+px/.test(panel), "panelde sabit px yazı boyutu yok");
+});

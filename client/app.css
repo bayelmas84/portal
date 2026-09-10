@@ -57,25 +57,28 @@ textarea{min-height:74px;resize:vertical}
 /* Görsele hiçbir filtre, opaklık, karışım veya renk katmanı uygulanmaz */
 .hero{display:block;width:100%;height:100%;object-fit:contain}
 /* Giriş formu ayrı katman: görselin sağındaki temiz lacivert alanın üzerinde */
-.login-panel{position:absolute;top:50%;left:59.4%;width:34.5%;transform:translateY(-50%)}
-.login-panel h2{margin:0;font-size:4.2cqw;font-weight:600;letter-spacing:-.01em;color:#fff}
-.login-panel .login-hint{margin:1.2cqw 0 3.4cqw;font-size:2.05cqw;color:#9FB0CE}
-.login-panel .field{display:block;margin-bottom:2.2cqw}
-.login-panel .field>span:first-child{display:block;font-size:1.55cqw;letter-spacing:.09em;
- text-transform:uppercase;color:rgba(255,255,255,.72);margin-bottom:.9cqw}
-.login-panel .input-wrap{display:flex;align-items:center;gap:1cqw;border:1px solid rgba(255,255,255,.17);
- border-radius:.9cqw;padding:0 1.5cqw;height:5.4cqw;background:rgba(10,24,52,.55)}
-.login-panel .input-wrap:focus-within{border-color:var(--gold);box-shadow:0 0 0 .25cqw rgba(184,137,74,.22)}
+/* Ölçüler kaynak görseldeki gerçek piksel değerlerinden hesaplandı (1482 px referans):
+   "Oturum açın" 27px → 1.82cqw · alan kutusu 57px → 3.85cqw · düğme 56px → 3.78cqw ·
+   kutu genişliği 510px → 34.44cqw. top %30.2 ile kutular kaynaktaki y konumuna oturur. */
+.login-panel{position:absolute;top:30.2%;left:59.42%;width:34.44%}
+.login-panel h2{margin:0;font-size:1.82cqw;line-height:1.25;font-weight:600;letter-spacing:-.01em;color:#fff}
+.login-panel .login-hint{margin:.75cqw 0 1.95cqw;font-size:1.02cqw;line-height:1.4;color:#9FB0CE}
+.login-panel .field{display:block;margin-bottom:1.45cqw}
+.login-panel .field>span:first-child{display:block;font-size:.76cqw;letter-spacing:.09em;
+ text-transform:uppercase;color:rgba(255,255,255,.72);margin-bottom:.52cqw}
+.login-panel .input-wrap{display:flex;align-items:center;gap:.55cqw;border:1px solid rgba(255,255,255,.17);
+ border-radius:.78cqw;padding:0 1.05cqw;height:3.85cqw;background:rgba(10,24,52,.55)}
+.login-panel .input-wrap:focus-within{border-color:var(--gold);box-shadow:0 0 0 .14cqw rgba(184,137,74,.22)}
 .login-panel .input-wrap input{flex:1;border:0;background:transparent;color:#fff;font:inherit;
- font-size:2.1cqw;outline:none;min-width:0}
+ font-size:1.05cqw;outline:none;min-width:0}
 .login-panel .input-wrap input::placeholder{color:rgba(255,255,255,.4)}
-.login-panel .prefix{font-family:"SFMono-Regular",Consolas,monospace;font-size:1.85cqw;color:rgba(255,255,255,.5)}
-.login-panel .reveal{border:0;background:transparent;color:#9FB0CE;font:inherit;font-size:1.8cqw;cursor:pointer;padding:0}
-.login-panel .login-submit{width:100%;height:5.6cqw;margin-top:1.4cqw;border-radius:.9cqw;font-size:2.15cqw;
+.login-panel .prefix{font-family:"SFMono-Regular",Consolas,monospace;font-size:.95cqw;color:rgba(255,255,255,.5)}
+.login-panel .reveal{border:0;background:transparent;color:#9FB0CE;font:inherit;font-size:.92cqw;cursor:pointer;padding:0}
+.login-panel .login-submit{width:100%;height:3.78cqw;margin-top:.8cqw;border-radius:.78cqw;font-size:1.08cqw;
  font-weight:600;color:#20160a;border:1px solid #C98F33;background:linear-gradient(180deg,#E9B45A,#D89B38)}
 .login-panel .login-submit:hover{background:linear-gradient(180deg,#F0BE67,#DFA542)}
 .login-panel .login-error{background:rgba(163,18,28,.22);border:1px solid rgba(255,140,140,.35);
- color:#ffd7d7;border-radius:.8cqw;padding:1.1cqw 1.4cqw;font-size:1.8cqw;margin:0 0 1.4cqw}
+ color:#ffd7d7;border-radius:.6cqw;padding:.62cqw .85cqw;font-size:.92cqw;margin:0 0 .85cqw}
 .login-legal{margin:16px 0 0;text-align:center;color:rgba(255,255,255,.5);font-size:11.5px}
 .login-legal .sig{opacity:.45;margin-left:10px}
 @media(max-width:820px){
