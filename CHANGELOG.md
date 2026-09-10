@@ -1,5 +1,15 @@
 # Değişiklik günlüğü
 
+## 1.13.1
+- Proje ekibi rolleri tamamlandı: **Internal Audit (Teftiş)** ve **Risk** eklendi
+  (toplam dokuz rol: Project Manager, Developer, QA, Business Owner, Product Owner,
+  Internal Audit, Risk, Vendor, Analyst)
+- Teftiş ve Risk **her projede zorunlu üyedir**: yeni proje açıldığında otomatik eklenir,
+  mevcut projelere de tamamlanır, ekipten çıkarılamaz ("zorunlu üye" olarak işaretlenir)
+- Doküman onay zincirindeki Teftiş ve Risk adımları artık projenin ekibinden okunuyor
+- Zorunlu üyelik yalnızca onay zinciri içindir: Teftiş ve Risk board, sprint, backlog, kapı ve
+  CR ekranlarına erişmez; dokümanlar üzerinden çalışır
+
 ## 1.13.0
 - **Proje Yönetimi erişimi projeye bağlandı.** Proje yönetimi rolleri dışındaki kişiler yalnızca
   proje dokümanlarını görür. Projeye atanan kişiler (PO, BO, QA, Vendor, Analyst) board, sprint,
