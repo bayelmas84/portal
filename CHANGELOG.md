@@ -1,5 +1,21 @@
 # Değişiklik günlüğü
 
+## 1.13.0
+- **Proje Yönetimi erişimi projeye bağlandı.** Proje yönetimi rolleri dışındaki kişiler yalnızca
+  proje dokümanlarını görür. Projeye atanan kişiler (PO, BO, QA, Vendor, Analyst) board, sprint,
+  backlog, faz kapısı ve değişiklik taleplerini **salt okunur** görür; işlem yapamaz
+- İç Kontrol, Bilgi Güvenliği ve Teftiş rollerinden proje yönetimi ekranları kaldırıldı
+- Yeni kişiler: **Melis Suri** (Kanal Yönetimi, ürün sahibi olarak atanabilir) ve
+  **Leyla Varol** (Kurumsal Risk Grup Direktörü, doküman zincirinin son onayı).
+  Yeni birimler: Kanal Yönetimi, Kurumsal Risk
+- Yeni proje oluşturma akışı: iş birimi seçilir, iş birimi sahibi o birimin kişilerinden,
+  ürün sahibi tüm birimlerden seçilir. Ekip PM + BO + PO ile kurulur, sonradan değiştirilebilir
+- **Doküman onay zinciri altı adım** ve sıralı: Ürün Sahibi → İş Birimi Sahibi → PO'nun yöneticisi
+  → BO'nun yöneticisi → Teftiş → Kurumsal Risk Grup Direktörü. Her adımı yalnızca o adımın kişisi
+  onaylar; beklenen onaycı portalda kullanıcı değilse Proje Yönetim Direktörü vekaleten onaylar
+  ve bu kayıtta "vekaleten" olarak işaretlenir
+- Doküman görüntüleyici genişletildi ve **tam ekran okuma** düğmesi eklendi
+
 ## 1.12.2
 - **Teftiş rolü daraltıldı.** Proje Yönetimi ve Admin Panel yetkileri kaldırıldı; bu modüller
   artık menüde hiç görünmüyor ve uçları erişilemiyor. Teftiş yalnızca kendi görev alanını görür:

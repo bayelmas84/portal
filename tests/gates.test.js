@@ -232,8 +232,12 @@ test("Teftiş yalnızca kendi görev alanını görür: Proje Yönetimi ve Admin
   const me = (await a.get("/api/me")).body;
   const keys = me.modules.map((m) => m.key);
 
-  assert.ok(!keys.includes("delivery"), "Proje Yönetimi menüde olmamalı");
+  /* Teftiş doküman onay zincirinde yer aldığı için Proje Yönetimi'nde yalnızca
+     proje dokümanları ekranını görür; board, sprint, backlog, kapı ve CR kapalıdır. */
   assert.ok(!keys.includes("admin"), "Admin Panel menüde olmamalı");
+  /* Proje dokümanları ekranı üretimde henüz tanımlı olmadığı için Proje Yönetimi
+     modülü Teftiş'e hiç açılmaz. */
+  assert.ok(!me.modules.some((m) => m.key === "delivery"), "Proje Yönetimi menüde olmamalı");
 
   /* Uçlar da kapalı: yetki yoksa erişim yok. */
   for (const path of ["/api/projects", "/api/projects/reports/executive",
@@ -247,12 +251,12 @@ test("Teftiş yalnızca kendi görev alanını görür: Proje Yönetimi ve Admin
   await pool.query("UPDATE screen_state SET state = 'acik' WHERE screen_key IN ('shortcuts','s.all','admin','delivery')");
   const b = agentFor(app); await b.login("kerem.aslan");
   const keys2 = (await b.get("/api/me")).body.modules.map((m) => m.key);
-  assert.deepEqual(keys2, ["shortcuts"], `yalnızca Kısayollar görünmeli → ${keys2.join(",")}`);
+  assert.deepEqual(keys2, ["shortcuts"], `Proje Yönetimi'nde açık doküman ekranı yokken yalnızca Kısayollar → ${keys2.join(",")}`);
 
   /* Görev alanı modülleri açıldığında geri gelir. */
   await pool.query("UPDATE screen_state SET state='acik' WHERE screen_key IN ('documents','k.docs','k.queue','approvals','p.in')");
   const c = agentFor(app); await c.login("kerem.aslan");
   const keys3 = (await c.get("/api/me")).body.modules.map((m) => m.key);
   assert.ok(keys3.includes("documents") && keys3.includes("approvals"), "görev alanı geri gelir");
-  assert.ok(!keys3.includes("delivery") && !keys3.includes("admin"), "Proje Yönetimi ve Admin yine yok");
+  assert.ok(!keys3.includes("admin"), "Admin Panel yine yok");
 });

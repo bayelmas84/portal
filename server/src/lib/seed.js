@@ -43,6 +43,8 @@ const PERMS = {
   /* Teftiş: yalnızca kendi görev alanı — doküman kontrolü, duyuru denetimi, onaylar, uyum.
      Proje Yönetimi ve Admin Panel yetkisi yoktur; yetkisi olmayan modül menüde hiç görünmez. */
   inspection: {
+    /* Teftiş doküman onay zincirinde yer alır; proje dokümanları ekranı üretimde
+       tanımlandığında "d.docs": R eklenecek. Board, sprint, backlog, kapı ve CR kapalıdır. */
     documents: W, "k.docs": W, "k.new": W, "k.queue": W, "k.mail": W,
     announce: W, "a.list": W, "a.new": W, "a.edit": W, "a.del": W,
     training: R, "t.un": W, "t.done": W,
@@ -50,15 +52,20 @@ const PERMS = {
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
     compliance: W, "c.read": W, "c.rem": W, "c.audit": W,
   },
+  /* Bilgi Güvenliği: proje yönetiminde işi yok; yalnızca proje dokümanlarını görür. */
   infosec: {
-    delivery: R, "d.board": R, documents: W, "k.docs": W, "k.new": W, "k.mail": R,
+    /* Proje yönetiminde işi yok. Proje dokümanları ekranı üretimde tanımlandığında
+       "d.docs": R eklenecek (prototipte tasarlandı). */
+    documents: W, "k.docs": W, "k.new": W, "k.mail": R,
     announce: W, "a.list": W, "a.new": W, "a.del": W,
     training: R, "t.un": W, "t.done": W, reports: R, "r.list": R, "r.view": R,
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },
   control: {
-    /* İç Kontrol faz kapısında ikinci imzayı atabilir: bağımsız gözden geçirme. */
-    delivery: R, "d.my": R, "d.projects": R, "d.board": R, "d.sprint": R, "d.gate": W,
+    /* İç Kontrol / Kurumsal Risk: proje yönetiminde işlem yapmaz.
+    /* Proje dokümanları ekranı (d.docs) üretim sürümünde henüz tanımlı değil; prototipte
+       tasarlandı. Ekran ve uçları eklendiğinde bu rollere "d.docs": R verilecek. */
+
     "d.charts": R,
     documents: W, "k.docs": W, "k.new": W, "k.mail": R,
     announce: W, "a.list": W, "a.new": W, "a.del": W,
@@ -107,6 +114,8 @@ const PERMS = {
     training: R, "t.un": W, "t.done": W, approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },
   staff: {
+    /* Proje ekibine atanan kişiye board, sprint, backlog, kapı ve CR salt okunur açılır;
+       bu karar ekip üyeliğine göre verilir (prototipte tasarlandı, üretimde eklenecek). */
     documents: R, "k.docs": R, announce: R, "a.list": R,
     training: W, "t.un": W, "t.done": W, approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },
@@ -131,6 +140,7 @@ const NOTIFS = [
 ];
 
 const UNITS = [
+  ["KNL", "Kanal Yönetimi"], ["RSK", "Kurumsal Risk"],
   ["BT", "Bilgi Teknolojileri"], ["TFT", "Teftiş Kurulu"], ["UYM", "Uyum ve İç Kontrol"],
   ["OPR", "Operasyon ve Takas"], ["PRT", "Portföy Yönetimi"], ["ARC", "Aracılık Hizmetleri"],
 ];
