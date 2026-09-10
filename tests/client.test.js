@@ -84,57 +84,33 @@ test("yönetici özeti kutuları tıklanabilir ve tablo filtrelenir", async () =
   assert.match(js, /No projects match this filter/, "boş filtre durumu ele alınıyor");
 });
 
-test("giriş ekranı yeniden tasarlandı ve uygulama içeriğine dair ifade içermiyor", async () => {
+
+
+
+test("giriş ekranı kaynak hero görselini değiştirmeden kullanır", async () => {
   const { app } = await boot();
   const js = (await request(app).get("/app.js")).text;
   const css = (await request(app).get("/app.css")).text;
-  /* Yorumlar kullanıcıya görünmez; denetim yalnızca ekranda çıkan metinler üzerinde yapılır. */
-  const login = js.slice(js.indexOf("function loginView"), js.indexOf("function annView"))
-    .replace(/\/\*[\s\S]*?\*\//g, "");
 
-  assert.ok(!js.includes("Kurumsal işlerinizin"), "eski slogan kaldırıldı");
-  /* Giriş ekranı uygulamanın içeriğini, modüllerini veya yetkilendirmesini anlatmaz. */
-  for (const bad of ["LDAPS", "Active Directory", "Kimlik doğrulama", "\\byetki", "\\brol\\b",
-                     "\\bmodül", "\\bduyuru", "\\bdoküman", "\\bonay", "\\brapor"])
-    assert.ok(!new RegExp(bad, "i").test(login), `giriş ekranında yer almamalı: ${bad}`);
+  assert.match(js, /const HERO = "\/assets\/images\/hero-login\.png"/, "görsel statik varlıktan gelir");
+  assert.match(js, /width="\$\{HERO_W\}" height="\$\{HERO_H\}"/, "doğal çözünürlük bildirilir");
+  assert.match(js, /HERO_W = 1482, HERO_H = 1061/, "kaynak çözünürlük korunur");
+  /* Görselin üzerine yazı, logo veya renk katmanı eklenmez — logo ve slogan görselin içinde.
+     Slogan yalnızca alt metninde geçebilir (erişilebilirlik), görünür öğe olarak değil. */
+  const stage = js.slice(js.indexOf('<div class="login-stage">'), js.indexOf('class="login-legal'));
+  for (const bad of ["brand-logo", "login-scrim", "<h1>", "brand-sub"])
+    assert.ok(!stage.includes(bad), `görsel üzerine eklenmemeli: ${bad}`);
+  const visible = stage.replace(/alt="[^"]*"/g, "");
+  assert.ok(!/Her şey bir arada|TERA YATIRIM/.test(visible), "slogan ve logo HTML metni olarak yazılmamış");
 
-  assert.match(login, /class="brand-logo/, "kurumsal logo");
-  /* Logo aynı kaynaktan (statik dosya) gelir; dış bağlantı yoktur. */
-  assert.match(js, /LOGO_LIGHT = "\/logo-white\.png"/, "logo yerel dosyadan");
-  assert.ok(!/https?:\/\/(?!127\.0\.0\.1)[a-z]/i.test(login), "giriş ekranında dış bağlantı yok");
-  assert.match(login, /\$\{esc\(BRAND\.slogan\)/, "slogan parametreden geliyor");
-  assert.match(login, /BRAND\.signature/, "silik imza parametreden geliyor");
-  assert.match(js, /signature: "powered by bayelmas"/, "varsayılan imza tanımlı");
-  assert.match(login, /login-art/, "görsel katman");
-  assert.match(login, /BRAND\.loginTitle/, "form başlığı parametreden geliyor");
-  assert.match(js, /loginTitle: "Oturum açın"/, "varsayılan başlık tanımlı");
-  assert.match(login, /togglePw/, "parola göster/gizle");
-  for (const cls of [".login{", ".login-art{", ".login-form{", ".brand-logo{", ".input-wrap{", ".login-submit{"])
-    assert.ok(css.includes(cls), `stil eksik: ${cls}`);
-  assert.match(css, /@media\(max-width:880px\)/, "küçük ekranda tek kolona düşüyor");
-});
+  assert.match(css, /\.hero\{[^}]*object-fit:contain/, "kırpma yok");
+  assert.ok(!/\.hero\{[^}]*(filter|opacity|mix-blend)/.test(css), "filtre veya opaklık yok");
+  assert.match(css, /aspect-ratio:1482 \/ 1061/, "sahne kaynak oranını korur");
 
-
-test("giriş ekranı kurumsal görseli statik dosyadan yükler", async () => {
-  const { app } = await boot();
-  const js = (await request(app).get("/app.js")).text;
-  assert.match(js, /class="login-photo" src="\/login-art\.jpg"/, "fotoğraf katmanı var");
-  assert.match(js, /class="login-scrim"/, "okunabilirlik kademesi var");
-  /* Fotoğraf iki kolonun da arkasında: markup'ta .login-art'tan ÖNCE gelir. */
-  const iPhoto = js.indexOf('class="login-photo"'), iArt = js.indexOf('<div class="login-art">');
-  assert.ok(iPhoto > -1 && iArt > iPhoto, "fotoğraf sanat kolonundan önce, yani her ikisinin arkasında");
-  assert.ok(!/<svg viewBox="0 0 600 800"/.test(js), "eski çizim kaldırıldı");
-
-  /* Görsel statik olarak servis edilir ve önbelleklenir. */
-  const img = await request(app).get("/login-art.jpg");
+  /* Dosya bire bir servis edilir: PNG, yeniden sıkıştırılmamış boyutta. */
+  const img = await request(app).get("/assets/images/hero-login.png");
   assert.equal(img.status, 200);
-  assert.match(img.headers["content-type"], /image\/jpeg/);
-  assert.ok(Number(img.headers["content-length"]) < 200000, "görsel 200 KB altında");
-
-  const css = (await request(app).get("/app.css")).text;
-  assert.match(css, /object-fit:cover/, "fotoğraf alanı kaplar");
-  assert.match(css, /\.login-art-text \.rule/, "altın çizgi tanımlı");
-  assert.match(css, /\.login-form\{[^}]*background:transparent/, "form paneli saydam — manzara görünür");
-  assert.match(css, /linear-gradient\(90deg/, "form tarafı için yatay kademe");
-  assert.match(css, /\.login-form \.input-wrap\{/, "alanlar koyu zemine uyarlanmış");
+  assert.match(img.headers["content-type"], /image\/png/);
+  assert.equal(img.body.subarray(1, 4).toString(), "PNG");
+  assert.ok(img.body.length > 1900000, `kaynak boyut korunmuş (${img.body.length} bayt)`);
 });

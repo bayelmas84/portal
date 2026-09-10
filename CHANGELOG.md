@@ -1,5 +1,17 @@
 # Değişiklik günlüğü
 
+## 1.11.0
+- Giriş ekranı artık **kaynak hero görselinden** oluşuyor: verilen PNG (1482×1061) bire bir,
+  yeniden çizilmeden, dönüştürülmeden ve yeniden sıkıştırılmadan kullanılıyor
+- Görsele kırpma, filtre, opaklık veya renk katmanı uygulanmıyor; sahne kaynak oranını
+  (`aspect-ratio: 1482/1061`) koruyor, `object-fit: contain` ile tamamı görünüyor
+- Logo ve slogan görselin içinde; HTML ile yeniden yazılmıyor, font benzetilmiyor
+- Giriş formu ayrı bir katman olarak görselin sağındaki temiz lacivert alana yerleşiyor;
+  ölçüler container query birimleriyle (`cqw`) görselle birlikte ölçekleniyor
+- Üretimde görsel `client/assets/images/hero-login.png` yolundan olduğu gibi servis ediliyor;
+  prototipte kayıpsız base64 olarak gömülü (bayt dizisi kaynak dosyayla birebir aynı)
+- Telefonda da kırpma yok: görsel tam görünür, form altına yerleşir
+
 ## 1.10.3
 - **Sol üstteki beyaz dikdörtgen giderildi.** Kurumsal logo PNG'sinin zemini saydam değil beyazdı;
   koyu ekranda beyaz bir kutu olarak görünüyordu. Zemin şeffaflaştırıldı ve iki sürüm üretildi:

@@ -53,8 +53,11 @@ test("marka ayarı yokken varsayılanlar kullanılır", async () => {
   assert.deepEqual(b, {}, "kayıt boşken sunucu boş döner, istemci varsayılana düşer");
   const js = (await require("supertest")(app).get("/app.js")).text;
   assert.match(js, /BRAND_DEFAULTS/, "istemcide varsayılanlar tanımlı");
-  assert.match(js, /\$\{esc\(BRAND\.slogan\)/, "slogan sabit değil, parametreden geliyor");
-  assert.match(js, /\$\{esc\(BRAND\.company\)\}/, "şirket adı parametreden geliyor");
+  /* Slogan ve logo artık hero görselinin içinde; giriş ekranındaki metinler parametrik. */
+  assert.match(js, /\$\{esc\(BRAND\.loginTitle\)\}/, "giriş başlığı parametreden geliyor");
+  assert.match(js, /\$\{esc\(BRAND\.loginHint\)\}/, "giriş açıklaması parametreden geliyor");
+  assert.match(js, /\$\{esc\(BRAND\.footer\)\}/, "alt bilgi parametreden geliyor");
+  assert.match(js, /\$\{esc\(BRAND\.slogan\)\}/, "slogan alt metninde parametreden geliyor");
 });
 
 test("marka değişikliği denetim kaydına yazılır", async () => {

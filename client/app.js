@@ -17,10 +17,11 @@ const BRAND_DEFAULTS = {
 };
 let BRAND = { ...BRAND_DEFAULTS };
 
-/* Kurumsal logo: saydam zeminli iki sürüm statik dosya olarak servis edilir.
-   Beyaz zeminli tek dosya koyu ekranda beyaz dikdörtgen oluşturuyordu. */
-const LOGO_LIGHT = "/logo-white.png";   /* koyu zeminler */
-const LOGO_DARK = "/logo.png";          /* açık zeminler */
+/* Hero görseli: kullanıcının verdiği PNG, statik varlık olarak olduğu gibi servis edilir.
+   Yeniden çizilmedi, dönüştürülmedi, yeniden sıkıştırılmadı. Logo ve slogan görselin
+   içindedir; HTML ile tekrar yazılmaz. */
+const HERO = "/assets/images/hero-login.png";
+const HERO_W = 1482, HERO_H = 1061;
 /* Tera Portal istemcisi.
    Kural: yetki kararı burada verilmez. Menü ve veri sunucudan gelir; bu dosya yalnızca gösterir.
    Sunucu her isteği yeniden denetler, istemci kısıtları kullanıcı kolaylığı içindir. */
@@ -142,54 +143,34 @@ const LOGO_DARK = "/logo.png";          /* açık zeminler */
 
   /* ---------------- ekranlar ---------------- */
   function loginView() {
-    /* Giriş ekranı: kurumsal kimlik ve sakin bir görsel dil.
-       Uygulamanın içeriğine dair hiçbir bilgi verilmez. */
+    /* Giriş ekranı doğrudan kaynak hero görselinden oluşur: kırpılmaz, filtre uygulanmaz,
+       üzerine yazı veya grafik eklenmez. Logo ve slogan görselin içindedir.
+       Giriş formu ayrı bir katman olarak görselin sağındaki temiz alana yerleşir. */
     return `<div class="login">
-      <img class="login-photo" src="/login-art.jpg" alt="" aria-hidden="true">
-      <div class="login-scrim" aria-hidden="true"></div>
-      <div class="login-art">
-        <div class="login-art-text">
-          <div class="brand">
-            <img class="brand-logo" src="${LOGO_LIGHT}" alt="${esc(BRAND.companyShort)}" height="26">
-            <span class="brand-sub">${esc(BRAND.productMark)}</span>
-          </div>
-          <h1>${esc(BRAND.slogan).replace(",", ",<br>")}</h1>
-          <p>${esc(BRAND.company)}</p>
-        </div>
-      </div>
-
-      <div class="login-form">
-        <form id="loginForm" autocomplete="on">
-          <div class="brand brand-mobile">
-            <img class="brand-logo" src="${LOGO_DARK}" alt="${esc(BRAND.companyShort)}" height="26">
-            <span class="brand-sub" style="color:var(--gold)">${esc(BRAND.productMark)}</span>
-          </div>
+      <div class="login-stage">
+        <img class="hero" src="${HERO}" width="${HERO_W}" height="${HERO_H}"
+          alt="${esc(BRAND.companyShort)} — ${esc(BRAND.slogan)}" decoding="sync" fetchpriority="high">
+        <form id="loginForm" class="login-panel" autocomplete="on">
           <h2>${esc(BRAND.loginTitle)}</h2>
           <p class="login-hint">${esc(BRAND.loginHint)}</p>
 
-          <label class="field">
-            <span>Kullanıcı adı</span>
-            <span class="input-wrap">
-              <span class="prefix">TERA\</span>
-              <input id="u" name="username" autocomplete="username" autocapitalize="none"
-                     spellcheck="false" required placeholder="ad.soyad">
-            </span>
-          </label>
+          <label class="field"><span>Kullanıcı adı</span>
+            <span class="input-wrap"><span class="prefix">TERA\\</span>
+              <input id="lu" name="username" value="${esc(S.loginUser || "")}" placeholder="ad.soyad"
+                autocomplete="username" autocapitalize="none" spellcheck="false" required></span></label>
 
-          <label class="field">
-            <span>Parola</span>
-            <span class="input-wrap">
-              <input id="p" name="password" type="password" autocomplete="current-password" required placeholder="••••••••••">
-              <button type="button" class="reveal" data-a="togglePw" aria-label="Parolayı göster">${S.showPw ? "gizle" : "göster"}</button>
-            </span>
-          </label>
+          <label class="field"><span>Parola</span>
+            <span class="input-wrap"><input id="lp" name="password" type="${S.showPw ? "text" : "password"}"
+                placeholder="••••••••••" autocomplete="current-password" required>
+              <button type="button" class="reveal" data-a="togglePw">${S.showPw ? "gizle" : "göster"}</button>
+            </span></label>
 
           ${S.loginError ? `<div class="login-error" role="alert">${esc(S.loginError)}</div>` : ""}
-
-          <button class="b g login-submit" type="submit">Giriş yap</button>
+          <button type="submit" class="b g login-submit">${S.loginBusy ? "Giriş yapılıyor…" : "Giriş yap"}</button>
         </form>
-        <div class="login-legal m">${esc(BRAND.footer)}<span class="sig">${esc(BRAND.signature)}</span></div>
       </div>
+      <div class="login-legal m">${esc(BRAND.footer)}
+        <span class="sig">powered by bayelmas</span></div>
     </div>`;
   }
 
