@@ -1,5 +1,12 @@
 # Değişiklik günlüğü
 
+## 1.12.2
+- **Teftiş rolü daraltıldı.** Proje Yönetimi ve Admin Panel yetkileri kaldırıldı; bu modüller
+  artık menüde hiç görünmüyor ve uçları erişilemiyor. Teftiş yalnızca kendi görev alanını görür:
+  doküman kontrolü, duyuru denetimi, onaylar, uyum ve eğitimler
+- Kurulum varsayılanında (Proje Yönetimi, Admin Panel, Kısayollar açık) Teftiş kullanıcısında
+  yalnızca **Kısayollar** ve ana ekran görünür
+
 ## 1.12.1
 - Alt menü (soldan ikinci kolon) artık **tam yükseklikte**: zemin rengi sayfanın en altına kadar
   sürüyor, içerik kısa olduğunda yarıda kesilmiyor

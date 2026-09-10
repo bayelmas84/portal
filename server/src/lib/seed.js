@@ -40,15 +40,15 @@ const PERMS = {
     admin: W, "m.ann": W, "m.users": W, "m.units": W, "m.titles": W, "m.roles": W,
     "m.access": W, "m.notif": W, "m.mail": W, "m.dir": W, "m.brand": W, "m.avail": W, "m.short": W,
   },
+  /* Teftiş: yalnızca kendi görev alanı — doküman kontrolü, duyuru denetimi, onaylar, uyum.
+     Proje Yönetimi ve Admin Panel yetkisi yoktur; yetkisi olmayan modül menüde hiç görünmez. */
   inspection: {
-    delivery: R, "d.projects": R, "d.board": R, "d.charts": R, "d.exec": R,
     documents: W, "k.docs": W, "k.new": W, "k.queue": W, "k.mail": W,
     announce: W, "a.list": W, "a.new": W, "a.edit": W, "a.del": W,
     training: R, "t.un": W, "t.done": W,
     reports: R, "r.list": R, "r.view": R, "r.publish": W, "r.usage": R,
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
     compliance: W, "c.read": W, "c.rem": W, "c.audit": W,
-    admin: R, "m.ann": W, "m.roles": R,
   },
   infosec: {
     delivery: R, "d.board": R, documents: W, "k.docs": W, "k.new": W, "k.mail": R,

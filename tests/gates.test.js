@@ -225,3 +225,34 @@ test("silme talebini yalnızca duyuruyu giren veya Teftiş açabilir", async () 
     .send({ reason: "Admin bu talebi açamamalı." });
   assert.ok([403, 404].includes(adminRes.status), `Admin engellenmeli → ${adminRes.status}`);
 });
+
+test("Teftiş yalnızca kendi görev alanını görür: Proje Yönetimi ve Admin Panel yok", async () => {
+  const { app, pool } = await boot();
+  const a = agentFor(app); await a.login("kerem.aslan");
+  const me = (await a.get("/api/me")).body;
+  const keys = me.modules.map((m) => m.key);
+
+  assert.ok(!keys.includes("delivery"), "Proje Yönetimi menüde olmamalı");
+  assert.ok(!keys.includes("admin"), "Admin Panel menüde olmamalı");
+
+  /* Uçlar da kapalı: yetki yoksa erişim yok. */
+  for (const path of ["/api/projects", "/api/projects/reports/executive",
+                      "/api/admin/users", "/api/admin/screens", "/api/admin/directory"]) {
+    const res = await a.get(path);
+    assert.ok([403, 404, 409].includes(res.status), `${path} erişilebilir olmamalı → ${res.status}`);
+  }
+
+  /* Kurulum varsayılanında yalnızca Kısayollar açık kalır (Proje Yönetimi ve Admin onda yok). */
+  await pool.query("UPDATE screen_state SET state = 'kapali'");
+  await pool.query("UPDATE screen_state SET state = 'acik' WHERE screen_key IN ('shortcuts','s.all','admin','delivery')");
+  const b = agentFor(app); await b.login("kerem.aslan");
+  const keys2 = (await b.get("/api/me")).body.modules.map((m) => m.key);
+  assert.deepEqual(keys2, ["shortcuts"], `yalnızca Kısayollar görünmeli → ${keys2.join(",")}`);
+
+  /* Görev alanı modülleri açıldığında geri gelir. */
+  await pool.query("UPDATE screen_state SET state='acik' WHERE screen_key IN ('documents','k.docs','k.queue','approvals','p.in')");
+  const c = agentFor(app); await c.login("kerem.aslan");
+  const keys3 = (await c.get("/api/me")).body.modules.map((m) => m.key);
+  assert.ok(keys3.includes("documents") && keys3.includes("approvals"), "görev alanı geri gelir");
+  assert.ok(!keys3.includes("delivery") && !keys3.includes("admin"), "Proje Yönetimi ve Admin yine yok");
+});
