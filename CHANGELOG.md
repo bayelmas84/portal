@@ -1,5 +1,14 @@
 # Değişiklik günlüğü
 
+## 1.9.0
+- **Marka ve metinler parametrik**: şirket adı, ürün adı, kısaltma, slogan, giriş başlığı ve alt
+  metni, alt bilgi, imza ve vurgu rengi Admin Panel > Marka ve metinler ekranından yönetilir.
+  Kodda sabit metin bırakılmadı; sunucu tarafında `brand_settings` tablosu ve `/api/brand` ucu,
+  istemcide varsayılanlar. Portal başka bir kurum veya ürün adıyla kullanılabilir.
+- Giriş ekranının üstüne ve ana ekranın üstüne kurumsal logolu marka bandı (gömülü PNG + SVG grafik)
+- Şirket adı değiştiğinde alt bilgi otomatik güncellenir
+- Marka ekranı Proje Yönetim Direktörü'nde salt okunur
+
 ## 1.8.0
 - Kurumsal Tera Yatırım logosu (veri URI olarak gömülü) giriş ve ana ekranda; ürün adı **Tera Bir**
 - Giriş sloganı: "Her şey bir arada, tek bir yerde"; ana ekrandaki modül listesi metni kaldırıldı

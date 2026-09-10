@@ -26,7 +26,7 @@ const SCREENS = {
   compliance: [["c.read", "Okuma raporu"], ["c.rem", "Hatırlatma planı"], ["c.audit", "Denetim kaydı"]],
   admin: [["m.ann", "Duyuru yönetimi"], ["m.users", "Kullanıcılar"], ["m.units", "Birimler"], ["m.titles", "Ünvanlar"],
           ["m.roles", "Roller ve yetkiler"], ["m.access", "Ekran yetkileri"], ["m.notif", "Bildirim tanımları"],
-          ["m.mail", "E-posta ayarları"], ["m.dir", "Dizin (AD) ayarları"],
+          ["m.mail", "E-posta ayarları"], ["m.dir", "Dizin (AD) ayarları"], ["m.brand", "Marka ve metinler"],
           ["m.avail", "Ekran yönetimi"], ["m.short", "Kısayol yönetimi"]],
   shortcuts: [["s.all", "Tüm kısayollar"]],
 };

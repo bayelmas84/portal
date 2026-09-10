@@ -98,13 +98,16 @@ test("giriş ekranı yeniden tasarlandı ve uygulama içeriğine dair ifade içe
                      "\\bmodül", "\\bduyuru", "\\bdoküman", "\\bonay", "\\brapor"])
     assert.ok(!new RegExp(bad, "i").test(login), `giriş ekranında yer almamalı: ${bad}`);
 
-  assert.match(login, /alt="Tera Yatırım"/, "kurumsal logo");
-  assert.match(login, /Her şey bir arada/, "kurumsal başlık");
-  assert.match(login, /powered by bayelmas/, "silik imza");
+  assert.match(login, /class="brand-logo/, "kurumsal logo");
+  assert.match(js, /const LOGO = "data:image\/png;base64/, "logo gömülü, dış kaynak yok");
+  assert.match(login, /\$\{esc\(BRAND\.slogan\)/, "slogan parametreden geliyor");
+  assert.match(login, /BRAND\.signature/, "silik imza parametreden geliyor");
+  assert.match(js, /signature: "powered by bayelmas"/, "varsayılan imza tanımlı");
   assert.match(login, /login-art/, "görsel katman");
-  assert.match(login, /Oturum açın/, "form başlığı");
+  assert.match(login, /BRAND\.loginTitle/, "form başlığı parametreden geliyor");
+  assert.match(js, /loginTitle: "Oturum açın"/, "varsayılan başlık tanımlı");
   assert.match(login, /togglePw/, "parola göster/gizle");
-  for (const cls of [".login{", ".login-art{", ".login-form{", ".brand-mark{", ".input-wrap{", ".login-submit{"])
+  for (const cls of [".login{", ".login-art{", ".login-form{", ".brand-logo{", ".input-wrap{", ".login-submit{"])
     assert.ok(css.includes(cls), `stil eksik: ${cls}`);
   assert.match(css, /@media\(max-width:880px\)/, "küçük ekranda tek kolona düşüyor");
 });

@@ -200,6 +200,40 @@ module.exports = function (cfg) {
     } catch (e) { next(e); }
   });
 
+  /* ---- marka ve metinler ---- */
+  const brandSchema = z.object({
+    company: z.string().trim().min(2).max(160),
+    companyShort: z.string().trim().min(2).max(80),
+    product: z.string().trim().min(2).max(80),
+    productMark: z.string().trim().min(1).max(12),
+    slogan: z.string().trim().min(3).max(160),
+    loginTitle: z.string().trim().min(3).max(80),
+    loginHint: z.string().trim().max(160).optional().nullable(),
+    footer: z.string().trim().min(3).max(200),
+    signature: z.string().trim().max(80).optional().nullable(),
+    accent: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, "Renk #RRGGBB biçiminde olmalı"),
+  });
+
+  r.get("/brand", requireScreen("m.brand"), async (req, res, next) => {
+    try { res.json({ settings: await db.one("SELECT * FROM brand_settings WHERE id = 1") }); }
+    catch (e) { next(e); }
+  });
+
+  r.put("/brand", requireScreen("m.brand", "write"), async (req, res, next) => {
+    try {
+      const v = brandSchema.parse(req.body);
+      await db.query(
+        `UPDATE brand_settings SET company=$1, company_short=$2, product=$3, product_mark=$4,
+                slogan=$5, login_title=$6, login_hint=$7, footer=$8, signature=$9, accent=$10,
+                updated_by=$11, updated_at=now() WHERE id = 1`,
+        [v.company, v.companyShort, v.product, v.productMark, v.slogan, v.loginTitle,
+         v.loginHint || null, v.footer, v.signature || null, v.accent, req.user.username]);
+      await audit.record("marka.guncellendi", req.user.username,
+        { detail: { sirket: v.company, urun: v.product } });
+      res.json({ settings: await db.one("SELECT * FROM brand_settings WHERE id = 1") });
+    } catch (e) { next(e); }
+  });
+
   /* ---- kısayollar ---- */
   r.get("/shortcuts", requireScreen("m.short"), async (req, res) => {
     res.json({ items: await db.many("SELECT * FROM shortcuts ORDER BY sort, id") });

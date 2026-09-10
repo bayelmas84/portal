@@ -26,7 +26,7 @@ const PERMS = {
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
     /* Admin Panel: tüm ekranlar görünür, ancak salt okunur — değişiklik yapamaz. */
     admin: R, "m.ann": R, "m.users": R, "m.units": R, "m.titles": R, "m.roles": R,
-    "m.access": R, "m.notif": R, "m.mail": R, "m.dir": R, "m.avail": R, "m.short": R,
+    "m.access": R, "m.notif": R, "m.mail": R, "m.dir": R, "m.brand": R, "m.avail": R, "m.short": R,
   },
   admin: {
     delivery: R, "d.my": R, "d.projects": R, "d.board": R, "d.backlog": R, "d.sprint": R, "d.gate": R,
@@ -37,7 +37,7 @@ const PERMS = {
     reports: R, "r.list": R, "r.view": R, "r.usage": R,
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
     admin: W, "m.ann": W, "m.users": W, "m.units": W, "m.titles": W, "m.roles": W,
-    "m.access": W, "m.notif": W, "m.mail": W, "m.dir": W, "m.avail": W, "m.short": W,
+    "m.access": W, "m.notif": W, "m.mail": W, "m.dir": W, "m.brand": W, "m.avail": W, "m.short": W,
   },
   inspection: {
     delivery: R, "d.projects": R, "d.board": R, "d.charts": R, "d.exec": R,

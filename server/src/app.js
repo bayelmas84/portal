@@ -144,6 +144,21 @@ function build(cfg, deps = {}) {
   api.use("/announcements", require("./routes/announcements")(cfg));
   api.use("/documents", require("./routes/documents")(cfg));
   api.use("/training", require("./routes/training")(cfg));
+  /* Marka ve metinler: okuma oturum açmış herkese, yazma yalnızca Admin'e. */
+  api.get("/brand", authmw.requireAuth, async (req, res, next) => {
+    try {
+      const r = await db.one("SELECT * FROM brand_settings WHERE id = 1");
+      const brand = {};
+      if (r) {
+        const map = { company: "company", company_short: "companyShort", product: "product",
+          product_mark: "productMark", slogan: "slogan", login_title: "loginTitle",
+          login_hint: "loginHint", footer: "footer", signature: "signature", accent: "accent" };
+        for (const [col, key] of Object.entries(map)) if (r[col]) brand[key] = r[col];
+      }
+      res.json({ brand });
+    } catch (e) { next(e); }
+  });
+
   api.use("/projects", require("./routes/projects")(cfg));
   api.use("/gates", require("./routes/gates")(cfg));
   api.use("/reports", require("./routes/reports")(cfg));
