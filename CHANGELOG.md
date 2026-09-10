@@ -1,5 +1,10 @@
 # Değişiklik günlüğü
 
+## 1.9.1
+- `ops/push.sh`: tek komutla commit, etiket ve gönderim; öncesinde testler ve statik denetim
+  çalışır, `.env` sızıntısı ve eksik uzak depo kontrol edilir
+- `docs/GONDERIM.md`: depoya gönderme adımları ve kimlik kurulumu
+
 ## 1.9.0
 - **Marka ve metinler parametrik**: şirket adı, ürün adı, kısaltma, slogan, giriş başlığı ve alt
   metni, alt bilgi, imza ve vurgu rengi Admin Panel > Marka ve metinler ekranından yönetilir.
