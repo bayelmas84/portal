@@ -5,6 +5,7 @@ const db = require("../lib/db");
 const access = require("../services/access");
 
 const ROLES = [
+  ["pmdir", "Proje Yönetim Direktörü"],
   ["admin", "Admin"], ["inspection", "Teftiş"], ["infosec", "Bilgi Güvenliği"],
   ["control", "İç Kontrol"], ["gmy", "Genel Müdür Yardımcısı"], ["opsdir", "Operasyon Direktörü"],
   ["pm", "Proje Yöneticisi"], ["pmd", "Proje Yönetim Direktörü"],
@@ -14,6 +15,16 @@ const ROLES = [
 const R = "read", W = "write";
 /* Admin her ekranı okur, yalnızca Duyurular ve Admin Panel'de yazar. */
 const PERMS = {
+  /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (okuma, yazma, ekleme, silme) ve
+     faz kapısını tek imzayla onaylama. Diğer modüllerde okuma düzeyindedir. */
+  pmdir: {
+    delivery: W, "d.my": W, "d.projects": W, "d.board": W, "d.backlog": W, "d.sprint": W,
+    "d.gate": W, "d.gate.approve": W, "d.delete": W, "d.charts": W, "d.exec": W,
+    documents: R, "k.docs": R, announce: R, "a.list": R,
+    training: R, "t.un": W, "t.done": W,
+    reports: R, "r.list": R, "r.view": R, "r.usage": R,
+    approvals: W, "p.in": W, "p.my": W, "p.done": W,
+  },
   admin: {
     delivery: R, "d.my": R, "d.projects": R, "d.board": R, "d.backlog": R, "d.sprint": R, "d.gate": R,
     "d.charts": R, "d.exec": R,

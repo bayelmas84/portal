@@ -1,6 +1,17 @@
 # Değişiklik günlüğü
 
 ## 1.7.0
+- Yeni rol ve ünvan: **Proje Yönetim Direktörü** (Bayram Elmas). Proje Yönetimi'nde tam yetki
+  (okuma, yazma, ekleme, silme) ve faz kapısını tek imzayla onaylama yetkisi
+- Faz kapısı: yazma yetkisi olmayan rollerde toggle yerine salt okunur gösterge; tek imzayla
+  ilerletmede gerekçe zorunlu ve denetim kaydına "authority approval" olarak yazılır
+- Giriş ekranı: tanıtım cümlesi ve düğme altındaki yardım metni kaldırıldı, görsel yenilendi
+- Yöneticisi tanımlı olmayan kişinin genel duyurusu Teftiş onayına düşer
+- Prototip: iş kalemi oluşturma (Board ve Backlog), proje ekibi atama (PM, Developer, QA,
+  Business Owner, Product Owner, Vendor, Analyst), proje dokümanları (PDF, değiştirilemez dosya,
+  BO+PO onayından sonra salt görüntüleme), onaycılar sekmesi ve değişiklik talepleri (Change Request)
+
+## 1.7.0
 - Proje Yönetim Direktörü ünvanı (`PYD`) ve rolü (`pmd`): Proje Yönetimi modülünde tam yetki
 - Faz kapısı uçları: kriter işaretleme, iki imza kuralı ve gerekçeli tek imza override'ı
 - GMY faz kapısı imzalayabilir (iki imza kuralının ikinci ayağı)

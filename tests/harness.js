@@ -30,7 +30,7 @@ const USERS = [
   ["gonul.aladag", "Gönül Aladağ", "control", "UYM", "MDR", "deniz.okur"],
   ["deniz.okur", "Deniz Okur", "gmy", "PRT", "GMY", null],
   ["meltem.aydin", "Meltem Aydın", "opsdir", "OPR", "DIR", "deniz.okur"],
-  ["bayram.elmas", "Bayram Elmas", "pmd", "BT", "PYD", null],
+  ["bayram.elmas", "Bayram Elmas", "pmdir", "BT", "PYD", null],
   ["tolga.firat", "Tolga Fırat", "pm", "BT", "MDR", "elif.yalcin"],
   ["mert.balkan", "Mert Balkan", "dev", "BT", "UZM", "tolga.firat"],
   ["nazli.han", "Nazlı Han", "staff", "OPR", "UZM", "meltem.aydin"],

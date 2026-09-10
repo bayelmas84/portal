@@ -180,11 +180,6 @@
           ${S.loginError ? `<div class="login-error" role="alert">${esc(S.loginError)}</div>` : ""}
 
           <button class="b g login-submit" type="submit">Giriş yap</button>
-
-          <div class="login-foot">
-            <span>Parolanızı mı unuttunuz? Bilgi İşlem ile görüşün.</span>
-            <span class="m">Dahili 1200 · destek@terayatirim.com.tr</span>
-          </div>
         </form>
         <div class="login-legal m">© ${new Date().getFullYear()} Tera Yatırım Menkul Değerler A.Ş.</div>
       </div>

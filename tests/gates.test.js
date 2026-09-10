@@ -143,8 +143,11 @@ test("Bayram Elmas yönetici özetini görebilir (PYD ünvanı)", async () => {
 });
 
 test("yöneticisi olmayan kişinin genel duyurusu Teftiş onayına düşer", async () => {
-  const { app } = await boot();
-  const a = agentFor(app); await a.login("bayram.elmas");
+  const { app, pool } = await boot();
+  /* Duyuru girme yetkisi olan bir kullanıcının yöneticisi kaldırılır
+     (Proje Yönetim Direktörü duyuru girmez; yetkisi yalnızca Proje Yönetimi'ndedir). */
+  await pool.query("UPDATE users SET manager = NULL WHERE username = 'burak.temel'");
+  const a = agentFor(app); await a.login("burak.temel");
   const res = await a.post("/api/announcements").send({
     title: "Proje yönetimi süreç değişikliği", body: "Faz kapısı kriterleri güncellenmiştir.",
     category: "Genel", criticality: "Orta", validUntil: "2027-01-01", popup: false });

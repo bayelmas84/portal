@@ -194,3 +194,33 @@ test("işlerim ekranı yalnızca kişinin açık işlerini döner", async () => 
   assert.ok(items.some((x) => x.item_key === "TRADE-4"));
   assert.ok(!items.some((x) => x.item_key === "CORE-3"), "başkasının işi listelenmez");
 });
+
+test("Proje Yönetim Direktörü rolü proje yönetiminde tam yetkili", async () => {
+  const { app, pool } = await boot();   /* Bayram Elmas örnek kullanıcılar arasında tanımlı */
+  await seedProjects(pool);
+
+  const dir = agentFor(app); await dir.login("bayram.elmas");
+  const me = (await dir.get("/api/me")).body;
+  const d = me.modules.find((m) => m.key === "delivery");
+  assert.ok(d, "Proje Yönetimi modülü görünür");
+  for (const k of ["d.my", "d.projects", "d.board", "d.backlog", "d.sprint", "d.gate", "d.charts", "d.exec"])
+    assert.equal((d.screens.find((s) => s.key === k) || {}).level, "write", `${k} yazma yetkisi olmalı`);
+
+  /* Ünvanı PYD olduğu için yönetici özetini görür. */
+  const exec = await dir.get("/api/projects/reports/executive");
+  assert.equal(exec.status, 200);
+
+  /* İş kalemi ekleme ve durum değiştirme yetkisi var. */
+  const mv = await dir.put("/api/projects/items/TRADE-3/state").send({ state: "done" });
+  assert.equal(mv.status, 200);
+});
+
+test("yeni rol güvenlik taramasında bulgu üretmiyor", async () => {
+  const fs = require("fs"), path = require("path");
+  const seed = fs.readFileSync(path.join(__dirname, "../server/src/lib/seed.js"), "utf8");
+  /* Rol tanımı yalnızca yetki listesidir: parola, anahtar veya kişiye özel istisna içermez. */
+  assert.match(seed, /pmdir: \{/, "rol tanımlı");
+  assert.ok(!/bayram|elmas/i.test(seed), "kaynakta kişiye özel sabit yok");
+  const rx = /(password|parola|secret|api[_-]?key)\s*[:=]\s*["'][^"']{8,}["']/i;
+  assert.ok(!rx.test(seed), "sabit kimlik bilgisi yok");
+});
