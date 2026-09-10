@@ -1,5 +1,10 @@
 # Değişiklik günlüğü
 
+## 1.13.2
+- `docs/HAZIRLIK-DURUMU.md`: ölçülmüş hazırlık raporu — geçen otomatik kontroller,
+  yapılmayan testler (sızma, AD/SMTP saha, yük, yedekten dönüş, WCAG, KVKK),
+  üretimde henüz olmayan prototip bölümleri ve dış bağımlılık (BI SSO ucu)
+
 ## 1.13.1
 - Proje ekibi rolleri tamamlandı: **Internal Audit (Teftiş)** ve **Risk** eklendi
   (toplam dokuz rol: Project Manager, Developer, QA, Business Owner, Product Owner,
