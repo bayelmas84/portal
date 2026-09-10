@@ -1,5 +1,12 @@
 # Değişiklik günlüğü
 
+## 1.12.0
+- **Bekleyen silme talebi artık yalnızca taraflarına görünüyor**: talebi giren, onun yöneticisi,
+  onaycı ve Teftiş. Admin yayınlanmış duyuruyu görmeye devam eder ama süregelen talebi görmez;
+  talebin sahibi ve onaycısı istemciye hiç gönderilmez
+- Silme talebini yalnızca duyuruyu giren kişi veya Teftiş açabilir; Admin rolünden `a.del`
+  yetkisi kaldırıldı (Admin duyuru yönetiminde yapılandırma yapar, onay akışının tarafı değildir)
+
 ## 1.11.1
 - Giriş formu ölçüleri düzeltildi: `cqw` değerleri kaynak görseldeki gerçek piksel ölçülerinden
   yeniden hesaplandı (başlık 27px → 1.82cqw, alan kutusu 57px → 3.85cqw, düğme 56px → 3.78cqw).

@@ -170,3 +170,58 @@ test("yöneticisi olmayan kişinin genel duyurusu Teftiş onayına düşer", asy
   const reqId = (await a.get("/api/approvals/mine")).body.items[0].id;
   assert.equal((await a.post(`/api/approvals/${reqId}/approve`).send({})).status, 403);
 });
+
+test("bekleyen silme talebi yalnızca taraflarına görünür; Admin göremez", async () => {
+  const { app, pool } = await boot();
+  /* Burak Temel duyuru girer, Teftiş yayınlar, sonra Burak silme talebi açar. */
+  const bg = agentFor(app); await bg.login("burak.temel");
+  const created = await bg.post("/api/announcements").send({
+    title: "Silme talebi görünürlük denemesi", body: "Bu duyuru silme talebi akışını sınamak içindir.",
+    category: "Yasal", criticality: "Kritik", validUntil: "2027-01-01", popup: false });
+  const insp = agentFor(app); await insp.login("kerem.aslan");
+  const inbox1 = (await insp.get("/api/approvals/inbox")).body.items;
+  const pub = inbox1.find((r) => r.subject.includes("Silme talebi görünürlük"));
+  await insp.post(`/api/approvals/${pub.id}/approve`).send({});
+
+  const del = await bg.post(`/api/announcements/${created.body.id}/delete-request`)
+    .send({ reason: "Mevzuat değişikliği nedeniyle geçersiz kaldı." });
+  assert.equal(del.status, 201);
+
+  const seen = (agent) => agent.get("/api/announcements")
+    .then((r) => r.body.items.find((x) => x.id === created.body.id));
+
+  /* Talebi giren ve Teftiş görür. */
+  assert.equal((await seen(bg)).pending_delete, true, "talebi giren görür");
+  assert.equal((await seen(insp)).pending_delete, true, "Teftiş görür");
+
+  /* Admin duyuruyu görür ama bekleyen talebi görmez. */
+  const admin = agentFor(app); await admin.login("gonul.aladag");
+  const row = await seen(admin);
+  assert.ok(row, "yayınlanmış duyuru görünür");
+  assert.equal(row.pending_delete, false, "bekleyen silme talebi görünmez");
+});
+
+test("silme talebini yalnızca duyuruyu giren veya Teftiş açabilir", async () => {
+  const { app } = await boot();
+  const bg = agentFor(app); await bg.login("burak.temel");
+  const created = await bg.post("/api/announcements").send({
+    title: "Talep sahipliği denemesi", body: "Silme talebini kim açabilir sınaması.",
+    category: "Yasal", criticality: "Kritik", validUntil: "2027-01-01", popup: false });
+  const insp = agentFor(app); await insp.login("kerem.aslan");
+  const pub = (await insp.get("/api/approvals/inbox")).body.items
+    .find((r) => r.subject.includes("Talep sahipliği"));
+  await insp.post(`/api/approvals/${pub.id}/approve`).send({});
+
+  /* Başkasının duyurusu için talep açılamaz. */
+  const other = agentFor(app); await other.login("gonul.aladag");
+  const res = await other.post(`/api/announcements/${created.body.id}/delete-request`)
+    .send({ reason: "Bu talebi açma yetkim olmamalı." });
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /duyuruyu giren kişi veya Teftiş/);
+
+  /* Admin'e bu yetki hiç verilmemiştir. */
+  const admin = agentFor(app); await admin.login("elif.yalcin");
+  const adminRes = await admin.post(`/api/announcements/${created.body.id}/delete-request`)
+    .send({ reason: "Admin bu talebi açamamalı." });
+  assert.ok([403, 404].includes(adminRes.status), `Admin engellenmeli → ${adminRes.status}`);
+});

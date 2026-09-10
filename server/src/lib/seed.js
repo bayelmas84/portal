@@ -32,7 +32,8 @@ const PERMS = {
     delivery: R, "d.my": R, "d.projects": R, "d.board": R, "d.backlog": R, "d.sprint": R, "d.gate": R,
     "d.charts": R, "d.exec": R,
     documents: R, "k.docs": R, "k.mail": R,   /* k.queue verilmez: onay bekleyen kayıtlar Admin'e görünmez */
-    announce: W, "a.list": W, "a.new": W, "a.del": W,
+    /* a.del verilmez: silme talebini duyuruyu giren kişi veya Teftiş açar. */
+    announce: W, "a.list": W, "a.new": W,
     training: R, "t.un": R, "t.done": R,
     reports: R, "r.list": R, "r.view": R, "r.usage": R,
     approvals: W, "p.in": W, "p.my": W, "p.done": W,

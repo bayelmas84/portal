@@ -46,7 +46,8 @@ module.exports = function (cfg) {
       `SELECT a.id, a.title, a.body, a.category, a.criticality, a.valid_until, a.popup, a.status,
               a.created_by, a.created_at, u.display_name AS created_by_name,
               (ar.username IS NOT NULL) AS is_read,
-              (dq.id IS NOT NULL) AS pending_delete
+              (dq.id IS NOT NULL) AS has_pending_delete,
+              dq.requested_by AS del_requester, dq.approver AS del_approver
          FROM announcements a
          JOIN users u ON u.username = a.created_by
          LEFT JOIN announcement_reads ar ON ar.announcement_id = a.id AND ar.username = $1
@@ -56,7 +57,20 @@ module.exports = function (cfg) {
         ORDER BY a.created_at DESC`,
       [req.user.username, isInspection(req)]
     );
-    res.json({ items: rows });
+    /* Bekleyen silme talebi de bir onay kaydıdır: yalnızca talebi giren, onun yöneticisi,
+       onaycı ve Teftiş bilir. Diğerleri için pending_delete her zaman false döner ve
+       talebin sahibi/onaycısı istemciye hiç gönderilmez. */
+    const subs = await db.many("SELECT username FROM users WHERE manager = $1", [req.user.username]);
+    const mine = new Set(subs.map((x) => x.username));
+    const insp = isInspection(req);
+    const items = rows.map((r) => {
+      const party = r.has_pending_delete && (
+        r.del_requester === req.user.username || r.del_approver === req.user.username ||
+        mine.has(r.del_requester) || insp);
+      const { has_pending_delete, del_requester, del_approver, ...rest } = r;
+      return { ...rest, pending_delete: !!party };
+    });
+    res.json({ items });
   });
 
   r.get("/popup", requireScreen("a.list"), async (req, res) => {
@@ -124,6 +138,10 @@ module.exports = function (cfg) {
       const reason = z.string().trim().min(10).max(2000).parse(req.body.reason);
       const a = await db.one("SELECT * FROM announcements WHERE id=$1 AND status='yayinda'", [id]);
       if (!a) return res.status(404).json({ error: "Bulunamadı" });
+      /* Talebi duyuruyu giren kişi açar; Teftiş de kaldırma talebi açabilir.
+         Admin veya başka bir yetkili, sahibi olmadığı duyuru için talep açamaz. */
+      if (a.created_by !== req.user.username && !isInspection(req))
+        return res.status(403).json({ error: "Silme talebini duyuruyu giren kişi veya Teftiş açabilir" });
       const open = await db.one(
         "SELECT 1 FROM requests WHERE target_type='announcement' AND target_id=$1 AND status='bekliyor'", [String(id)]);
       if (open) return res.status(409).json({ error: "Bu duyuru için bekleyen bir talep var" });
