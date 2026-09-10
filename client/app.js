@@ -142,31 +142,9 @@ const LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARgAAABBCAYAAAAKeLsH
     /* Giriş ekranı: kurumsal kimlik ve sakin bir görsel dil.
        Uygulamanın içeriğine dair hiçbir bilgi verilmez. */
     return `<div class="login">
-      <div class="login-art" aria-hidden="true">
-        <svg viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice">
-          <defs>
-            <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#123061"/><stop offset="55%" stop-color="#0B1F48"/>
-              <stop offset="100%" stop-color="#06102a"/></linearGradient>
-            <linearGradient id="gold" x1="0" y1="1" x2="1" y2="0">
-              <stop offset="0%" stop-color="#B8894A" stop-opacity=".85"/>
-              <stop offset="100%" stop-color="#E7C98F" stop-opacity=".25"/></linearGradient>
-          </defs>
-          <rect width="600" height="800" fill="url(#lg)"/>
-          <g opacity=".13" stroke="#9FB0CE" stroke-width="1" fill="none">
-            ${Array.from({ length: 13 }, (_, i) => `<line x1="0" y1="${i * 64}" x2="600" y2="${i * 64 - 220}"/>`).join("")}
-          </g>
-          <g opacity=".55">
-            ${[[70, 640, 46], [140, 600, 86], [210, 655, 62], [280, 560, 122], [350, 610, 96], [420, 500, 168], [490, 545, 132]]
-              .map(([x, y, h]) => `<rect x="${x}" y="${y - h}" width="34" height="${h}" rx="5" fill="url(#gold)"/>`).join("")}
-          </g>
-          <path d="M70 618 L140 566 L210 604 L280 458 L350 512 L420 352 L490 424"
-                fill="none" stroke="#E7C98F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>
-          ${[[70, 618], [140, 566], [210, 604], [280, 458], [350, 512], [420, 352], [490, 424]]
-            .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="5.5" fill="#fff" opacity=".92"/>`).join("")}
-          <circle cx="480" cy="150" r="150" fill="#ffffff" opacity=".04"/>
-          <circle cx="120" cy="240" r="86" fill="#ffffff" opacity=".03"/>
-        </svg>
+      <div class="login-art">
+        <img class="login-photo" src="/login-art.jpg" alt="" aria-hidden="true">
+        <div class="login-scrim" aria-hidden="true"></div>
         <div class="login-art-text">
           <div class="brand">
             <img class="brand-logo on-dark" src="${LOGO}" alt="${esc(BRAND.companyShort)}" height="26">

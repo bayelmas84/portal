@@ -112,3 +112,21 @@ test("giriş ekranı yeniden tasarlandı ve uygulama içeriğine dair ifade içe
   assert.match(css, /@media\(max-width:880px\)/, "küçük ekranda tek kolona düşüyor");
 });
 
+
+test("giriş ekranı kurumsal görseli statik dosyadan yükler", async () => {
+  const { app } = await boot();
+  const js = (await request(app).get("/app.js")).text;
+  assert.match(js, /class="login-photo" src="\/login-art\.jpg"/, "fotoğraf katmanı var");
+  assert.match(js, /class="login-scrim"/, "okunabilirlik kademesi var");
+  assert.ok(!/<svg viewBox="0 0 600 800"/.test(js), "eski çizim kaldırıldı");
+
+  /* Görsel statik olarak servis edilir ve önbelleklenir. */
+  const img = await request(app).get("/login-art.jpg");
+  assert.equal(img.status, 200);
+  assert.match(img.headers["content-type"], /image\/jpeg/);
+  assert.ok(Number(img.headers["content-length"]) < 200000, "görsel 200 KB altında");
+
+  const css = (await request(app).get("/app.css")).text;
+  assert.match(css, /object-fit:cover/, "fotoğraf alanı kaplar");
+  assert.match(css, /\.login-art-text \.rule/, "altın çizgi tanımlı");
+});

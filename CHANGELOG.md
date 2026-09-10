@@ -1,5 +1,13 @@
 # Değişiklik günlüğü
 
+## 1.10.0
+- Giriş ekranı kurumsal fotoğrafla yenilendi (gece İstanbul + piyasa grafiği). Görsel metinsizdir;
+  logo, slogan ve kurum adı HTML ile yazılır — büyütmede bulanıklaşmaz, ekran okuyucu okur,
+  metin değiştirmek için görsele dokunmak gerekmez
+- Fotoğrafın üstüne okunabilirlik kademesi (scrim) ve slogan altına altın çizgi eklendi
+- Üretimde görsel statik dosya olarak servis edilir (`client/login-art.jpg`, 72 KB, 5 dk önbellek);
+  prototipte veri URI olarak gömülüdür. Her iki durumda dış bağlantı yoktur
+
 ## 1.9.1
 - `ops/push.sh`: tek komutla commit, etiket ve gönderim; öncesinde testler ve statik denetim
   çalışır, `.env` sızıntısı ve eksik uzak depo kontrol edilir
