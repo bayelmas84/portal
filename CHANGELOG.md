@@ -1,5 +1,13 @@
 # Değişiklik günlüğü
 
+## 1.12.1
+- Alt menü (soldan ikinci kolon) artık **tam yükseklikte**: zemin rengi sayfanın en altına kadar
+  sürüyor, içerik kısa olduğunda yarıda kesilmiyor
+- Kabuk ekran yüksekliğine kilitlendi; sol ray ve alt menü sabit kalıyor, yalnızca sağdaki içerik
+  alanı kayıyor. Üst bant kayan alanın tepesinde sabit
+- Menü ve içerik alanına `overscroll-behavior: contain` eklendi: birinde kaydırma bitince
+  diğeri kaymıyor
+
 ## 1.12.0
 - **Bekleyen silme talebi artık yalnızca taraflarına görünüyor**: talebi giren, onun yöneticisi,
   onaycı ve Teftiş. Admin yayınlanmış duyuruyu görmeye devam eder ama süregelen talebi görmez;

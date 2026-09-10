@@ -18,7 +18,9 @@ body{margin:0;background:var(--s1);color:var(--t1);font:13px/1.5 "Inter","Segoe 
 .b[disabled]{background:var(--s1);color:var(--tm);border-style:dashed;cursor:not-allowed}
 .pl{font-size:10px;padding:2px 8px;border-radius:20px;background:var(--s1);color:var(--t2);display:inline-block}
 .ok{background:var(--ok-bg);color:var(--ok-fg)}.wr{background:var(--wr-bg);color:var(--wr-fg)}.er{background:var(--er-bg);color:var(--er-fg)}
-.shell{display:flex;min-height:100vh}
+/* Kabuk ekran yüksekliğine kilitlenir: sol ray ve alt menü sabit kalır,
+   yalnızca sağdaki içerik alanı kayar. */
+.shell{display:flex;height:100vh;overflow:hidden}
 .nv{width:58px;flex-shrink:0;background:var(--navy);padding:11px 0;display:flex;flex-direction:column;
 align-items:center;gap:6px;position:sticky;top:0;height:100vh;overflow-y:auto}
 .rail{width:37px;height:37px;border-radius:11px;display:flex;align-items:center;justify-content:center;
@@ -26,10 +28,15 @@ color:#8d9ab6;cursor:pointer;border:none;background:none;position:relative}
 .rail:hover{background:rgba(255,255,255,.1);color:#fff}.rail.on{background:rgba(184,137,74,.26);color:#fff}
 .badge{position:absolute;top:1px;right:1px;min-width:15px;height:15px;border-radius:8px;background:#a3121c;
 color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;padding:0 3px}
-.sub{width:196px;flex-shrink:0;border-right:1px solid var(--bd);background:var(--s1);padding:11px 9px}
+/* Alt menü: zemin rengi sayfanın en altına kadar sürer, kendi içinde kayar */
+.sub{width:196px;flex-shrink:0;border-right:1px solid var(--bd);background:var(--s1);padding:11px 9px;
+ height:100vh;overflow-y:auto;overscroll-behavior:contain}
 .si{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font-size:12px;color:var(--t2);cursor:pointer}
 .si:hover{background:var(--s2);color:var(--t1)}.si.on{background:var(--ba);color:var(--ta)}
-.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;overflow-y:auto;
+ overscroll-behavior:contain}
+/* Üst bant kayan alanın tepesinde sabit durur */
+.top{position:sticky;top:0;z-index:15}
 .top{display:flex;align-items:center;gap:10px;padding:12px 17px;border-bottom:1px solid var(--bd);background:var(--s1)}
 .body{padding:17px;flex:1}
 .card{border:1px solid var(--bd);border-radius:12px;padding:13px;background:var(--s2)}
