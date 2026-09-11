@@ -30,7 +30,7 @@ module.exports = function (cfg) {
   r.get("/", requireScreen("d.projects"), async (req, res) => {
     const list = await db.many("SELECT id FROM projects ORDER BY code");
     const items = [];
-    for (const p of list) items.push(await projects.projectMetrics(p.id));
+    for (const p of list) items.push({ id: p.id, ...(await projects.projectMetrics(p.id)) });
     res.json({ items });
   });
 

@@ -31,6 +31,7 @@ const HERO_W = 1482, HERO_H = 1061;
     view: "login", user: null, modules: [], settings: {}, mod: null, scr: null,
     data: {}, dlg: null, form: {}, toast: null, dark: matchMedia("(prefers-color-scheme: dark)").matches,
     reading: null, detail: null, quiz: null, quizResult: null, overdue: [], drill: null, showPw: false, execFilter: null, execUnit: null,
+    projTab: "overview", docOpen: null,
   };
   let csrfToken = null;
 
@@ -651,15 +652,180 @@ const HERO_W = 1482, HERO_H = 1061;
     const items = S.data.items || [];
     return head("Projects", `${items.length} projects`)
       + table(["Code", "Project", "Method", "Lead", "Progress", "Items", "Open bugs", "Health", ""],
-        items.map((p) => `<tr>
+        items.map((p) => `<tr class="clickable" data-a="projOpen:${p.id}">
           <td class="m" style="color:var(--ta)">${esc(p.code)}</td><td>${esc(p.name)}</td>
           <td>${pill(p.method)}</td><td style="color:var(--t2)">${esc(p.lead)}</td>
           <td style="min-width:140px">${progressBar(p.completion, p.drift !== null && p.drift <= -15 ? "#a3121c" : "var(--navy)")}
             <span class="m" style="color:var(--tm)">${p.completion}% · ${p.done_points}/${p.points} SP${p.timeProgress !== null ? ` · time ${p.timeProgress}%` : ""}</span></td>
           <td class="m">${p.done_items}/${p.items}</td><td class="m">${p.open_bugs}</td>
           <td>${pill(...(HEALTH[p.health] || [p.health, ""]))}</td>
-          <td style="text-align:right">${scrOf("d.charts") ? `<button class="b s p" data-a="projCharts:${esc(p.code)}">Charts</button>` : ""}</td>
+          <td style="text-align:right" onclick="event.stopPropagation()">${scrOf("d.charts") ? `<button class="b s p" data-a="projCharts:${esc(p.code)}">Charts</button>` : ""}</td>
         </tr>`).join("") || `<tr><td colspan="9" style="color:var(--tm)">No projects yet.</td></tr>`);
+  }
+
+  /* ---------------- Proje detayı: Genel Bakış / Ekip / Dokümanlar / Faz Kapıları / Onaylar / CR ---------------- */
+  const PROJ_TABS = [
+    ["overview", "Genel Bakış"], ["team", "Proje ekibi"], ["docs", "Dokümanlar"],
+    ["gates", "Faz Kapıları"], ["appr", "Onaycılar Günlüğü"], ["cr", "Değişiklik Talepleri"],
+  ];
+  const DOC_STATUS_PILL = { onay_akisinda: ["Onay akışında", "wr"], onaylandi: ["Onaylandı", "ok"], reddedildi: ["Reddedildi", "er"] };
+  const CR_STATUS_PILL = { bekliyor: ["Bekliyor", "wr"], onaylandi: ["Onaylandı", "ok"], reddedildi: ["Reddedildi", "er"] };
+
+  async function loadProjectTab(tab) {
+    const id = S.detail.id;
+    if (tab === "overview" && !S.detail.metrics) {
+      const r = await api(`/projects/${id}`); Object.assign(S.detail, r);
+    } else if (tab === "team" && !S.data.team) {
+      S.data.team = (await api(`/projects/${id}/team`)).items;
+    } else if (tab === "docs" && !S.data.projDocs) {
+      const r = await api(`/projects/${id}/documents`); S.data.projDocs = r.items; S.data.docTypeOrder = r.typeOrder;
+    } else if (tab === "gates" && !S.data.gates) {
+      const r = await api(`/gates/project/${id}`); S.data.gates = r.items; S.data.canGateOverride = r.canOverride;
+    } else if (tab === "appr" && !S.data.apprLog) {
+      S.data.apprLog = (await api(`/projects/${id}/approvals-log`)).items;
+    } else if (tab === "cr" && !S.data.crs) {
+      S.data.crs = (await api(`/projects/${id}/change-requests`)).items;
+    }
+  }
+
+  function projectDetailView() {
+    const d = S.detail, tab = S.projTab || "overview";
+    const tabsBar = `<div style="display:flex;gap:4px;border-bottom:1px solid var(--bd);margin-bottom:16px;flex-wrap:wrap">
+      ${PROJ_TABS.map(([k, label]) => `<button class="b s ${tab === k ? "p" : ""}" style="border-radius:8px 8px 0 0"
+        data-a="projTab:${k}">${label}</button>`).join("")}</div>`;
+    let body;
+    if (tab === "team") body = projectTeamPane(d);
+    else if (tab === "docs") body = S.docOpen ? docDetailPane() : projectDocsPane(d);
+    else if (tab === "gates") body = projectGatesPane(d);
+    else if (tab === "appr") body = projectApprPane(d);
+    else if (tab === "cr") body = projectCrPane(d);
+    else body = projectOverviewPane(d);
+    return head(`${esc(d.metrics ? d.metrics.code : "")} — ${esc(d.metrics ? d.metrics.name : "")}`,
+      d.metrics ? `${pill(d.metrics.method)} ${pill(...(HEALTH[d.metrics.health] || [d.metrics.health, ""]))}` : "",
+      `<button class="b" data-a="back">← Projeler</button>`) + tabsBar + body;
+  }
+
+  function projectOverviewPane(d) {
+    if (!d.metrics) return `<p class="m" style="color:var(--tm)">Yükleniyor…</p>`;
+    const m = d.metrics;
+    return `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:16px">
+        <div class="card"><div class="lbl">Tamamlanma</div><div style="font-size:20px">${m.completion}%</div></div>
+        <div class="card"><div class="lbl">İş kalemleri</div><div style="font-size:20px">${m.done_items}/${m.items}</div></div>
+        <div class="card"><div class="lbl">Açık hata</div><div style="font-size:20px">${m.open_bugs}</div></div>
+        <div class="card"><div class="lbl">Kalan gün</div><div style="font-size:20px">${m.daysLeft === null ? "—" : m.daysLeft}</div></div>
+      </div>`
+      + table(["Anahtar", "Tip", "Başlık", "Durum", "Öncelik", "SP", "Atanan"],
+        (d.items || []).map((it) => `<tr>
+          <td class="m" style="color:var(--ta)">${esc(it.item_key)}</td><td>${pill(it.type)}</td>
+          <td>${esc(it.title)}</td><td>${pill(STATE_EN[it.state] || it.state)}</td>
+          <td>${esc(it.priority)}</td><td class="m">${it.points}</td>
+          <td style="color:var(--t2)">${esc(it.assignee || "—")}</td></tr>`).join("")
+          || `<tr><td colspan="7" style="color:var(--tm)">İş kalemi yok.</td></tr>`);
+  }
+
+  function projectTeamPane(d) {
+    const items = S.data.team || [];
+    const canWriteTeam = canWrite("d.team");
+    return (canWriteTeam ? `<div style="margin-bottom:12px"><button class="b p" data-a="teamAdd:${d.id}">+ Üye ekle</button></div>` : "")
+      + table(["Kişi", "Rol", "Zorunlu", ""],
+        items.map((m) => `<tr><td>${esc(m.display_name)}<div class="m" style="color:var(--tm)">${esc(m.username)}</div></td>
+          <td>${pill(m.project_role)}</td><td>${m.is_mandatory ? pill("Zorunlu", "wr") : ""}</td>
+          <td style="text-align:right">${canWriteTeam && !m.is_mandatory ? `<button class="b s d" data-a="teamRemove:${d.id}:${m.username}">Çıkar</button>` : ""}</td>
+        </tr>`).join("") || `<tr><td colspan="4" style="color:var(--tm)">Ekip henüz yüklenmedi.</td></tr>`);
+  }
+
+  function projectDocsPane(d) {
+    const items = S.data.projDocs || [];
+    const order = S.data.docTypeOrder || [];
+    const canUpload = canWrite("d.docs");
+    return (canUpload ? `<div style="margin-bottom:12px"><button class="b p" data-a="pdocUploadDlg:${d.id}">+ Doküman yükle</button></div>` : "")
+      + table(["Tip", "Başlık", "Durum", "Adım", "Yükleyen", ""],
+        order.map((type) => {
+          const doc = items.find((x) => x.doc_type === type);
+          if (!doc) return `<tr><td>${esc(type)}</td><td colspan="3" style="color:var(--tm)">Henüz yüklenmedi</td><td></td></tr>`;
+          const st = DOC_STATUS_PILL[doc.status] || [doc.status, ""];
+          return `<tr class="clickable" data-a="pdocOpen:${d.id}:${doc.id}">
+            <td>${esc(type)}</td><td>${esc(doc.title)}</td><td>${pill(st[0], st[1])}</td>
+            <td class="m">${doc.status === "onay_akisinda" ? `${doc.current_step}/6` : "—"}</td>
+            <td style="color:var(--t2)">${esc(doc.uploaded_by)}</td>
+            <td style="text-align:right" onclick="event.stopPropagation()">${doc.status === "reddedildi" && canUpload ? `<button class="b s p" data-a="pdocUploadDlg:${d.id}:${type}">Yeniden yükle</button>` : ""}</td>
+          </tr>`;
+        }).join(""));
+  }
+
+  function docDetailPane() {
+    const dd = S.data.docDetail;
+    if (!dd) return `<p class="m" style="color:var(--tm)">Yükleniyor…</p>`;
+    const item = dd.item, st = DOC_STATUS_PILL[item.status] || [item.status, ""];
+    const meCanAct = item.status === "onay_akisinda";
+    return `<button class="b" data-a="pdocBack">← Dokümanlar</button>
+      <div class="card" style="margin-top:12px">
+        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:15px">${esc(item.doc_type)} — ${esc(item.title)}</span>${pill(st[0], st[1])}</div>
+        <p class="m" style="color:var(--tm);margin-top:6px">Yükleyen: ${esc(item.uploaded_by)} · ${esc(String(item.uploaded_at).slice(0, 10))}</p>
+        ${item.file_name ? `<a href="/api/projects/${S.detail.id}/documents/${item.id}/file" target="_blank" class="b s" style="display:inline-block;margin-top:8px;text-decoration:none">PDF'i aç</a>` : ""}
+        ${item.reject_reason ? `<div class="card er" style="margin-top:10px;font-size:12px">Red gerekçesi: ${esc(item.reject_reason)}</div>` : ""}
+        ${dd.nextApprover ? `<div class="card wr" style="margin-top:10px;font-size:12px">Sıradaki onay (adım ${dd.nextApprover.stepNo}/6): ${esc(dd.nextApprover.stepName)}${dd.nextApprover.username ? ` — ${esc(dd.nextApprover.username)}` : " — atanmış kimse yok, yalnızca Proje Yönetim Direktörü vekaleten onaylayabilir"}</div>` : ""}
+        ${meCanAct ? `<div style="display:flex;gap:9px;margin-top:12px">
+          <button class="b g" data-a="pdocApprove:${S.detail.id}:${item.id}">Onayla</button>
+          <button class="b d" data-a="pdocReject:${S.detail.id}:${item.id}">Reddet</button></div>` : ""}
+      </div>
+      <div style="margin-top:16px">${table(["Adım", "Onaycı", "Vekalet", "Tarih"],
+        (dd.approvals || []).map((a) => `<tr><td>${esc(a.step_name)}</td><td>${esc(a.display_name)}</td>
+          <td>${a.is_proxy ? pill("Vekaleten", "wr") : ""}</td><td class="m">${esc(String(a.approved_at).slice(0, 16).replace("T", " "))}</td></tr>`).join("")
+          || `<tr><td colspan="4" style="color:var(--tm)">Henüz onay yok.</td></tr>`)}</div>`;
+  }
+
+  function projectGatesPane(d) {
+    const items = S.data.gates || [];
+    return items.map((g) => `<div class="card" style="margin-bottom:12px">
+        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:14px">${esc(g.name)}</span>
+          ${g.passedAt ? pill("Geçildi", "ok") : pill(`${g.openCriteria} açık kriter`, g.openCriteria ? "wr" : "")}
+          ${g.override ? pill("Tek yetkili onayı", "wr") : ""}</div>
+        <ul style="margin:10px 0 0;padding-left:18px;font-size:13px">
+          ${g.criteria.map((c, i) => `<li style="margin-bottom:4px">
+            <label style="display:flex;gap:7px;align-items:center;cursor:${g.passedAt ? "default" : "pointer"}">
+              <input type="checkbox" ${c.done ? "checked" : ""} ${g.passedAt ? "disabled" : ""} style="width:auto"
+                data-a="gateCrit:${g.id}:${i}:${c.done ? 0 : 1}"> ${esc(c.text)}</label></li>`).join("")}
+        </ul>
+        ${!g.passedAt ? `<div style="margin-top:10px;display:flex;gap:9px">
+          <button class="b p s" data-a="gateSign:${g.id}">İmzala</button>
+          ${S.data.canGateOverride ? `<button class="b g s" data-a="gateOverride:${g.id}">Tek imzayla ilerlet</button>` : ""}
+        </div>` : ""}
+        <div class="m" style="color:var(--tm);margin-top:8px">İmzalar: ${g.signatures.map((s) => esc(s.display_name)).join(", ") || "yok"}</div>
+      </div>`).join("") || `<p class="m" style="color:var(--tm)">Bu projede faz kapısı tanımlı değil.</p>`;
+  }
+
+  function projectApprPane() {
+    const items = S.data.apprLog || [];
+    return table(["Tarih", "Kişi", "Konu", "Tür", "Vekalet"],
+      items.map((a) => `<tr><td class="m">${esc(String(a.at).slice(0, 16).replace("T", " "))}</td>
+        <td>${esc(a.display_name)}</td><td>${esc(a.subject)}</td>
+        <td>${pill(a.kind === "faz_kapisi" ? "Faz kapısı" : "Doküman")}</td>
+        <td>${a.is_proxy ? pill("Vekaleten", "wr") : ""}</td></tr>`).join("")
+        || `<tr><td colspan="5" style="color:var(--tm)">Henüz onay kaydı yok.</td></tr>`);
+  }
+
+  function projectCrPane(d) {
+    return `<div style="margin-bottom:12px"><button class="b p" data-a="crNew:${d.id}">+ Değişiklik talebi</button></div>`
+      + (S.data.crs || []).map((cr) => {
+        const st = CR_STATUS_PILL[cr.status] || [cr.status, ""];
+        return `<div class="card" style="margin-bottom:12px">
+          <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:14px">${esc(cr.title)}</span>${pill(st[0], st[1])}</div>
+          <p style="font-size:13px;color:var(--t2);margin:6px 0">${esc(cr.description)}</p>
+          <p class="m" style="color:var(--tm)">Talep eden: ${esc(cr.requested_by)}
+            · Yönetici onayı: ${cr.manager_approved_by ? esc(cr.manager_approved_by) : "bekliyor"}
+            · Ekip onayı: ${cr.team_approved_by ? esc(cr.team_approved_by) : "bekliyor"}</p>
+          ${cr.reject_reason ? `<div class="card er" style="margin-top:8px;font-size:12px">Red gerekçesi: ${esc(cr.reject_reason)}</div>` : ""}
+          ${cr.status === "bekliyor" ? `<div style="display:flex;gap:9px;margin-top:10px">
+            ${!cr.manager_approved_by ? `<button class="b s p" data-a="crApproveManager:${d.id}:${cr.id}">Yönetici olarak onayla</button>` : ""}
+            ${!cr.team_approved_by ? `<button class="b s p" data-a="crApproveTeam:${d.id}:${cr.id}">Ekip adına onayla</button>` : ""}
+            <button class="b s d" data-a="crReject:${d.id}:${cr.id}">Reddet</button>
+          </div>` : ""}
+        </div>`;
+      }).join("") || "";
   }
 
   /* Burndown chart: ideal line vs actual remaining work, drawn from server snapshots. */
@@ -914,7 +1080,12 @@ const HERO_W = 1482, HERO_H = 1061;
   function screenBody() {
     if (S.reading) return readerView();
     if (S.quiz || S.quizResult) return quizView();
-    if (S.detail) return S.detail._type === "ann" ? annDetail() : S.detail._type === "doc" ? docDetail() : reqDetail();
+    if (S.detail) {
+      if (S.detail._type === "ann") return annDetail();
+      if (S.detail._type === "doc") return docDetail();
+      if (S.detail._type === "project") return projectDetailView();
+      return reqDetail();
+    }
     if (S.data.error) return `<div class="card wr">${esc(S.data.error)}</div>`;
     switch (S.scr) {
       case "a.list": return annView();
@@ -1054,6 +1225,42 @@ const HERO_W = 1482, HERO_H = 1061;
           <button type="button" class="b" data-a="dlgClose">Vazgeç</button>
           <button type="submit" class="b d">${esc(d.confirmLabel || "Gönder")}</button></div></form></div></div>`;
     }
+    if (d.type === "teamMember") {
+      const roles = ["Project Manager", "Developer", "QA", "Business Owner", "Product Owner", "Vendor", "Analyst"];
+      return `<div class="ov"><div class="dlg"><form id="dlgForm">
+        <div style="font-size:15px">Ekibe üye ekle</div>
+        <p style="font-size:12px;color:var(--t2)">Internal Audit ve Risk otomatik atanır, buradan eklenemez.</p>
+        <label class="lbl" style="display:block;margin-top:12px">Kullanıcı adı</label>
+        <input name="username" required pattern="[a-z0-9._-]{2,64}" placeholder="ad.soyad" value="${esc(f.username || "")}">
+        <label class="lbl" style="display:block;margin-top:12px">Proje rolü</label>
+        <select name="projectRole">${roles.map((r) => `<option value="${r}" ${f.projectRole === r ? "selected" : ""}>${r}</option>`).join("")}</select>
+        <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+          <button type="button" class="b" data-a="dlgClose">Vazgeç</button>
+          <button type="submit" class="b g">Ekle</button></div></form></div></div>`;
+    }
+    if (d.type === "projectDoc") {
+      const order = S.data.docTypeOrder || ["Proje Kartı", "BRD", "FRD", "UAT", "Go Live", "Risk ve Uyumluluk", "Kapanış"];
+      return `<div class="ov"><div class="dlg"><form id="dlgForm" enctype="multipart/form-data">
+        <div style="font-size:15px">Proje dokümanı yükle</div>
+        <p style="font-size:12px;color:var(--t2)">Yalnızca PDF. Yükleme altı adımlı onay zincirine girer.</p>
+        <label class="lbl" style="display:block;margin-top:12px">Tip</label>
+        <select name="docType">${order.map((t) => `<option value="${t}" ${f.docType === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+        <label class="lbl" style="display:block;margin-top:12px">Başlık</label><input name="title" required minlength="5" value="${esc(f.title || "")}">
+        <label class="lbl" style="display:block;margin-top:12px">PDF dosya</label><input type="file" name="file" accept="application/pdf" required>
+        <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+          <button type="button" class="b" data-a="dlgClose">Vazgeç</button>
+          <button type="submit" class="b g">Yükle</button></div></form></div></div>`;
+    }
+    if (d.type === "cr") {
+      return `<div class="ov"><div class="dlg"><form id="dlgForm">
+        <div style="font-size:15px">Değişiklik talebi</div>
+        <p style="font-size:12px;color:var(--t2)">Talep sahibinin yöneticisi VE proje ekibi (PM/PMD) onayı birlikte gerekir.</p>
+        <label class="lbl" style="display:block;margin-top:12px">Başlık</label><input name="title" required minlength="5" value="${esc(f.title || "")}">
+        <label class="lbl" style="display:block;margin-top:12px">Açıklama</label><textarea name="description" required minlength="10">${esc(f.description || "")}</textarea>
+        <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+          <button type="button" class="b" data-a="dlgClose">Vazgeç</button>
+          <button type="submit" class="b g">Talebi gönder</button></div></form></div></div>`;
+    }
     return "";
   }
 
@@ -1161,9 +1368,24 @@ const HERO_W = 1482, HERO_H = 1061;
           toast("Rapor kaydedildi.");
         } else if (S.dlg.type === "reason") {
           await S.dlg.submit(fd.get("reason"));
+        } else if (S.dlg.type === "teamMember") {
+          await api(`/projects/${S.dlg.projectId}/team`, { method: "POST",
+            body: { username: fd.get("username"), projectRole: fd.get("projectRole") } });
+          toast("Ekip üyesi eklendi."); S.data.team = null;
+        } else if (S.dlg.type === "projectDoc") {
+          await api(`/projects/${S.dlg.projectId}/documents`, { method: "POST", body: fd });
+          toast("Doküman yüklendi, onay akışı başladı."); S.data.projDocs = null;
+        } else if (S.dlg.type === "cr") {
+          await api(`/projects/${S.dlg.projectId}/change-requests`, { method: "POST",
+            body: { title: fd.get("title"), description: fd.get("description") } });
+          toast("Değişiklik talebi açıldı."); S.data.crs = null;
         }
-        S.dlg = null; S.form = {}; S.detail = null;
-        await loadScreen(); await refreshCounts(); render();
+        const keepDetail = ["teamMember", "projectDoc", "cr"].includes(S.dlg.type)
+          || (S.dlg.type === "reason" && S.dlg.keepDetail);
+        S.dlg = null; S.form = {};
+        if (keepDetail && S.detail && S.detail._type === "project") { await loadProjectTab(S.projTab); }
+        else { S.detail = null; await loadScreen(); }
+        await refreshCounts(); render();
       } catch (err) { toast(err.message, true); }
     };
   }
@@ -1198,9 +1420,99 @@ const HERO_W = 1482, HERO_H = 1061;
           toast(sc.state === "bakim" ? "Bu ekran bakımda." : "Bu ekran kullanımda değil.", true);
           S.view = "home"; return render();
         }
+        const PROJECT_SCOPED = ["d.team", "d.docs", "d.docview", "d.appr", "d.cr", "d.board", "d.backlog", "d.sprint", "d.gate"];
+        if (PROJECT_SCOPED.includes(p[0])) {
+          toast("Önce Projeler listesinden bir proje seçin.");
+          S.scr = "d.projects"; S.detail = null; S.reading = null; await loadScreen(); return render();
+        }
         S.scr = p[0]; S.detail = null; S.reading = null; await loadScreen(); return render();
       }
-      if (k === "back") { S.detail = null; await loadScreen(); return render(); }
+      if (k === "back") {
+        if (S.detail && S.detail._type === "project") {
+          S.data.team = null; S.data.projDocs = null; S.data.docTypeOrder = null; S.data.docDetail = null;
+          S.data.gates = null; S.data.canGateOverride = null; S.data.apprLog = null; S.data.crs = null;
+          S.docOpen = null; S.projTab = "overview";
+        }
+        S.detail = null; await loadScreen(); return render();
+      }
+
+      /* ---------------- Proje detayı: navigasyon ---------------- */
+      if (k === "projOpen") {
+        S.detail = { _type: "project", id: Number(p[0]) };
+        S.projTab = "overview"; S.docOpen = null;
+        S.data.team = null; S.data.projDocs = null; S.data.gates = null; S.data.apprLog = null; S.data.crs = null;
+        await loadProjectTab("overview"); return render();
+      }
+      if (k === "projTab") { S.projTab = p[0]; S.docOpen = null; await loadProjectTab(p[0]); return render(); }
+
+      /* ---------------- Proje ekibi ---------------- */
+      if (k === "teamAdd") { S.form = { projectRole: "Developer" }; S.dlg = { type: "teamMember", projectId: p[0] }; return render(); }
+      if (k === "teamRemove") {
+        await api(`/projects/${p[0]}/team/${p[1]}`, { method: "DELETE" });
+        toast("Ekip üyesi çıkarıldı."); S.data.team = null; await loadProjectTab("team"); return render();
+      }
+
+      /* ---------------- Proje dokümanları ---------------- */
+      if (k === "pdocUploadDlg") { S.form = { docType: p[1] || (S.data.docTypeOrder || [])[0] }; S.dlg = { type: "projectDoc", projectId: p[0] }; return render(); }
+      if (k === "pdocOpen") {
+        const dd = await api(`/projects/${p[0]}/documents/${p[1]}`);
+        S.data.docDetail = dd; S.docOpen = p[1]; return render();
+      }
+      if (k === "pdocBack") { S.docOpen = null; return render(); }
+      if (k === "pdocApprove") {
+        await api(`/projects/${p[0]}/documents/${p[1]}/approve`, { method: "POST" });
+        toast("Doküman onaylandı."); S.data.docDetail = await api(`/projects/${p[0]}/documents/${p[1]}`);
+        S.data.projDocs = null; return render();
+      }
+      if (k === "pdocReject") {
+        S.dlg = { type: "reason", keepDetail: true, title: "Dokümanı reddet", confirmLabel: "Reddet",
+          note: "Doküman onay akışından çıkarılır; yükleyen düzeltip yeniden yükleyebilir.",
+          submit: async (reason) => {
+            await api(`/projects/${p[0]}/documents/${p[1]}/reject`, { method: "POST", body: { reason } });
+            toast("Doküman reddedildi."); S.data.docDetail = null; S.docOpen = null; S.data.projDocs = null;
+          } };
+        return render();
+      }
+
+      /* ---------------- Faz kapıları ---------------- */
+      if (k === "gateCrit") {
+        await api(`/gates/${p[0]}/criteria/${p[1]}`, { method: "PUT", body: { done: p[2] === "1" } });
+        S.data.gates = null; await loadProjectTab("gates"); return render();
+      }
+      if (k === "gateSign") {
+        await api(`/gates/${p[0]}/sign`, { method: "POST", body: {} });
+        toast("İmza kaydedildi."); S.data.gates = null; await loadProjectTab("gates"); return render();
+      }
+      if (k === "gateOverride") {
+        S.dlg = { type: "reason", keepDetail: true, title: "Tek imzayla ilerlet", confirmLabel: "Onayla",
+          note: "Bu, iki imza kuralını atlayan bir yetki kullanımıdır; gerekçe zorunlu ve denetim kaydına ayrı işlenir.",
+          submit: async (reason) => {
+            await api(`/gates/${p[0]}/sign`, { method: "POST", body: { override: true, reason } });
+            toast("Kapı tek imzayla ilerletildi."); S.data.gates = null;
+          } };
+        return render();
+      }
+
+      /* ---------------- Değişiklik talepleri ---------------- */
+      if (k === "crNew") { S.form = {}; S.dlg = { type: "cr", projectId: p[0] }; return render(); }
+      if (k === "crApproveManager") {
+        await api(`/projects/${p[0]}/change-requests/${p[1]}/approve-manager`, { method: "POST" });
+        toast("Yönetici onayı verildi."); S.data.crs = null; await loadProjectTab("cr"); return render();
+      }
+      if (k === "crApproveTeam") {
+        await api(`/projects/${p[0]}/change-requests/${p[1]}/approve-team`, { method: "POST" });
+        toast("Ekip onayı verildi."); S.data.crs = null; await loadProjectTab("cr"); return render();
+      }
+      if (k === "crReject") {
+        S.dlg = { type: "reason", keepDetail: true, title: "Değişiklik talebini reddet", confirmLabel: "Reddet",
+          note: "Talep kapatılır; gerekli olursa talep sahibi yeni bir talep açabilir.",
+          submit: async (reason) => {
+            await api(`/projects/${p[0]}/change-requests/${p[1]}/reject`, { method: "POST", body: { reason } });
+            toast("Talep reddedildi."); S.data.crs = null;
+          } };
+        return render();
+      }
+
 
       if (k === "annNew") { S.form = { category: "Genel", criticality: "Orta" }; S.dlg = { type: "ann" }; return render(); }
       if (k === "annEdit") {
