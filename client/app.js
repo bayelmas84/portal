@@ -1494,7 +1494,7 @@ const HERO_W = 1482, HERO_H = 1061;
       try {
         const res = await api("/auth/login", { method: "POST", body: { username: fd.get("username"), password: fd.get("password") } });
         csrfToken = res.csrfToken || csrfToken;
-        S.loginError = null; S.view = "home";
+        S.loginError = null; S.view = "home"; S.userMenuOpen = false;
         await loadMe(); await refreshCounts(); await loadHomeData(); render();
       } catch (err) {
         S.loginError = err.status === 429 ? "Çok fazla deneme. Bir süre sonra tekrar deneyin." : "Kullanıcı adı veya parola hatalı.";
@@ -1689,7 +1689,7 @@ const HERO_W = 1482, HERO_H = 1061;
           if (btn) btn.textContent = S.showPw ? "gizle" : "göster"; }
         return;
       }
-      if (k === "logout") { await api("/auth/logout", { method: "POST" }); S.view = "login"; S.user = null; return render(); }
+      if (k === "logout") { await api("/auth/logout", { method: "POST" }); S.view = "login"; S.user = null; S.userMenuOpen = false; return render(); }
       if (k === "home") { S.view = "home"; S.detail = null; S.reading = null; await loadHomeData(); return render(); }
       if (k === "userMenu") { S.userMenuOpen = !S.userMenuOpen; return render(); }
       if (k === "navgo") {

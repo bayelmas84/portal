@@ -7,6 +7,9 @@ html.dark{color-scheme:dark;--s1:#1b222c;--s2:#232b37;--bd:#39424f;--bds:#5b6675
 *{box-sizing:border-box}
 body{margin:0;background:var(--s1);color:var(--t1);font:13px/1.5 "Inter","Segoe UI",system-ui,sans-serif}
 #app{max-width:1180px;margin:0 auto;min-height:100vh;background:var(--s2)}
+/* Uygulama kabuğu (sidebar+header+içerik) tam genişlik kullanır; yalnızca
+   giriş ekranı gibi kart düzenindeki sayfalar 1180px'de ortalı kalır. */
+#app:has(.shell){max-width:none;margin:0}
 .m{font-family:"SFMono-Regular",Consolas,monospace;font-size:11px}
 .lbl{font-size:9.5px;color:var(--tm);letter-spacing:.09em;text-transform:uppercase;margin:0 0 6px}
 .b{font:500 12px inherit;padding:7px 13px;border-radius:9px;border:1px solid var(--bds);cursor:pointer;background:var(--s2);color:var(--t1)}
