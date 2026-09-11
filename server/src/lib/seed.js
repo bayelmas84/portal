@@ -18,7 +18,7 @@ const PERMS = {
   /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (okuma, yazma, ekleme, silme) ve
      faz kapısını tek imzayla onaylama. Diğer modüllerde okuma düzeyindedir. */
   pmdir: {
-    delivery: W, "d.my": W, "d.projects": W, "d.board": W, "d.backlog": W, "d.sprint": W,
+    delivery: W, "d.my": W, "d.projects": W, "d.team": W, "d.board": W, "d.backlog": W, "d.sprint": W,
     "d.gate": W, "d.gate.approve": W, "d.delete": W, "d.charts": W, "d.exec": W,
     documents: R, "k.docs": R, announce: R, "a.list": R,
     training: R, "t.un": W, "t.done": W,
@@ -101,7 +101,7 @@ const PERMS = {
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },
   pm: {
-    delivery: W, "d.my": W, "d.projects": W, "d.board": W, "d.backlog": W, "d.sprint": W, "d.gate": W,
+    delivery: W, "d.my": W, "d.projects": W, "d.team": W, "d.board": W, "d.backlog": W, "d.sprint": W, "d.gate": W,
     "d.charts": W, "d.exec": R,
     documents: R, "k.docs": R, announce: R, "a.list": R,
     training: R, "t.un": W, "t.done": W,

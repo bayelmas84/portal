@@ -175,7 +175,70 @@ module.exports = function (cfg) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,'devam','planinda') RETURNING id`,
         [v.code, v.name, v.method, v.lead, v.unitCode || null, v.startDate || null, v.targetDate || null]);
       await audit.record("proje.olusturuldu", req.user.username, { detail: { kod: v.code, yontem: v.method } });
+      /* Internal Audit ve Risk otomatik olarak zorunlu üye eklenir (CHANGELOG 1.13.1). */
+      await projects.ensureMandatoryMembers(row.id);
       res.status(201).json({ id: row.id });
+    } catch (e) { next(e); }
+  });
+
+  /* --- Proje ekibi ---
+     Internal Audit ve Risk zorunlu üyedir, çıkarılamaz. Diğer yedi rolden (Project Manager,
+     Developer, QA, Business Owner, Product Owner, Vendor, Analyst) istenildiği kadar eklenebilir.
+     GET her zaman mevcut projelerde eksik zorunlu üyeliği tamamlar (lazy backfill); böylece
+     10_project_team.sql'den önce oluşturulmuş projeler de otomatik tamamlanır. */
+  const memberSchema = z.object({
+    username: z.string().trim().regex(/^[a-z0-9._-]{2,64}$/),
+    projectRole: z.enum([
+      "Project Manager", "Developer", "QA", "Business Owner", "Product Owner",
+      "Internal Audit", "Risk", "Vendor", "Analyst",
+    ]),
+  });
+
+  r.get("/:id/team", requireScreen("d.team"), async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
+      if (!p) return res.status(404).json({ error: "Bulunamadı" });
+      await projects.ensureMandatoryMembers(id);
+      res.json({ items: await projects.teamOf(id) });
+    } catch (e) { next(e); }
+  });
+
+  r.post("/:id/team", requireScreen("d.team", "write"), async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const v = memberSchema.parse(req.body);
+      if (v.projectRole === "Internal Audit" || v.projectRole === "Risk")
+        return res.status(400).json({
+          error: "Internal Audit ve Risk üyeliği otomatik atanır, elle eklenemez",
+        });
+      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
+      if (!p) return res.status(404).json({ error: "Bulunamadı" });
+      const u = await db.one("SELECT username FROM users WHERE username=$1 AND active", [v.username]);
+      if (!u) return res.status(400).json({ error: "Kullanıcı tanımlı ve aktif olmalı" });
+      const existing = await db.one("SELECT username FROM project_members WHERE project_id=$1 AND username=$2", [id, v.username]);
+      if (existing) return res.status(409).json({ error: "Kullanıcı zaten bu projenin ekibinde" });
+      await db.query(
+        `INSERT INTO project_members (project_id, username, project_role, is_mandatory, added_by)
+         VALUES ($1,$2,$3,FALSE,$4)`,
+        [id, v.username, v.projectRole, req.user.username]);
+      await audit.record("ekip.uye_eklendi", req.user.username,
+        { detail: { proje: id, kullanici: v.username, rol: v.projectRole } });
+      res.status(201).json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
+  r.delete("/:id/team/:username", requireScreen("d.team", "write"), async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const username = z.string().trim().regex(/^[a-z0-9._-]{2,64}$/).parse(req.params.username);
+      const m = await db.one("SELECT is_mandatory, project_role FROM project_members WHERE project_id=$1 AND username=$2", [id, username]);
+      if (!m) return res.status(404).json({ error: "Bulunamadı" });
+      if (m.is_mandatory)
+        return res.status(409).json({ error: `${m.project_role} zorunlu ekip üyesidir, çıkarılamaz` });
+      await db.query("DELETE FROM project_members WHERE project_id=$1 AND username=$2", [id, username]);
+      await audit.record("ekip.uye_cikarildi", req.user.username, { detail: { proje: id, kullanici: username } });
+      res.json({ ok: true });
     } catch (e) { next(e); }
   });
 
