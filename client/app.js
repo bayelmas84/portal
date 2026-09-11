@@ -625,7 +625,56 @@ const HERO_W = 1482, HERO_H = 1061;
 
 
   /* Delivery screens use English labels, matching Jira terminology. */
-  const HEALTH = { planinda: ["On track", "ok"], risk: ["At risk", "wr"], gecikme: ["Delayed", "er"] };
+  const HEALTH = { planinda: ["Planında", "ok"], risk: ["Risk altında", "wr"], gecikme: ["Gecikmede", "er"] };
+  // --- İkon sistemi (prototipten birebir alınmış Tabler-benzeri SVG yol verileri) ---
+  const ICONS={"adjustments":'<path d="M5 6h14M5 12h14M5 18h14"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>',"link":'<path d="M10 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.2 1.2"/><path d="M14 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.2-1.2"/>',"home":'<path d="M4 11 12 4l8 7"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-9"/>',"clipboard-list":'<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9.5 4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1h-5z"/><path d="M9 10h6M9 13.5h6M9 17h4"/>',"gantt":'<path d="M4 20V4M4 20h16"/><path d="M7 7.5h7M9 12h8M7 16.5h5"/>',"target":'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2"/>',"briefcase2":'<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M9 8V6.5A1.5 1.5 0 0 1 10.5 5h3A1.5 1.5 0 0 1 15 6.5V8"/><path d="M3 13h18"/><path d="M10.5 13v2h3v-2"/>',"briefcase":'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>',"files":'<path d="M8 3h7l4 4v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M15 3v4h4"/><path d="M6 8H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h1"/>',"speakerphone":'<path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-3"/><path d="M13 4.5 6 8H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h2l7 3.5z"/>',"school":'<path d="M12 4 2 9l10 5 10-5z"/><path d="M6 11.5V17c0 1.5 2.7 3 6 3s6-1.5 6-3v-5.5"/>',"chart-histogram":'<path d="M4 20V4M4 20h16"/><rect x="7" y="12" width="3" height="8"/><rect x="12" y="8" width="3" height="12"/><rect x="17" y="14" width="3" height="6"/>',"chart-bar":'<path d="M4 20V4M4 20h16"/><rect x="7" y="10" width="3" height="10"/><rect x="12" y="6" width="3" height="14"/><rect x="17" y="13" width="3" height="7"/>',"checkbox":'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8.5 12.5 11 15l4.5-5"/>',"apps":'<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',"settings":'<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M4.5 7.5l1.7 1M17.8 15.5l1.7 1M4.5 16.5l1.7-1M17.8 8.5l1.7-1"/>',"user-check":'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3 2.7-5 6-5 1 0 2 .2 2.8.5"/><path d="M15 17.5 17 19.5l4-4"/>',"layout-grid":'<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',"layout-kanban":'<rect x="4" y="4" width="4.5" height="16" rx="1"/><rect x="10" y="4" width="4.5" height="11" rx="1"/><rect x="16" y="4" width="4" height="7" rx="1"/>',"list-details":'<path d="M4 6h8M4 12h8M4 18h8M16 7h4M16 13h4M16 19h4"/>',"list-search":'<path d="M4 6h10M4 12h7M4 18h6"/><circle cx="16.5" cy="15.5" r="3"/><path d="M18.8 17.8 21 20"/>',"book":'<path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M17 7h2v13h-2"/><path d="M8 8h6M8 12h6"/>',"stamp":'<path d="M9 4h6a2 2 0 0 1 2 2c0 1.5-1 2.5-1 4h-8c0-1.5-1-2.5-1-4a2 2 0 0 1 2-2z"/><path d="M5 14h14v3H5z"/><path d="M4 20h16"/>',"file-text":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/>',"file-alert":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7z"/><path d="M14 3v4h4"/><path d="M12 11v3M12 17h.01"/>',"file-check":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7z"/><path d="M14 3v4h4"/><path d="M9.5 14.5 11 16l3.5-4"/>',"file-upload":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7z"/><path d="M14 3v4h4"/><path d="M12 17v-5M9.8 14.2 12 12l2.2 2.2"/>',"file-symlink":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/><path d="M14 3v4h4"/><path d="M13 15h5v-3"/><path d="M18 15l-4-4"/>',"inbox":'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 13h4l2 3h6l2-3h4"/>',"clock":'<circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/>',"checks":'<path d="M3 12.5 6 15.5l6-7"/><path d="M11 15.5 12.5 17 20 8"/>',"users":'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3 2.7-5 6-5s6 2 6 5"/><path d="M16 4.5a3.2 3.2 0 0 1 0 6.5"/><path d="M18 15.5c2 .7 3 2.3 3 4.5"/>',"users-group":'<circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 19c0-2.5 2.2-4.3 5-4.3s5 1.8 5 4.3"/><path d="M13 19c0-2.5 2.2-4.3 5-4.3 1 0 2 .2 3 .8"/>',"building":'<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/>',"id-badge":'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><circle cx="12" cy="11" r="2.4"/><path d="M8.5 17.5c.6-1.6 2-2.4 3.5-2.4s2.9.8 3.5 2.4"/>',"shield":'<path d="M12 3 5 6v5.5C5 16 8 19.4 12 21c4-1.6 7-5 7-9.5V6z"/><path d="M9.5 12.5 11 14l3.5-4"/>',"bell-ringing":'<path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5 1.5 5h-15S6 13 6 9z"/><path d="M10 18a2 2 0 0 0 4 0"/><path d="M3.5 6.5 5 5M20.5 6.5 19 5"/>',"alert-triangle":'<path d="M12 4 21 19H3z"/><path d="M12 9.5v4M12 16.5h.01"/>',"eye":'<path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',"lock":'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',"logout":'<path d="M14 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7"/><path d="M16 15l3-3-3-3"/><path d="M19 12h-8"/>',"sun":'<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/>',"moon":'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/>',"external-link":'<path d="M13 5h6v6"/><path d="M19 5 10 14"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',"scissors":'<circle cx="7" cy="18" r="2.4"/><circle cx="7" cy="6" r="2.4"/><path d="M8.8 7.6 20 18M8.8 16.4 20 6"/>',"messages":'<path d="M3 6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H8l-5 3z"/><path d="M18 9h1a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1l-3 3v-3h-3"/>',"chart-candle":'<path d="M4 20V4"/><path d="M8 8v8M8 6v2M8 16v2"/><path d="M13 11v6M13 9v2M13 17v2"/><path d="M18 7v7M18 5v2M18 14v2"/>',"address-book":'<rect x="6" y="3" width="14" height="18" rx="2"/><path d="M4 7h2M4 12h2M4 17h2"/><circle cx="13" cy="10" r="2.2"/><path d="M9.5 16c.7-1.4 2-2.1 3.5-2.1s2.8.7 3.5 2.1"/>'};
+  function ic(name, size, extra) {
+    const n = String(name || "").replace(/^ti-/, "");
+    const body = ICONS[n] || '<circle cx="12" cy="12" r="8"/>';
+    return '<svg viewBox="0 0 24 24" width="' + (size || 16) + '" height="' + (size || 16) +
+      '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ' +
+      'aria-hidden="true" style="flex-shrink:0;vertical-align:-2px;' + (extra || "") + '">' + body + '</svg>';
+  }
+  const MODULE_META = {
+    delivery: { icon: "clipboard-list", color: "#0F6E56" },
+    documents: { icon: "files", color: "#4B3B8F" },
+    announce: { icon: "speakerphone", color: "#0178BA" },
+    training: { icon: "school", color: "#7A1F3D" },
+    reports: { icon: "chart-histogram", color: "#B8894A" },
+    approvals: { icon: "checkbox", color: "#0F6E56" },
+    compliance: { icon: "shield", color: "#8E0D4D" },
+    admin: { icon: "adjustments", color: "#33405C" },
+    shortcuts: { icon: "link", color: "#8A6A2F" },
+  };
+  const SCREEN_ICON = {
+    "d.my": "user-check", "d.projects": "layout-grid", "d.board": "layout-kanban",
+    "d.backlog": "list-details", "d.sprint": "clock", "d.gate": "checkbox",
+    "d.charts": "chart-histogram", "d.exec": "target", "d.team": "users-group",
+    "d.docs": "files", "d.docview": "file-text", "d.appr": "checks", "d.cr": "file-symlink",
+    "k.docs": "book", "k.queue": "stamp", "k.mail": "messages",
+    "a.list": "speakerphone",
+    "t.un": "file-alert", "t.done": "file-check",
+    "r.list": "list-search", "r.view": "chart-bar", "r.dev": "adjustments", "r.usage": "chart-histogram",
+    "p.in": "inbox", "p.my": "clock", "p.done": "checks",
+    "c.read": "list-details", "c.rem": "clock", "c.audit": "checks",
+    "s.all": "link",
+    "m.ann": "speakerphone", "m.users": "users", "m.units": "building", "m.titles": "id-badge",
+    "m.roles": "shield", "m.access": "checkbox", "m.notif": "messages", "m.dir": "shield",
+    "m.brand": "adjustments", "m.avail": "adjustments", "m.short": "apps",
+  };
+  const AVATAR_COLORS = ["#0F6E56", "#4B3B8F", "#0178BA", "#7A1F3D", "#B8894A", "#8E0D4D", "#33405C", "#8A6A2F", "#A32D2D", "#3B6D11"];
+  function avatarColor(key) {
+    let h = 0;
+    const s = String(key || "");
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return AVATAR_COLORS[h % AVATAR_COLORS.length];
+  }
+  function initials(name) {
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "?";
+    return (parts[0][0] + (parts[1] ? parts[1][0] : "")).toUpperCase();
+  }
+
   const STATE_EN = { backlog: "Backlog", todo: "To Do", prog: "In Progress", review: "In Review", test: "In Testing", done: "Done" };
   const progressBar = (pct, color) => `<div style="height:8px;background:var(--s1);border-radius:20px;overflow:hidden">
     <div style="height:8px;width:${Math.max(0, Math.min(100, pct))}%;background:${color || "var(--navy)"}"></div></div>`;
@@ -665,8 +714,8 @@ const HERO_W = 1482, HERO_H = 1061;
 
   /* ---------------- Proje detayı: Genel Bakış / Ekip / Dokümanlar / Faz Kapıları / Onaylar / CR ---------------- */
   const PROJ_TABS = [
-    ["overview", "Genel Bakış"], ["team", "Proje ekibi"], ["docs", "Dokümanlar"],
-    ["gates", "Faz Kapıları"], ["appr", "Onaycılar Günlüğü"], ["cr", "Değişiklik Talepleri"],
+    ["overview", "Genel Bakış", "layout-grid"], ["team", "Proje ekibi", "users-group"], ["docs", "Dokümanlar", "files"],
+    ["gates", "Faz Kapıları", "checkbox"], ["appr", "Onaycılar Günlüğü", "checks"], ["cr", "Değişiklik Talepleri", "file-symlink"],
   ];
   const DOC_STATUS_PILL = { onay_akisinda: ["Onay akışında", "wr"], onaylandi: ["Onaylandı", "ok"], reddedildi: ["Reddedildi", "er"] };
   const CR_STATUS_PILL = { bekliyor: ["Bekliyor", "wr"], onaylandi: ["Onaylandı", "ok"], reddedildi: ["Reddedildi", "er"] };
@@ -691,8 +740,8 @@ const HERO_W = 1482, HERO_H = 1061;
   function projectDetailView() {
     const d = S.detail, tab = S.projTab || "overview";
     const tabsBar = `<div style="display:flex;gap:4px;border-bottom:1px solid var(--bd);margin-bottom:16px;flex-wrap:wrap">
-      ${PROJ_TABS.map(([k, label]) => `<button class="b s ${tab === k ? "p" : ""}" style="border-radius:8px 8px 0 0"
-        data-a="projTab:${k}">${label}</button>`).join("")}</div>`;
+      ${PROJ_TABS.map(([k, label, icon]) => `<button class="b s ${tab === k ? "p" : ""}" style="border-radius:8px 8px 0 0"
+        data-a="projTab:${k}">${ic(icon, 14)}<span style="margin-left:5px">${label}</span></button>`).join("")}</div>`;
     let body;
     if (tab === "team") body = projectTeamPane(d);
     else if (tab === "docs") body = S.docOpen ? docDetailPane() : projectDocsPane(d);
@@ -1133,24 +1182,34 @@ const HERO_W = 1482, HERO_H = 1061;
       return;
     }
     const mod = S.modules.find((m) => m.key === S.mod);
+    const scr = (mod ? mod.screens : []).find((s) => s.key === S.scr);
     const pendingCount = (S.data.inboxCount || 0);
     app.innerHTML = `<div class="shell">
       <nav class="nv" aria-label="Modüller">
-        ${S.modules.map((m) => `<button class="rail ${S.mod === m.key ? "on" : ""}" data-a="mod:${m.key}" title="${esc(m.label)}">
-          ${m.label.slice(0, 2)}${m.key === "approvals" && pendingCount ? `<span class="badge">${pendingCount}</span>` : ""}</button>`).join("")}
+        ${S.modules.map((m) => {
+          const meta = MODULE_META[m.key] || { icon: "apps", color: "#33405C" };
+          return `<button class="rail ${S.mod === m.key ? "on" : ""}" data-a="mod:${m.key}" title="${esc(m.label)}" aria-label="${esc(m.label)}">
+          ${ic(meta.icon, 18)}${m.key === "approvals" && pendingCount ? `<span class="badge">${pendingCount}</span>` : ""}</button>`;
+        }).join("")}
         <div style="flex:1"></div>
-        <button class="rail" data-a="theme" title="Tema">${S.dark ? "☀" : "☾"}</button>
-        <button class="rail" data-a="logout" title="Çıkış">⎋</button></nav>
+        <button class="rail" data-a="theme" title="Tema" aria-label="Tema değiştir">${ic(S.dark ? "sun" : "moon", 17)}</button>
+        <button class="rail" data-a="logout" title="Çıkış" aria-label="Çıkış">${ic("logout", 17)}</button></nav>
       <div class="sub">
-        <div style="padding:6px 9px 12px;font-size:13px">${esc(mod ? mod.label : "")}</div>
+        <div style="display:flex;align-items:center;gap:9px;padding:6px 9px 12px">
+          <span style="width:28px;height:28px;border-radius:9px;background:${mod ? (MODULE_META[mod.key] || {}).color || "#33405C" : "#33405C"};color:#fff;display:flex;align-items:center;justify-content:center">
+            ${ic(mod ? (MODULE_META[mod.key] || {}).icon || "apps" : "apps", 15)}</span>
+          <span style="font-size:13px;flex:1">${esc(mod ? mod.label : "")}</span></div>
         ${(mod ? mod.screens : []).map((s) => `<div class="si ${S.scr === s.key ? "on" : ""}" data-a="scr:${s.key}">
-          <span style="flex:1">${esc(s.label)}</span>${s.state === "bakim" ? pill("bakım", "wr") : ""}</div>`).join("")}
+          ${ic(SCREEN_ICON[s.key] || "apps", 15)}<span style="flex:1">${esc(s.label)}</span>${s.state === "bakim" ? pill("bakım", "wr") : ""}</div>`).join("")}
       </div>
       <div class="main">
-        <div class="scrbar">${(mod ? mod.screens : []).map((s) => `<div class="si ${S.scr === s.key ? "on" : ""}" data-a="scr:${s.key}">${esc(s.label)}</div>`).join("")}</div>
+        <div class="scrbar">${(mod ? mod.screens : []).map((s) => `<div class="si ${S.scr === s.key ? "on" : ""}" data-a="scr:${s.key}">${ic(SCREEN_ICON[s.key] || "apps", 14)}<span>${esc(s.label)}</span></div>`).join("")}</div>
         <div class="top"><span style="font-size:11.5px;color:var(--tm)">${esc(mod ? mod.label : "")}</span>
+          ${scr && !S.detail ? `<span style="color:var(--tm)">/</span><span style="font-size:12.5px">${esc(scr.label)}</span>` : ""}
           <span style="flex:1"></span>
-          <span class="m" style="color:var(--tm)">${esc(S.user.displayName)}</span></div>
+          <span class="m" style="color:var(--tm)">${esc(S.user.displayName)}</span>
+          <span style="width:28px;height:28px;border-radius:9px;background:${avatarColor(S.user.username)};color:#fff;font-size:11px;
+            display:flex;align-items:center;justify-content:center">${initials(S.user.displayName)}</span></div>
         <div class="body">${screenBody()}</div>
       </div></div>
       ${S.dlg ? dialogView() : ""}
