@@ -41,7 +41,14 @@ const HERO_W = 1482, HERO_H = 1061;
     if (opts.body instanceof FormData) init.body = opts.body;
     else if (opts.body) { init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(opts.body); }
     if (init.method !== "GET") init.headers["x-csrf-token"] = csrfToken || readCookie("tp_csrf");
-    const res = await fetch("/api" + path, init);
+    let timer;
+    if (opts.timeoutMs) {
+      const ac = new AbortController();
+      init.signal = ac.signal;
+      timer = setTimeout(() => ac.abort(), opts.timeoutMs);
+    }
+    let res;
+    try { res = await fetch("/api" + path, init); } finally { clearTimeout(timer); }
     let body = null;
     try { body = await res.json(); } catch (_) {}
     if (res.status === 401 && S.view !== "login") { S.view = "login"; render(); throw new Error("Oturum sona erdi"); }
@@ -660,7 +667,7 @@ const HERO_W = 1482, HERO_H = 1061;
     "s.all": "link",
     "m.ann": "speakerphone", "m.users": "users", "m.units": "building", "m.titles": "id-badge",
     "m.roles": "shield", "m.access": "checkbox", "m.notif": "messages", "m.dir": "shield",
-    "m.brand": "adjustments", "m.avail": "adjustments", "m.short": "apps",
+    "m.brand": "palette", "m.avail": "adjustments", "m.short": "apps",
   };
   const AVATAR_COLORS = ["#0F6E56", "#4B3B8F", "#0178BA", "#7A1F3D", "#B8894A", "#8E0D4D", "#33405C", "#8A6A2F", "#A32D2D", "#3B6D11"];
   function avatarColor(key) {
@@ -1174,6 +1181,67 @@ const HERO_W = 1482, HERO_H = 1061;
     }
   }
 
+  function railView() {
+    const pendingCount = (S.data.inboxCount || 0);
+    return `<nav class="nv" aria-label="Modüller">
+        <button class="rail ${S.view === "home" ? "on" : ""}" data-a="home" title="Ana ekran" aria-label="Ana ekran">${ic("home", 18)}</button>
+        <div style="width:26px;height:1px;background:rgba(255,255,255,.14);margin:3px 0"></div>
+        ${S.modules.map((m) => {
+          const meta = MODULE_META[m.key] || { icon: "apps", color: "#33405C" };
+          return `<button class="rail ${S.view === "app" && S.mod === m.key ? "on" : ""}" data-a="mod:${m.key}" title="${esc(m.label)}" aria-label="${esc(m.label)}">
+          ${ic(meta.icon, 18)}${m.key === "approvals" && pendingCount ? `<span class="badge">${pendingCount}</span>` : ""}</button>`;
+        }).join("")}
+        <div style="flex:1"></div>
+        <button class="rail" data-a="theme" title="Tema" aria-label="Tema değiştir">${ic(S.dark ? "sun" : "moon", 17)}</button>
+        <button class="rail" data-a="logout" title="Çıkış" aria-label="Çıkış">${ic("logout", 17)}</button></nav>`;
+  }
+
+  function homeView() {
+    const hour = new Date().getHours();
+    const greet = hour < 12 ? "Günaydın" : hour < 18 ? "İyi günler" : "İyi akşamlar";
+    const stats = [
+      ["Onayımda bekleyen", S.data.inboxCount || 0, "p.in", "mod:approvals"],
+      ["Bekleyen okuma", S.data.homeTrainCount || 0, "t.un", "mod:training"],
+      ["Onay kuyruğunda doküman", S.data.homeQueueCount || 0, "k.queue", "mod:documents"],
+    ].filter(([, , key]) => scrOf(key));
+    return `<div style="padding:22px 24px;background:linear-gradient(150deg,var(--navy),#123061 60%,#0a1c40);color:#fff">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+        <span style="font-family:SFMono-Regular,Consolas,monospace;font-size:11px;letter-spacing:.26em;color:var(--gold)">${esc(BRAND.productMark)}</span>
+        <span style="flex:1"></span>
+        <span class="m" style="color:#9FB0CE">${esc(BRAND.slogan)}</span></div>
+      <div style="display:flex;align-items:center;gap:13px;flex-wrap:wrap">
+        <span style="width:42px;height:42px;border-radius:13px;background:${avatarColor(S.user.username)};color:#fff;font-size:13px;
+          display:flex;align-items:center;justify-content:center">${initials(S.user.displayName)}</span>
+        <div style="flex:1;min-width:170px"><div style="font-size:19px">${greet}, ${esc((S.user.displayName || "").split(" ")[0])}</div>
+          <div class="m" style="color:#9FB0CE;margin-top:3px">${esc(S.user.title || "")}${S.user.title && S.user.unit ? " · " : ""}${esc(S.user.unit || "")}</div></div></div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+        ${stats.map(([label, val, , jump]) => `<div style="background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:12px;
+          padding:11px 15px;min-width:130px;cursor:pointer" data-a="${jump}">
+          <div style="font-size:9.5px;color:#8FA0BE;letter-spacing:.08em;text-transform:uppercase">${esc(label)}</div>
+          <div class="m" style="font-size:19px;color:#EBC98A;margin-top:2px">${val} <span style="font-size:10px;color:#8FA0BE">Git →</span></div></div>`).join("")}
+      </div></div>
+      <div style="padding:20px 24px">
+        <div class="lbl">Modüller</div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(215px,1fr))">
+          ${S.modules.map((m) => {
+            const meta = MODULE_META[m.key] || { icon: "apps", color: "#33405C" };
+            return `<div class="card" style="cursor:pointer" data-a="mod:${m.key}">
+              <div style="display:flex;gap:11px;align-items:center">
+                <span style="width:36px;height:36px;border-radius:11px;background:${meta.color};color:#fff;display:flex;align-items:center;justify-content:center">${ic(meta.icon, 18)}</span>
+                <span style="flex:1;font-size:13.5px">${esc(m.label)}</span>${ic("external-link", 14, "color:" + meta.color)}</div></div>`;
+          }).join("")}
+        </div>
+        ${scrOf("s.all") ? `<div class="lbl" style="margin-top:20px">Kısayollar</div>
+        <div style="display:flex;gap:9px;flex-wrap:wrap">
+          ${(S.data.homeShortcuts || []).map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"
+            class="card" style="padding:10px 13px;display:flex;gap:9px;align-items:center;min-width:150px;text-decoration:none;color:inherit">
+            <span style="width:28px;height:28px;border-radius:9px;background:#8A6A2F;color:#fff;display:flex;align-items:center;justify-content:center">${ic("link", 15)}</span>
+            <span style="font-size:12.5px;flex:1">${esc(x.name)}</span>${ic("external-link", 13, "color:var(--tm)")}</a>`).join("")
+            || `<p class="m" style="color:var(--tm)">Kısayol tanımlı değil.</p>`}
+        </div>` : ""}
+      </div>`;
+  }
+
   function render() {
     document.documentElement.className = S.dark ? "dark" : "";
     if (S.view === "login") { app.innerHTML = loginView(); bindLogin(); return; }
@@ -1181,19 +1249,16 @@ const HERO_W = 1482, HERO_H = 1061;
       app.innerHTML = lockView() + (S.toast ? `<div class="toast ${S.toast.bad ? "er" : "ok"}">${esc(S.toast.msg)}</div>` : "");
       return;
     }
+    if (S.view === "home") {
+      app.innerHTML = `<div class="shell">${railView()}<div class="main" style="overflow-y:auto">${homeView()}</div></div>
+        ${S.dlg ? dialogView() : ""}${S.toast ? `<div class="toast ${S.toast.bad ? "er" : "ok"}">${esc(S.toast.msg)}</div>` : ""}`;
+      bindForms();
+      return;
+    }
     const mod = S.modules.find((m) => m.key === S.mod);
     const scr = (mod ? mod.screens : []).find((s) => s.key === S.scr);
-    const pendingCount = (S.data.inboxCount || 0);
     app.innerHTML = `<div class="shell">
-      <nav class="nv" aria-label="Modüller">
-        ${S.modules.map((m) => {
-          const meta = MODULE_META[m.key] || { icon: "apps", color: "#33405C" };
-          return `<button class="rail ${S.mod === m.key ? "on" : ""}" data-a="mod:${m.key}" title="${esc(m.label)}" aria-label="${esc(m.label)}">
-          ${ic(meta.icon, 18)}${m.key === "approvals" && pendingCount ? `<span class="badge">${pendingCount}</span>` : ""}</button>`;
-        }).join("")}
-        <div style="flex:1"></div>
-        <button class="rail" data-a="theme" title="Tema" aria-label="Tema değiştir">${ic(S.dark ? "sun" : "moon", 17)}</button>
-        <button class="rail" data-a="logout" title="Çıkış" aria-label="Çıkış">${ic("logout", 17)}</button></nav>
+      ${railView()}
       <div class="sub">
         <div style="display:flex;align-items:center;gap:9px;padding:6px 9px 12px">
           <span style="width:28px;height:28px;border-radius:9px;background:${mod ? (MODULE_META[mod.key] || {}).color || "#33405C" : "#33405C"};color:#fff;display:flex;align-items:center;justify-content:center">
@@ -1333,8 +1398,8 @@ const HERO_W = 1482, HERO_H = 1061;
       try {
         const res = await api("/auth/login", { method: "POST", body: { username: fd.get("username"), password: fd.get("password") } });
         csrfToken = res.csrfToken || csrfToken;
-        S.loginError = null; S.view = "app";
-        await loadMe(); await loadScreen(); await refreshCounts(); render();
+        S.loginError = null; S.view = "home";
+        await loadMe(); await refreshCounts(); await loadHomeData(); render();
       } catch (err) {
         S.loginError = err.status === 429 ? "Çok fazla deneme. Bir süre sonra tekrar deneyin." : "Kullanıcı adı veya parola hatalı.";
         render();
@@ -1453,6 +1518,22 @@ const HERO_W = 1482, HERO_H = 1061;
     try { S.data.inboxCount = (await api("/approvals/inbox")).items.length; } catch (_) { S.data.inboxCount = 0; }
   }
 
+  /* Ana ekran (home) kartları için gerçek sayılar; yalnızca kullanıcının erişimi olan
+     ekranlar için istek atılır (scrOf ile kontrol edilir), gereksiz 403 önlenir.
+     Her istek zaman aşımlıdır: ağ/sunucu beklenmedik şekilde yanıt vermezse ana ekran
+     sonsuza dek yüklenmeyi beklemek yerine ilgili sayıyı 0 göstererek devam eder. */
+  async function loadHomeData() {
+    if (scrOf("t.un")) {
+      try { S.data.homeTrainCount = ((await api("/training/pending", { timeoutMs: 8000 })).items || []).length; } catch (_) { S.data.homeTrainCount = 0; }
+    }
+    if (scrOf("k.queue")) {
+      try { S.data.homeQueueCount = (await api("/documents/queue", { timeoutMs: 8000 })).items.length; } catch (_) { S.data.homeQueueCount = 0; }
+    }
+    if (scrOf("s.all")) {
+      try { S.data.homeShortcuts = (await api("/shortcuts", { timeoutMs: 8000 })).items; } catch (_) { S.data.homeShortcuts = []; }
+    }
+  }
+
   app.addEventListener("click", async (ev) => {
     const el = ev.target.closest("[data-a]");
     if (!el) return;
@@ -1468,9 +1549,10 @@ const HERO_W = 1482, HERO_H = 1061;
         return;
       }
       if (k === "logout") { await api("/auth/logout", { method: "POST" }); S.view = "login"; S.user = null; return render(); }
+      if (k === "home") { S.view = "home"; S.detail = null; S.reading = null; await loadHomeData(); return render(); }
       if (k === "mod") {
         const m = S.modules.find((x) => x.key === p[0]);
-        S.mod = m.key; S.scr = m.screens[0] && m.screens[0].key; S.detail = null; S.reading = null;
+        S.view = "app"; S.mod = m.key; S.scr = m.screens[0] && m.screens[0].key; S.detail = null; S.reading = null;
         await loadScreen(); return render();
       }
       if (k === "scr") {
@@ -1790,8 +1872,8 @@ const HERO_W = 1482, HERO_H = 1061;
   /* ---------------- açılış ---------------- */
   (async function boot() {
     try {
-      await loadMe(); S.view = "app";
-      await loadScreen(); await refreshCounts();
+      await loadMe(); S.view = "home";
+      await refreshCounts(); await loadHomeData();
     } catch (_) { S.view = "login"; }
     render();
   })();
