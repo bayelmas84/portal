@@ -260,6 +260,144 @@ module.exports = function (cfg) {
     } catch (e) { next(e); }
   });
 
+  /* --- Onaycılar günlüğü (d.appr) ---
+     Ayrı bir depoya gerek yok: faz kapısı imzaları (stage_gate_signatures) ve
+     doküman onayları (project_document_approvals) zaten var; bu uç ikisini
+     projeye göre birleştirip zaman sırasına göre döner. */
+  r.get("/:id/approvals-log", requireProjectScreen("d.appr", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const gateSigns = await db.many(
+        `SELECT s.signed_at AS at, u.display_name, s.username, g.name AS subject,
+                'faz_kapisi' AS kind, FALSE AS is_proxy
+           FROM stage_gate_signatures s
+           JOIN stage_gates g ON g.id = s.gate_id
+           JOIN users u ON u.username = s.username
+          WHERE g.project_id = $1`, [id]);
+      const docApprovals = await db.many(
+        `SELECT a.approved_at AS at, u.display_name, a.approver_username AS username,
+                (d.doc_type || ' — ' || a.step_name) AS subject, 'dokuman' AS kind, a.is_proxy
+           FROM project_document_approvals a
+           JOIN project_documents d ON d.id = a.document_id
+           JOIN users u ON u.username = a.approver_username
+          WHERE d.project_id = $1`, [id]);
+      const items = [...gateSigns, ...docApprovals].sort((a, b) => new Date(b.at) - new Date(a.at));
+      res.json({ items });
+    } catch (e) { next(e); }
+  });
+
+  /* --- Değişiklik talepleri (d.cr) ---
+     İki bağımsız onay birlikte zorunlu: talep sahibinin yöneticisi VE proje ekibi
+     (PM/PMD temsilen). Sıra önemli değil; ikisi de tamamlanınca 'onaylandi' olur. */
+  r.get("/:id/change-requests", requireProjectScreen("d.cr", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const items = await db.many(
+        `SELECT id, title, description, requested_by, status, manager_approved_by, manager_approved_at,
+                team_approved_by, team_approved_at, reject_reason, created_at, decided_at
+           FROM project_change_requests WHERE project_id = $1 ORDER BY created_at DESC`, [id]);
+      res.json({ items });
+    } catch (e) { next(e); }
+  });
+
+  r.post("/:id/change-requests", requireAuth, async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
+      if (!p) return res.status(404).json({ error: "Bulunamadı" });
+      const member = await db.one("SELECT 1 FROM project_members WHERE project_id=$1 AND username=$2", [id, req.user.username]);
+      const hasRoleAccess = access.canWrite(req.access, "d.cr");
+      if (!member && !hasRoleAccess)
+        return res.status(403).json({ error: "Yalnızca proje ekibi üyeleri değişiklik talebi açabilir" });
+
+      const v = z.object({
+        title: z.string().trim().min(5).max(160),
+        description: z.string().trim().min(10).max(4000),
+      }).parse(req.body);
+      const row = await db.one(
+        `INSERT INTO project_change_requests (project_id, title, description, requested_by)
+         VALUES ($1,$2,$3,$4) RETURNING id`,
+        [id, v.title, v.description, req.user.username]);
+      await audit.record("degisiklik_talebi.acildi", req.user.username, { detail: { proje: id, id: row.id, baslik: v.title } });
+      res.status(201).json({ id: row.id });
+    } catch (e) { next(e); }
+  });
+
+  async function finalizeIfBothApproved(crId) {
+    const cr = await db.one("SELECT * FROM project_change_requests WHERE id=$1", [crId]);
+    if (cr.manager_approved_at && cr.team_approved_at && cr.status === "bekliyor") {
+      await db.query("UPDATE project_change_requests SET status='onaylandi', decided_at=now() WHERE id=$1", [crId]);
+      return true;
+    }
+    return false;
+  }
+
+  r.post("/:id/change-requests/:crId/approve-manager", requireAuth, async (req, res, next) => {
+    try {
+      const crId = z.coerce.number().int().positive().parse(req.params.crId);
+      const cr = await db.one("SELECT * FROM project_change_requests WHERE id=$1", [crId]);
+      if (!cr) return res.status(404).json({ error: "Bulunamadı" });
+      if (cr.status !== "bekliyor") return res.status(409).json({ error: "Bu talep karara bağlanmış" });
+      if (cr.manager_approved_at) return res.status(409).json({ error: "Yönetici onayı zaten verilmiş" });
+
+      const managerUsername = await projectDocs.managerOf(cr.requested_by);
+      const isProxy = !managerUsername;
+      const allowed = isProxy ? projects.isGateAuthority(req.user) : req.user.username === managerUsername;
+      if (!allowed)
+        return res.status(403).json({
+          error: managerUsername ? `Bu onayı yalnızca ${managerUsername} verebilir`
+                                  : "Talep sahibinin yöneticisi tanımlı değil; yalnızca Proje Yönetim Direktörü vekaleten onaylayabilir",
+        });
+
+      await db.query(
+        "UPDATE project_change_requests SET manager_approved_by=$1, manager_approved_at=now() WHERE id=$2",
+        [req.user.username, crId]);
+      const finished = await finalizeIfBothApproved(crId);
+      await audit.record("degisiklik_talebi.yonetici_onayi", req.user.username, { detail: { id: crId, vekalet: isProxy, tamamlandi: finished } });
+      res.json({ ok: true, finished });
+    } catch (e) { next(e); }
+  });
+
+  r.post("/:id/change-requests/:crId/approve-team", requireAuth, async (req, res, next) => {
+    try {
+      const crId = z.coerce.number().int().positive().parse(req.params.crId);
+      const cr = await db.one("SELECT * FROM project_change_requests WHERE id=$1", [crId]);
+      if (!cr) return res.status(404).json({ error: "Bulunamadı" });
+      if (cr.status !== "bekliyor") return res.status(409).json({ error: "Bu talep karara bağlanmış" });
+      if (cr.team_approved_at) return res.status(409).json({ error: "Ekip onayı zaten verilmiş" });
+
+      if (!access.canWrite(req.access, "d.cr"))
+        return res.status(403).json({ error: "Proje ekibi onayını yalnızca Proje Yöneticisi/Direktörü verebilir" });
+
+      await db.query(
+        "UPDATE project_change_requests SET team_approved_by=$1, team_approved_at=now() WHERE id=$2",
+        [req.user.username, crId]);
+      const finished = await finalizeIfBothApproved(crId);
+      await audit.record("degisiklik_talebi.ekip_onayi", req.user.username, { detail: { id: crId, tamamlandi: finished } });
+      res.json({ ok: true, finished });
+    } catch (e) { next(e); }
+  });
+
+  r.post("/:id/change-requests/:crId/reject", requireAuth, async (req, res, next) => {
+    try {
+      const crId = z.coerce.number().int().positive().parse(req.params.crId);
+      const reason = z.string().trim().min(10).max(2000).parse(req.body.reason);
+      const cr = await db.one("SELECT * FROM project_change_requests WHERE id=$1", [crId]);
+      if (!cr) return res.status(404).json({ error: "Bulunamadı" });
+      if (cr.status !== "bekliyor") return res.status(409).json({ error: "Bu talep zaten karara bağlanmış" });
+
+      const managerUsername = await projectDocs.managerOf(cr.requested_by);
+      const isManagerSide = managerUsername ? req.user.username === managerUsername : projects.isGateAuthority(req.user);
+      const isTeamSide = access.canWrite(req.access, "d.cr");
+      if (!isManagerSide && !isTeamSide)
+        return res.status(403).json({ error: "Bu talebi yalnızca onaycı taraflardan biri reddedebilir" });
+
+      await db.query("UPDATE project_change_requests SET status='reddedildi', reject_reason=$1, decided_at=now() WHERE id=$2", [reason, crId]);
+      await audit.record("degisiklik_talebi.reddedildi", req.user.username, { detail: { id: crId, gerekce: reason } });
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+
   /* --- proje ekleme ve silme (tam yetki gerektirir) --- */
   const projSchema = z.object({
     code: z.string().trim().regex(/^[A-Z]{2,10}$/, "Proje kodu 2-10 büyük harf olmalı"),

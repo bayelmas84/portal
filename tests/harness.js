@@ -52,7 +52,7 @@ async function boot() {
   const db = require("../server/src/lib/db");
   db.inject(pool);
 
-  for (const f of ["001_init.sql", "003_mail_settings.sql", "004_bi_reports.sql", "006_projects.sql", "007_directory_settings.sql", "008_project_authority.sql", "009_brand.sql", "010_project_team.sql", "011_project_documents.sql"]) {
+  for (const f of ["001_init.sql", "003_mail_settings.sql", "004_bi_reports.sql", "006_projects.sql", "007_directory_settings.sql", "008_project_authority.sql", "009_brand.sql", "010_project_team.sql", "011_project_documents.sql", "012_project_change_requests.sql"]) {
     await pool.query(fs.readFileSync(path.join(__dirname, "../server/migrations", f), "utf8"));
   }
   const { seed } = require("../server/src/lib/seed");
