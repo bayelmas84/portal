@@ -31,7 +31,7 @@ const HERO_W = 1482, HERO_H = 1061;
     view: "login", user: null, modules: [], settings: {}, mod: null, scr: null,
     data: {}, dlg: null, form: {}, toast: null, dark: matchMedia("(prefers-color-scheme: dark)").matches,
     reading: null, detail: null, quiz: null, quizResult: null, overdue: [], drill: null, showPw: false, execFilter: null, execUnit: null,
-    projTab: "overview", docOpen: null,
+    projTab: "overview", docOpen: null, userMenuOpen: false, searchQuery: "",
   };
   let csrfToken = null;
 
@@ -114,6 +114,7 @@ const HERO_W = 1482, HERO_H = 1061;
       else if (S.scr === "p.my") S.data.items = (await api("/approvals/mine")).items;
       else if (S.scr === "p.done") S.data.items = (await api("/approvals/decided")).items;
       else if (S.scr === "s.all") S.data.items = (await api("/shortcuts")).items;
+      else if (S.scr === "e.list") S.data.items = (await api("/employees")).items;
       else if (S.scr === "m.users") S.data.items = (await api("/admin/users")).items;
       else if (S.scr === "m.access") S.data = await api("/admin/permissions");
       else if (S.scr === "m.avail") S.data = await api("/admin/screens");
@@ -668,7 +669,50 @@ const HERO_W = 1482, HERO_H = 1061;
     "m.ann": "speakerphone", "m.users": "users", "m.units": "building", "m.titles": "id-badge",
     "m.roles": "shield", "m.access": "checkbox", "m.notif": "messages", "m.dir": "shield",
     "m.brand": "palette", "m.avail": "adjustments", "m.short": "apps",
+    "e.list": "address-book",
   };
+
+  /* Tek sütunlu sol menü: her öğe gerçek bir modül+ekrana bağlanır. "tasks" ve "delivery"
+     aynı modülü (delivery) farklı iniş ekranlarıyla kullanır (Görevler -> d.my, Projeler ->
+     d.projects ve devamı); ikisi ayrı ayrı vurgulanır (bkz. isNavActive). "tabs" verilen
+     öğeler için içerik üstünde ekran-geçiş şeridi gösterilir (bkz. tabStripView).
+     Not: Referans tasarımdaki "Toplantılar" öğesi kasıtlı olarak burada yok -- hiçbir
+     gerçek takvim/toplantı arka ucu yok; sahte veriyle bir ekran uydurmak yerine bu
+     bölüm tamamen çıkarıldı (kullanıcıyla konuşuldu). */
+  const NAV_ITEMS = [
+    { key: "home", label: "Ana Sayfa", icon: "home", color: "#8A6A2F" },
+    { key: "tasks", label: "Görevler", icon: "user-check", mod: "delivery", scr: "d.my", color: "#0F6E56", tabs: [] },
+    { key: "delivery", label: "Projeler", icon: "clipboard-list", mod: "delivery", scr: "d.projects", color: "#0F6E56",
+      tabs: ["d.projects", "d.board", "d.backlog", "d.sprint", "d.gate", "d.charts", "d.exec"] },
+    { key: "reports", label: "Raporlar", icon: "chart-histogram", mod: "reports", scr: "r.list", color: "#B8894A" },
+    { key: "documents", label: "Dokümanlar", icon: "files", mod: "documents", scr: "k.docs", color: "#4B3B8F" },
+    { key: "announce", label: "Duyurular", icon: "speakerphone", mod: "announce", scr: "a.list", color: "#0178BA" },
+    { key: "employees", label: "Çalışanlar", icon: "users", mod: "employees", scr: "e.list", color: "#33405C" },
+    { key: "training", label: "Bilgi Bankası", icon: "book", mod: "training", scr: "t.un", color: "#7A1F3D" },
+    { key: "compliance", label: "Uyum ve Teftiş", icon: "shield", mod: "compliance", scr: "c.read", color: "#8E0D4D" },
+    { key: "approvals", label: "Onaylar", icon: "checkbox", mod: "approvals", scr: "p.in", color: "#0F6E56" },
+    { key: "shortcuts", label: "Kısayollar", icon: "link", mod: "shortcuts", scr: "s.all", color: "#8A6A2F" },
+    { key: "admin", label: "Yönetim", icon: "adjustments", mod: "admin", scr: "m.ann", color: "#33405C" },
+  ];
+  function navItemTabs(item) {
+    if (!item || item.key === "home") return [];
+    if (item.tabs) return item.tabs;
+    const mod = S.modules.find((m) => m.key === item.mod);
+    return mod ? mod.screens.map((s) => s.key) : [];
+  }
+  function visibleNavItems() {
+    return NAV_ITEMS.filter((it) => it.key === "home" || S.modules.some((m) => m.key === it.mod));
+  }
+  function isNavActive(item) {
+    if (item.key === "home") return S.view === "home";
+    if (S.view !== "app" || S.mod !== item.mod) return false;
+    if (item.key === "tasks") return S.scr === "d.my";
+    if (item.key === "delivery") return S.scr !== "d.my";
+    return true;
+  }
+  function currentNavItem() {
+    return visibleNavItems().find(isNavActive) || null;
+  }
   const AVATAR_COLORS = ["#0F6E56", "#4B3B8F", "#0178BA", "#7A1F3D", "#B8894A", "#8E0D4D", "#33405C", "#8A6A2F", "#A32D2D", "#3B6D11"];
   function avatarColor(key) {
     let h = 0;
@@ -685,6 +729,32 @@ const HERO_W = 1482, HERO_H = 1061;
   const STATE_EN = { backlog: "Backlog", todo: "To Do", prog: "In Progress", review: "In Review", test: "In Testing", done: "Done" };
   const progressBar = (pct, color) => `<div style="height:8px;background:var(--s1);border-radius:20px;overflow:hidden">
     <div style="height:8px;width:${Math.max(0, Math.min(100, pct))}%;background:${color || "var(--navy)"}"></div></div>`;
+
+  function employeesView() {
+    const q = (S.empFilter || "").toLowerCase();
+    const all = S.data.items || [];
+    const rows = q ? all.filter((e) =>
+      [e.display_name, e.unit_name, e.title_name, e.email].some((f) => (f || "").toLowerCase().includes(q))) : all;
+    const groups = {};
+    rows.forEach((e) => { const g = e.unit_name || "Birim atanmamış"; (groups[g] = groups[g] || []).push(e); });
+    return head("Çalışanlar", `${all.length} aktif çalışan · gerçek kullanıcı dizini`) +
+      `<div style="margin-bottom:14px"><input type="text" placeholder="İsim, birim, unvan veya e-posta ile filtrele..."
+        value="${esc(S.empFilter || "")}" data-a="empFilterInput" id="empFilterBox" style="max-width:340px"></div>` +
+      (rows.length === 0 ? `<p class="m" style="color:var(--tm)">Eşleşen çalışan bulunamadı.</p>` :
+        Object.keys(groups).sort().map((g) => `<div class="lbl" style="margin-top:14px">${esc(g)} (${groups[g].length})</div>
+          <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr))">
+            ${groups[g].map((e) => `<div class="card">
+              <div style="display:flex;gap:10px;align-items:center">
+                <span style="width:34px;height:34px;border-radius:10px;background:${avatarColor(e.username)};color:#fff;
+                  font-size:11.5px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${initials(e.display_name)}</span>
+                <div style="min-width:0"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.display_name)}</div>
+                  <div class="m" style="color:var(--tm)">${esc(e.title_name || "—")}</div></div></div>
+              <div style="margin-top:8px;font-size:11.5px;color:var(--t2)">
+                ${e.email ? `<div>${esc(e.email)}</div>` : ""}
+                ${e.manager_name ? `<div class="m" style="color:var(--tm);margin-top:3px">Yönetici: ${esc(e.manager_name)}</div>` : ""}</div>
+            </div>`).join("")}
+          </div>`).join(""));
+  }
 
   function myWorkView() {
     const items = S.data.items || [];
@@ -1170,6 +1240,7 @@ const HERO_W = 1482, HERO_H = 1061;
       case "r.usage": return reportUsageView();
       case "m.dir": return directoryView();
       case "d.my": return myWorkView();
+      case "e.list": return employeesView();
       case "d.projects": return projectsView();
       case "d.charts": return chartsView();
       case "d.exec": return execView();
@@ -1181,57 +1252,98 @@ const HERO_W = 1482, HERO_H = 1061;
     }
   }
 
-  function railView() {
-    const pendingCount = (S.data.inboxCount || 0);
-    return `<nav class="nv" aria-label="Modüller">
-        <button class="rail ${S.view === "home" ? "on" : ""}" data-a="home" title="Ana ekran" aria-label="Ana ekran">${ic("home", 18)}</button>
-        <div style="width:26px;height:1px;background:rgba(255,255,255,.14);margin:3px 0"></div>
-        ${S.modules.map((m) => {
-          const meta = MODULE_META[m.key] || { icon: "apps", color: "#33405C" };
-          return `<button class="rail ${S.view === "app" && S.mod === m.key ? "on" : ""}" data-a="mod:${m.key}" title="${esc(m.label)}" aria-label="${esc(m.label)}">
-          ${ic(meta.icon, 18)}${m.key === "approvals" && pendingCount ? `<span class="badge">${pendingCount}</span>` : ""}</button>`;
-        }).join("")}
-        <div style="flex:1"></div>
-        <button class="rail" data-a="theme" title="Tema" aria-label="Tema değiştir">${ic(S.dark ? "sun" : "moon", 17)}</button>
-        <button class="rail" data-a="logout" title="Çıkış" aria-label="Çıkış">${ic("logout", 17)}</button></nav>`;
+  function sidebarView() {
+    return `<nav class="app-sidebar" aria-label="Ana menü">
+        <div class="app-sidebar-brand">
+          <span class="mark">${ic("home", 18)}</span>
+          <div><div class="name">TERA PORTAL</div><div class="tag">${esc(BRAND.slogan)}</div></div></div>
+        <div class="app-sidebar-nav">
+          ${visibleNavItems().map((it) => `<button class="nav-item ${isNavActive(it) ? "on" : ""}" data-a="navgo:${it.key}"
+            title="${esc(it.label)}">${ic(it.icon, 17)}<span>${esc(it.label)}</span>
+            ${it.key === "approvals" && S.data.inboxCount ? `<span class="badge">${S.data.inboxCount}</span>` : ""}</button>`).join("")}
+        </div></nav>`;
+  }
+
+  function headerView() {
+    const bellCount = (S.data.inboxCount || 0) + (S.overdue.length || 0);
+    return `<header class="app-header">
+      <form id="globalSearchForm" class="app-search" autocomplete="off">
+        <span class="ic">${ic("list-search", 15)}</span>
+        <input type="text" name="q" placeholder="Şirket içinde ara... (modül, ekran)" value="${esc(S.searchQuery || "")}">
+      </form>
+      <span style="flex:1"></span>
+      <button class="icon-btn" data-a="navgo:approvals" title="Bildirimler" aria-label="Bildirimler">
+        ${ic("bell-ringing", 18)}${bellCount ? `<span class="badge">${bellCount}</span>` : ""}</button>
+      <div class="user-menu-wrap">
+        <button class="user-chip" data-a="userMenu">
+          <span class="avatar" style="background:${avatarColor(S.user.username)}">${initials(S.user.displayName)}</span>
+          <span class="who"><div class="n">${esc(S.user.displayName)}</div><div class="t">${esc(S.user.titleName || S.user.unitName || "")}</div></span>
+          ${ic("layout-grid", 12, "color:var(--tm)")}</button>
+        ${S.userMenuOpen ? `<div class="user-menu">
+          <button data-a="theme">${ic(S.dark ? "sun" : "moon", 15)}<span>${S.dark ? "Açık mod" : "Koyu mod"}</span></button>
+          <button data-a="logout">${ic("logout", 15)}<span>Çıkış</span></button></div>` : ""}
+      </div></header>`;
+  }
+
+  function tabStripView(item) {
+    const tabs = navItemTabs(item);
+    if (tabs.length < 2 || (S.detail && item.key === "delivery")) return "";
+    const mod = S.modules.find((m) => m.key === item.mod);
+    return `<div class="tabstrip">${tabs.map((key) => {
+      const s = (mod ? mod.screens : []).find((x) => x.key === key);
+      if (!s) return "";
+      return `<button class="tab-item ${S.scr === key ? "on" : ""}" data-a="scr:${key}">
+        ${ic(SCREEN_ICON[key] || "apps", 14)}<span>${esc(s.label)}</span>${s.state === "bakim" ? pill("bakım", "wr") : ""}</button>`;
+    }).join("")}</div>`;
   }
 
   function homeView() {
     const hour = new Date().getHours();
     const greet = hour < 12 ? "Günaydın" : hour < 18 ? "İyi günler" : "İyi akşamlar";
+    const today = new Date().toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", weekday: "long" });
     const stats = [
-      ["Onayımda bekleyen", S.data.inboxCount || 0, "p.in", "mod:approvals"],
-      ["Bekleyen okuma", S.data.homeTrainCount || 0, "t.un", "mod:training"],
-      ["Onay kuyruğunda doküman", S.data.homeQueueCount || 0, "k.queue", "mod:documents"],
+      ["Onay bekliyor", S.data.inboxCount || 0, "p.in", "navgo:approvals"],
+      ["Gecikmiş okuma", S.overdue.length || 0, "t.un", "navgo:training"],
+      ["Yeni duyuru", S.data.homeUnreadAnn || 0, "a.list", "navgo:announce"],
     ].filter(([, , key]) => scrOf(key));
-    return `<div style="padding:22px 24px;background:linear-gradient(150deg,var(--navy),#123061 60%,#0a1c40);color:#fff">
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+    const quick = [
+      canWrite("a.list") ? ["annNew", "speakerphone", "Duyuru Gir"] : null,
+      (canWrite("k.docs") || scrOf("k.queue")) ? ["docNew", "file-upload", "Doküman Yükle"] : null,
+      scrOf("r.list") ? ["navgo:reports", "chart-histogram", "Raporlar"] : null,
+    ].filter(Boolean);
+    return `<div style="padding:22px 24px 26px;background:linear-gradient(150deg,var(--navy),#123061 60%,#0a1c40);color:#fff">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
         <span style="font-family:SFMono-Regular,Consolas,monospace;font-size:11px;letter-spacing:.26em;color:var(--gold)">${esc(BRAND.productMark)}</span>
         <span style="flex:1"></span>
-        <span class="m" style="color:#9FB0CE">${esc(BRAND.slogan)}</span></div>
+        <span class="m" style="color:#9FB0CE">${esc(today)}</span></div>
       <div style="display:flex;align-items:center;gap:13px;flex-wrap:wrap">
-        <span style="width:42px;height:42px;border-radius:13px;background:${avatarColor(S.user.username)};color:#fff;font-size:13px;
+        <span style="width:46px;height:46px;border-radius:14px;background:${avatarColor(S.user.username)};color:#fff;font-size:14px;
           display:flex;align-items:center;justify-content:center">${initials(S.user.displayName)}</span>
-        <div style="flex:1;min-width:170px"><div style="font-size:19px">${greet}, ${esc((S.user.displayName || "").split(" ")[0])}</div>
-          <div class="m" style="color:#9FB0CE;margin-top:3px">${esc(S.user.title || "")}${S.user.title && S.user.unit ? " · " : ""}${esc(S.user.unit || "")}</div></div></div>
-      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:170px"><div style="font-size:21px">${greet}, ${esc((S.user.displayName || "").split(" ")[0])} 👋</div>
+          <div class="m" style="color:#9FB0CE;margin-top:3px">${esc(S.user.titleName || "")}${S.user.titleName && S.user.unitName ? " · " : ""}${esc(S.user.unitName || "")}</div></div></div>
+      <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
         ${stats.map(([label, val, , jump]) => `<div style="background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:12px;
-          padding:11px 15px;min-width:130px;cursor:pointer" data-a="${jump}">
+          padding:11px 15px;min-width:140px;cursor:pointer" data-a="${jump}">
           <div style="font-size:9.5px;color:#8FA0BE;letter-spacing:.08em;text-transform:uppercase">${esc(label)}</div>
-          <div class="m" style="font-size:19px;color:#EBC98A;margin-top:2px">${val} <span style="font-size:10px;color:#8FA0BE">Git →</span></div></div>`).join("")}
+          <div class="m" style="font-size:20px;color:#EBC98A;margin-top:2px">${val} <span style="font-size:10px;color:#8FA0BE">Git →</span></div></div>`).join("")}
       </div></div>
       <div style="padding:20px 24px">
-        <div class="lbl">Modüller</div>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(215px,1fr))">
-          ${S.modules.map((m) => {
-            const meta = MODULE_META[m.key] || { icon: "apps", color: "#33405C" };
-            return `<div class="card" style="cursor:pointer" data-a="mod:${m.key}">
-              <div style="display:flex;gap:11px;align-items:center">
-                <span style="width:36px;height:36px;border-radius:11px;background:${meta.color};color:#fff;display:flex;align-items:center;justify-content:center">${ic(meta.icon, 18)}</span>
-                <span style="flex:1;font-size:13.5px">${esc(m.label)}</span>${ic("external-link", 14, "color:" + meta.color)}</div></div>`;
-          }).join("")}
-        </div>
-        ${scrOf("s.all") ? `<div class="lbl" style="margin-top:20px">Kısayollar</div>
+        ${quick.length ? `<div class="lbl">Hızlı Erişim</div>
+        <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:20px">
+          ${quick.map(([a, icon, label]) => `<button class="card" style="cursor:pointer;display:flex;gap:9px;align-items:center;min-width:150px;border:1px solid var(--bd)" data-a="${a}">
+            <span style="width:30px;height:30px;border-radius:9px;background:var(--ba);color:var(--ta);display:flex;align-items:center;justify-content:center">${ic(icon, 15)}</span>
+            <span style="font-size:12.5px">${esc(label)}</span></button>`).join("")}
+        </div>` : ""}
+        ${scrOf("a.list") ? `<div class="lbl">Son Duyurular</div>
+        <div style="margin-bottom:20px">
+          ${(S.data.homeAnnouncements || []).length ? (S.data.homeAnnouncements || []).map((a) => `<div class="card" style="margin-bottom:8px;cursor:pointer" data-a="navgo:announce">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              ${!a.is_read ? `<span class="pl ba" style="background:var(--ba);color:var(--ta)">yeni</span>` : ""}
+              <span style="font-size:13px;flex:1">${esc(a.title)}</span>
+              <span class="m" style="color:var(--tm)">${esc(a.valid_until || "")}</span></div></div>`).join("")
+            : `<div class="card ok"><span style="font-size:12px">Okunmamış duyuru yok.</span></div>`}
+        </div>` : ""}
+        ${scrOf("s.all") ? `<div class="lbl">Kısayollar</div>
         <div style="display:flex;gap:9px;flex-wrap:wrap">
           ${(S.data.homeShortcuts || []).map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"
             class="card" style="padding:10px 13px;display:flex;gap:9px;align-items:center;min-width:150px;text-decoration:none;color:inherit">
@@ -1249,37 +1361,21 @@ const HERO_W = 1482, HERO_H = 1061;
       app.innerHTML = lockView() + (S.toast ? `<div class="toast ${S.toast.bad ? "er" : "ok"}">${esc(S.toast.msg)}</div>` : "");
       return;
     }
-    if (S.view === "home") {
-      app.innerHTML = `<div class="shell">${railView()}<div class="main" style="overflow-y:auto">${homeView()}</div></div>
-        ${S.dlg ? dialogView() : ""}${S.toast ? `<div class="toast ${S.toast.bad ? "er" : "ok"}">${esc(S.toast.msg)}</div>` : ""}`;
-      bindForms();
-      return;
-    }
-    const mod = S.modules.find((m) => m.key === S.mod);
-    const scr = (mod ? mod.screens : []).find((s) => s.key === S.scr);
+    const navItem = currentNavItem();
+    const bodyHtml = S.view === "home" ? homeView() : screenBody();
     app.innerHTML = `<div class="shell">
-      ${railView()}
-      <div class="sub">
-        <div style="display:flex;align-items:center;gap:9px;padding:6px 9px 12px">
-          <span style="width:28px;height:28px;border-radius:9px;background:${mod ? (MODULE_META[mod.key] || {}).color || "#33405C" : "#33405C"};color:#fff;display:flex;align-items:center;justify-content:center">
-            ${ic(mod ? (MODULE_META[mod.key] || {}).icon || "apps" : "apps", 15)}</span>
-          <span style="font-size:13px;flex:1">${esc(mod ? mod.label : "")}</span></div>
-        ${(mod ? mod.screens : []).map((s) => `<div class="si ${S.scr === s.key ? "on" : ""}" data-a="scr:${s.key}">
-          ${ic(SCREEN_ICON[s.key] || "apps", 15)}<span style="flex:1">${esc(s.label)}</span>${s.state === "bakim" ? pill("bakım", "wr") : ""}</div>`).join("")}
-      </div>
-      <div class="main">
-        <div class="scrbar">${(mod ? mod.screens : []).map((s) => `<div class="si ${S.scr === s.key ? "on" : ""}" data-a="scr:${s.key}">${ic(SCREEN_ICON[s.key] || "apps", 14)}<span>${esc(s.label)}</span></div>`).join("")}</div>
-        <div class="top"><span style="font-size:11.5px;color:var(--tm)">${esc(mod ? mod.label : "")}</span>
-          ${scr && !S.detail ? `<span style="color:var(--tm)">/</span><span style="font-size:12.5px">${esc(scr.label)}</span>` : ""}
-          <span style="flex:1"></span>
-          <span class="m" style="color:var(--tm)">${esc(S.user.displayName)}</span>
-          <span style="width:28px;height:28px;border-radius:9px;background:${avatarColor(S.user.username)};color:#fff;font-size:11px;
-            display:flex;align-items:center;justify-content:center">${initials(S.user.displayName)}</span></div>
-        <div class="body">${screenBody()}</div>
+      ${sidebarView()}
+      <div class="app-main">
+        ${headerView()}
+        <div class="main">
+          ${navItem ? tabStripView(navItem) : ""}
+          <div class="body">${bodyHtml}</div>
+        </div>
       </div></div>
       ${S.dlg ? dialogView() : ""}
       ${S.toast ? `<div class="toast ${S.toast.bad ? "er" : "ok"}">${esc(S.toast.msg)}</div>` : ""}`;
     bindForms();
+    bindGlobalSearch();
   }
 
   function dialogView() {
@@ -1407,6 +1503,32 @@ const HERO_W = 1482, HERO_H = 1061;
     };
   }
 
+  function bindGlobalSearch() {
+    const form = document.getElementById("globalSearchForm");
+    if (!form) return;
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const q = String(new FormData(form).get("q") || "").trim().toLowerCase();
+      S.searchQuery = q;
+      if (!q) return;
+      const navHit = visibleNavItems().find((it) => it.key !== "home" && it.label.toLowerCase().includes(q));
+      if (navHit) {
+        const m = S.modules.find((x) => x.key === navHit.mod);
+        const targetScr = m && (m.screens.find((s) => s.key === navHit.scr) || m.screens[0]);
+        S.view = "app"; S.mod = m.key; S.scr = targetScr && targetScr.key; S.detail = null; S.reading = null;
+        await loadScreen(); return render();
+      }
+      for (const m of S.modules) {
+        const s = m.screens.find((sc) => sc.label.toLowerCase().includes(q));
+        if (s) {
+          S.view = "app"; S.mod = m.key; S.scr = s.key; S.detail = null; S.reading = null;
+          await loadScreen(); return render();
+        }
+      }
+      toast(`"${q}" için bir ekran bulunamadı.`, true);
+    };
+  }
+
   function bindForms() {
     const dirForm = document.getElementById("dirForm");
     if (dirForm) {
@@ -1521,22 +1643,41 @@ const HERO_W = 1482, HERO_H = 1061;
   /* Ana ekran (home) kartları için gerçek sayılar; yalnızca kullanıcının erişimi olan
      ekranlar için istek atılır (scrOf ile kontrol edilir), gereksiz 403 önlenir.
      Her istek zaman aşımlıdır: ağ/sunucu beklenmedik şekilde yanıt vermezse ana ekran
-     sonsuza dek yüklenmeyi beklemek yerine ilgili sayıyı 0 göstererek devam eder. */
+     sonsuza dek yüklenmeyi beklemek yerine ilgili sayıyı 0 göstererek devam eder.
+     "Gecikmiş okuma" ayrıca bir istek gerektirmez: S.overdue zaten /me ile geliyor. */
   async function loadHomeData() {
-    if (scrOf("t.un")) {
-      try { S.data.homeTrainCount = ((await api("/training/pending", { timeoutMs: 8000 })).items || []).length; } catch (_) { S.data.homeTrainCount = 0; }
-    }
-    if (scrOf("k.queue")) {
-      try { S.data.homeQueueCount = (await api("/documents/queue", { timeoutMs: 8000 })).items.length; } catch (_) { S.data.homeQueueCount = 0; }
+    if (scrOf("a.list")) {
+      try {
+        const items = (await api("/announcements", { timeoutMs: 8000 })).items || [];
+        const live = items.filter((a) => a.status === "yayinda");
+        S.data.homeUnreadAnn = live.filter((a) => !a.is_read).length;
+        S.data.homeAnnouncements = live.slice(0, 3);
+      } catch (_) { S.data.homeUnreadAnn = 0; S.data.homeAnnouncements = []; }
     }
     if (scrOf("s.all")) {
       try { S.data.homeShortcuts = (await api("/shortcuts", { timeoutMs: 8000 })).items; } catch (_) { S.data.homeShortcuts = []; }
     }
   }
 
+  /* Çalışanlar ekranındaki canlı filtre: tam render() odak kaybına yol açacağından,
+     yeniden çizimden sonra imleç konumu geri yükleniyor. */
+  app.addEventListener("input", (ev) => {
+    const el = ev.target.closest('[data-a="empFilterInput"]');
+    if (!el) return;
+    S.empFilter = el.value;
+    const pos = el.selectionStart;
+    render();
+    const el2 = document.getElementById("empFilterBox");
+    if (el2) { el2.focus(); try { el2.setSelectionRange(pos, pos); } catch (_) {} }
+  });
+
   app.addEventListener("click", async (ev) => {
     const el = ev.target.closest("[data-a]");
-    if (!el) return;
+    if (!el) {
+      if (S.userMenuOpen && !ev.target.closest(".user-menu-wrap")) { S.userMenuOpen = false; render(); }
+      return;
+    }
+    if (S.userMenuOpen && el.dataset.a !== "userMenu" && !el.closest(".user-menu-wrap")) S.userMenuOpen = false;
     const [k, ...p] = el.dataset.a.split(":");
     try {
       if (k === "theme") { S.dark = !S.dark; return render(); }
@@ -1550,9 +1691,22 @@ const HERO_W = 1482, HERO_H = 1061;
       }
       if (k === "logout") { await api("/auth/logout", { method: "POST" }); S.view = "login"; S.user = null; return render(); }
       if (k === "home") { S.view = "home"; S.detail = null; S.reading = null; await loadHomeData(); return render(); }
+      if (k === "userMenu") { S.userMenuOpen = !S.userMenuOpen; return render(); }
+      if (k === "navgo") {
+        const item = NAV_ITEMS.find((x) => x.key === p[0]);
+        if (!item) return;
+        S.userMenuOpen = false;
+        if (item.key === "home") { S.view = "home"; S.detail = null; S.reading = null; await loadHomeData(); return render(); }
+        const m = S.modules.find((x) => x.key === item.mod);
+        if (!m) { toast("Bu bölüme erişiminiz yok.", true); return render(); }
+        const targetScr = (m.screens.find((s) => s.key === item.scr) || m.screens[0]);
+        S.view = "app"; S.mod = m.key; S.scr = targetScr && targetScr.key; S.detail = null; S.reading = null;
+        await loadScreen(); return render();
+      }
       if (k === "mod") {
         const m = S.modules.find((x) => x.key === p[0]);
-        S.view = "app"; S.mod = m.key; S.scr = m.screens[0] && m.screens[0].key; S.detail = null; S.reading = null;
+        S.view = "app"; S.mod = m.key; S.scr = (p[1] && m.screens.find((s) => s.key === p[1]) ? p[1] : (m.screens[0] && m.screens[0].key));
+        S.detail = null; S.reading = null;
         await loadScreen(); return render();
       }
       if (k === "scr") {

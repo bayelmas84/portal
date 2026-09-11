@@ -123,10 +123,16 @@ function build(cfg, deps = {}) {
           .filter(([k]) => access.visible(ctx, k))
           .map(([k, label]) => ({ key: k, label, level: access.level(ctx, k), state: access.stateOf(ctx.states, k) })),
       }));
+    const [unit, title] = await Promise.all([
+      req.user.unit_code ? db.one("SELECT name FROM units WHERE code = $1", [req.user.unit_code]) : null,
+      req.user.title_code ? db.one("SELECT name FROM titles WHERE code = $1", [req.user.title_code]) : null,
+    ]);
     res.json({
       user: {
         username: req.user.username, displayName: req.user.display_name,
-        unit: req.user.unit_code, title: req.user.title_code, manager: req.user.manager,
+        unit: req.user.unit_code, unitName: (unit && unit.name) || null,
+        title: req.user.title_code, titleName: (title && title.name) || null,
+        manager: req.user.manager,
       },
       modules,
       csrfToken: req.csrfToken,
@@ -165,6 +171,7 @@ function build(cfg, deps = {}) {
   api.use("/approvals", require("./routes/approvals")(cfg));
   api.use("/compliance", require("./routes/compliance")(cfg));
   api.use("/admin", require("./routes/admin")(cfg));
+  api.use("/employees", require("./routes/employees")(cfg));
 
   api.get("/shortcuts", async (req, res) => {
     res.json({ items: await db.many("SELECT id, name, url FROM shortcuts WHERE active ORDER BY sort, id") });
