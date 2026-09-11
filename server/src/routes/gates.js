@@ -42,7 +42,7 @@ module.exports = function () {
     };
   }
 
-  r.get("/project/:projectId", requireProjectScreen("d.gate", "projectId"), async (req, res, next) => {
+  r.get("/project/:projectId", requireProjectScreen("d.gate", { paramName: "projectId" }), async (req, res, next) => {
     try {
       const pid = z.coerce.number().int().positive().parse(req.params.projectId);
       const rows = await db.many("SELECT id FROM stage_gates WHERE project_id=$1 ORDER BY id", [pid]);

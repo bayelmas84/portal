@@ -98,27 +98,36 @@ const isInspection = (req) => req.user && req.user.role_key === "inspection";
    çalışır. Proje Yöneticisi ve Geliştirici zaten kendi role_key'lerinden erişim aldığı için
    (pm/dev PERMS'te delivery: R/W) bu yola hiç düşmezler. */
 const TEAM_READONLY_PROJECT_ROLES = ["Product Owner", "Business Owner", "QA", "Vendor", "Analyst"];
+/* Dokümanlar için: dokuz rolün tamamı proje ekibindeyse görebilir (Internal Audit ve Risk
+   dahil — onlar board/gate'e giremez ama "dokümanlar üzerinden çalışır", HAZIRLIK-DURUMU §5). */
+const ALL_PROJECT_ROLES = [
+  "Project Manager", "Developer", "QA", "Business Owner", "Product Owner",
+  "Internal Audit", "Risk", "Vendor", "Analyst",
+];
 
-async function projectReadEligible(username, projectId) {
+async function projectReadEligible(username, projectId, eligibleRoles) {
   if (!Number.isInteger(projectId) || projectId <= 0) return false;
   const m = await db.one(
     "SELECT project_role FROM project_members WHERE project_id = $1 AND username = $2",
     [projectId, username]);
-  return !!m && TEAM_READONLY_PROJECT_ROLES.includes(m.project_role);
+  return !!m && eligibleRoles.includes(m.project_role);
 }
 
-/* requireScreen'in proje-kapsamlı hali: :id parametresindeki projeye göre ek bir
-   okuma yolu tanır. Rol tabanlı erişimi olan biri için davranış birebir requireScreen
-   ile aynıdır (delege eder); rol tabanlı erişimi olmayan biri için ekip üyeliğine bakar.
+/* requireScreen'in proje-kapsamlı hali: :id (veya opts.paramName) parametresindeki
+   projeye göre ek bir okuma yolu tanır. Rol tabanlı erişimi olan biri için davranış
+   birebir requireScreen ile aynıdır (delege eder); rol tabanlı erişimi olmayan biri
+   için ekip üyeliğine bakar (opts.eligibleRoles, varsayılan: salt-okunur beş rol).
    Asla yazma yetkisi vermez — yazma uçları hâlâ requireScreen(key, "write") kullanır. */
-function requireProjectScreen(screenKey, paramName = "id") {
+function requireProjectScreen(screenKey, opts = {}) {
+  const paramName = opts.paramName || "id";
+  const eligibleRoles = opts.eligibleRoles || TEAM_READONLY_PROJECT_ROLES;
   return async function (req, res, next) {
     if (!req.user) return res.status(401).json({ error: "Oturum gerekli" });
     const ctx = req.access;
     if (access.level(ctx, screenKey) !== "none") return requireScreen(screenKey)(req, res, next);
 
     const projectId = Number(req.params[paramName]);
-    const eligible = await projectReadEligible(req.user.username, projectId);
+    const eligible = await projectReadEligible(req.user.username, projectId, eligibleRoles);
     if (!eligible) return res.status(403).json({ error: "Yetkiniz yok" });
 
     /* Ekip üyeliği modül/ekran kapalıyken de erişim vermez. */
@@ -158,5 +167,5 @@ function readingGate() {
 
 module.exports = {
   createSession, destroySession, attach, requireAuth, requireScreen, requireProjectScreen,
-  cookieOptions, isInspection, readingGate,
+  cookieOptions, isInspection, readingGate, ALL_PROJECT_ROLES, TEAM_READONLY_PROJECT_ROLES,
 };

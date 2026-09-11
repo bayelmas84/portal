@@ -18,7 +18,7 @@ const PERMS = {
   /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (okuma, yazma, ekleme, silme) ve
      faz kapısını tek imzayla onaylama. Diğer modüllerde okuma düzeyindedir. */
   pmdir: {
-    delivery: W, "d.my": W, "d.projects": W, "d.team": W, "d.board": W, "d.backlog": W, "d.sprint": W,
+    delivery: W, "d.my": W, "d.projects": W, "d.team": W, "d.docs": W, "d.docview": W, "d.board": W, "d.backlog": W, "d.sprint": W,
     "d.gate": W, "d.gate.approve": W, "d.delete": W, "d.charts": W, "d.exec": W,
     documents: R, "k.docs": R, announce: R, "a.list": R,
     training: R, "t.un": W, "t.done": W,
@@ -43,8 +43,10 @@ const PERMS = {
   /* Teftiş: yalnızca kendi görev alanı — doküman kontrolü, duyuru denetimi, onaylar, uyum.
      Proje Yönetimi ve Admin Panel yetkisi yoktur; yetkisi olmayan modül menüde hiç görünmez. */
   inspection: {
-    /* Teftiş doküman onay zincirinde yer alır; proje dokümanları ekranı üretimde
-       tanımlandığında "d.docs": R eklenecek. Board, sprint, backlog, kapı ve CR kapalıdır. */
+    /* Teftiş doküman onay zincirinde yer alır; proje dokümanları ekranına genel salt okunur
+       erişimi var (yalnızca üyesi olduğu projelerle sınırlı değil — denetim işlevi budur).
+       Board, sprint, backlog, kapı ve CR kapalıdır. */
+    "d.docs": R, "d.docview": R,
     documents: W, "k.docs": W, "k.new": W, "k.queue": W, "k.mail": W,
     announce: W, "a.list": W, "a.new": W, "a.edit": W, "a.del": W,
     training: R, "t.un": W, "t.done": W,
@@ -54,19 +56,17 @@ const PERMS = {
   },
   /* Bilgi Güvenliği: proje yönetiminde işi yok; yalnızca proje dokümanlarını görür. */
   infosec: {
-    /* Proje yönetiminde işi yok. Proje dokümanları ekranı üretimde tanımlandığında
-       "d.docs": R eklenecek (prototipte tasarlandı). */
+    /* Proje yönetiminde işi yok; tüm projelerin dokümanlarına genel salt okunur erişimi var. */
+    "d.docs": R, "d.docview": R,
     documents: W, "k.docs": W, "k.new": W, "k.mail": R,
     announce: W, "a.list": W, "a.new": W, "a.del": W,
     training: R, "t.un": W, "t.done": W, reports: R, "r.list": R, "r.view": R,
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },
   control: {
-    /* İç Kontrol / Kurumsal Risk: proje yönetiminde işlem yapmaz.
-    /* Proje dokümanları ekranı (d.docs) üretim sürümünde henüz tanımlı değil; prototipte
-       tasarlandı. Ekran ve uçları eklendiğinde bu rollere "d.docs": R verilecek. */
-
-    "d.charts": R,
+    /* İç Kontrol / Kurumsal Risk: proje yönetiminde işlem yapmaz; tüm projelerin
+       dokümanlarına genel salt okunur erişimi var (denetim/uyum işlevi). */
+    "d.docs": R, "d.docview": R, "d.charts": R,
     documents: W, "k.docs": W, "k.new": W, "k.mail": R,
     announce: W, "a.list": W, "a.new": W, "a.del": W,
     training: R, "t.un": W, "t.done": W, reports: R, "r.list": R, "r.view": R,
@@ -101,7 +101,7 @@ const PERMS = {
     approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },
   pm: {
-    delivery: W, "d.my": W, "d.projects": W, "d.team": W, "d.board": W, "d.backlog": W, "d.sprint": W, "d.gate": W,
+    delivery: W, "d.my": W, "d.projects": W, "d.team": W, "d.docs": W, "d.docview": R, "d.board": W, "d.backlog": W, "d.sprint": W, "d.gate": W,
     "d.charts": W, "d.exec": R,
     documents: R, "k.docs": R, announce: R, "a.list": R,
     training: R, "t.un": W, "t.done": W,

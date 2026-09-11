@@ -1,14 +1,31 @@
 "use strict";
 const express = require("express");
+const multer = require("multer");
+const crypto = require("crypto");
+const fs = require("fs/promises");
+const path = require("path");
 const { z } = require("zod");
 const db = require("../lib/db");
 const audit = require("../lib/audit");
 const projects = require("../lib/projects");
+const projectDocs = require("../lib/projectDocs");
 const access = require("../services/access");
-const { requireScreen, requireProjectScreen } = require("../middleware/auth");
+const { requireScreen, requireProjectScreen, requireAuth, ALL_PROJECT_ROLES } = require("../middleware/auth");
+
+const PDF_MAGIC = Buffer.from("%PDF-");
+const STORED_NAME = /^[A-Z0-9-]{1,32}_\d{10,16}_[a-f0-9]{12}\.pdf$/;
+const safeName = (n) => String(n || "dosya.pdf").replace(/[\\/\u0000-\u001f]/g, "_").slice(-120);
 
 module.exports = function (cfg) {
   const r = express.Router();
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: cfg.UPLOAD_MAX_MB * 1024 * 1024, files: 1 },
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype !== "application/pdf") return cb(Object.assign(new Error("Yalnızca PDF kabul edilir"), { status: 400 }));
+      cb(null, true);
+    },
+  });
 
   r.get("/", requireScreen("d.projects"), async (req, res) => {
     const list = await db.many("SELECT id FROM projects ORDER BY code");
@@ -72,6 +89,176 @@ module.exports = function (cfg) {
      üretim şemasıyla uyuşmayan (var olmayan passed_by/passed_rule/authority sütunlarına
      başvuran), hiçbir yerde çağrılmayan ölü ve bozuk bir kopyası vardı; kaldırıldı
      (2026 salt-okunur erişim çalışması sırasında fark edildi — bkz. ilerleme raporu). */
+
+  /* --- Proje dokümanları (d.docs, d.docview) ---
+     Sabit tip listesi ve sıra kuralı: bir tip, kendinden önceki tip onaylanmadan
+     yüklenemez (Proje Kartı → BRD → FRD → UAT → Go Live → Risk ve Uyumluluk → Kapanış).
+     Altı adımlı onay zinciri lib/projectDocs.js'te. d.docs ekranına proje ekibinin
+     tüm rolleri (Internal Audit ve Risk dahil — "dokümanlar üzerinden çalışır") erişir. */
+  r.get("/:id/documents", requireProjectScreen("d.docs", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
+      if (!p) return res.status(404).json({ error: "Bulunamadı" });
+      const rows = await db.many(
+        `SELECT id, doc_type, title, version, status, current_step, reject_reason,
+                uploaded_by, uploaded_at, effective_date, file_name
+           FROM project_documents WHERE project_id = $1`,
+        [id]);
+      rows.sort((a, b) => projectDocs.DOC_TYPE_ORDER.indexOf(a.doc_type) - projectDocs.DOC_TYPE_ORDER.indexOf(b.doc_type));
+      res.json({ items: rows, typeOrder: projectDocs.DOC_TYPE_ORDER });
+    } catch (e) { next(e); }
+  });
+
+  async function readableDoc(req, docId) {
+    const d = await db.one("SELECT * FROM project_documents WHERE id=$1", [docId]);
+    if (!d) return { code: 404 };
+    const eligible = await db.one(
+      "SELECT 1 FROM project_members WHERE project_id=$1 AND username=$2", [d.project_id, req.user.username]);
+    const hasRoleAccess = access.level(req.access, "d.docs") !== "none";
+    if (!eligible && !hasRoleAccess) return { code: 404 };
+    return { doc: d };
+  }
+
+  r.get("/:id/documents/:docId", requireProjectScreen("d.docs", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
+    try {
+      const docId = z.coerce.number().int().positive().parse(req.params.docId);
+      const { doc, code } = await readableDoc(req, docId);
+      if (code) return res.status(code).json({ error: "Bulunamadı" });
+      const approvals = await db.many(
+        `SELECT a.step_no, a.step_name, a.approver_username, u.display_name, a.is_proxy, a.approved_at
+           FROM project_document_approvals a JOIN users u ON u.username = a.approver_username
+          WHERE a.document_id = $1 ORDER BY a.step_no`, [docId]);
+      const next6 = doc.status === "onay_akisinda" ? await projectDocs.expectedApprover(doc.project_id, doc.current_step) : null;
+      res.json({ item: doc, approvals, nextApprover: next6 });
+    } catch (e) { next(e); }
+  });
+
+  r.get("/:id/documents/:docId/file", requireProjectScreen("d.docview", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
+    try {
+      const docId = z.coerce.number().int().positive().parse(req.params.docId);
+      const { doc, code } = await readableDoc(req, docId);
+      if (code) return res.status(code).json({ error: "Bulunamadı" });
+      if (!STORED_NAME.test(doc.file_path)) return res.status(400).json({ error: "Geçersiz dosya kaydı" });
+      const abs = path.resolve(cfg.UPLOAD_DIR, path.basename(doc.file_path));
+      if (!abs.startsWith(path.resolve(cfg.UPLOAD_DIR) + path.sep)) return res.status(400).json({ error: "Geçersiz yol" });
+      const safe = `${String(doc.doc_type).replace(/[^A-Za-z0-9-]/g, "_")}_v${String(doc.version).replace(/[^0-9.]/g, "")}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${safe}"`);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "default-src 'none'; object-src 'none'; sandbox");
+      res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+      res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+      res.sendFile(abs);
+    } catch (e) { next(e); }
+  });
+
+  /* Yükleme: pmdir/pm (d.docs write) VEYA projenin Product Owner'ı — ilk onay adımı
+     zaten Ürün Sahibi olduğu için içeriği o hazırlıyor sayılır. */
+  r.post("/:id/documents", upload.single("file"), async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
+      if (!p) return res.status(404).json({ error: "Bulunamadı" });
+
+      const canWriteRole = access.canWrite(req.access, "d.docs");
+      const po = await projectDocs.memberWithRole(id, "Product Owner");
+      if (!canWriteRole && req.user.username !== po)
+        return res.status(403).json({ error: "Yalnızca Proje Yöneticisi/Direktörü veya projenin Ürün Sahibi doküman yükleyebilir" });
+
+      const v = z.object({
+        docType: z.enum(projectDocs.DOC_TYPE_ORDER),
+        title: z.string().trim().min(5).max(200),
+      }).parse(req.body);
+      if (!req.file) return res.status(400).json({ error: "PDF dosyası zorunlu" });
+      if (!req.file.buffer.subarray(0, 5).equals(PDF_MAGIC))
+        return res.status(400).json({ error: "Dosya içeriği PDF değil" });
+
+      const existing = await db.one("SELECT id, status FROM project_documents WHERE project_id=$1 AND doc_type=$2", [id, v.docType]);
+      if (existing && existing.status !== "reddedildi")
+        return res.status(409).json({ error: "Bu tipte zaten onay akışında veya onaylanmış bir doküman var" });
+
+      const approvedRows = await db.many("SELECT doc_type FROM project_documents WHERE project_id=$1 AND status='onaylandi'", [id]);
+      const approvedTypes = new Set(approvedRows.map((r) => r.doc_type));
+      if (!projectDocs.nextTypeAllowed(approvedTypes, v.docType)) {
+        const idx = projectDocs.DOC_TYPE_ORDER.indexOf(v.docType);
+        return res.status(409).json({
+          error: `Sıra kuralı: önce "${projectDocs.DOC_TYPE_ORDER[idx - 1]}" onaylanmalı`,
+        });
+      }
+
+      const sha = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+      const stored = `${String(p.id)}-${v.docType.replace(/[^A-Za-z0-9]/g, "")}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}.pdf`;
+      await fs.mkdir(cfg.UPLOAD_DIR, { recursive: true });
+      await fs.writeFile(path.join(cfg.UPLOAD_DIR, stored), req.file.buffer, { mode: 0o640 });
+
+      let row;
+      if (existing) {
+        row = await db.one(
+          `UPDATE project_documents
+              SET title=$1, file_name=$2, file_path=$3, file_sha256=$4, status='onay_akisinda',
+                  current_step=1, reject_reason=NULL, uploaded_by=$5, uploaded_at=now(), effective_date=NULL
+            WHERE id=$6 RETURNING id`,
+          [v.title, safeName(req.file.originalname), stored, sha, req.user.username, existing.id]);
+      } else {
+        row = await db.one(
+          `INSERT INTO project_documents (project_id, doc_type, title, file_name, file_path, file_sha256, uploaded_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+          [id, v.docType, v.title, safeName(req.file.originalname), stored, sha, req.user.username]);
+      }
+      await audit.record("proje_dokumani.yuklendi", req.user.username, { detail: { proje: id, tip: v.docType, sha256: sha } });
+      res.status(201).json({ id: row.id });
+    } catch (e) { next(e); }
+  });
+
+  r.post("/:id/documents/:docId/approve", requireAuth, async (req, res, next) => {
+    try {
+      const docId = z.coerce.number().int().positive().parse(req.params.docId);
+      const d = await db.one("SELECT * FROM project_documents WHERE id=$1", [docId]);
+      if (!d) return res.status(404).json({ error: "Bulunamadı" });
+      if (d.status !== "onay_akisinda") return res.status(409).json({ error: "Bu doküman onay akışında değil" });
+
+      const { allowed, isProxy } = await projectDocs.canApproveStep(req.user, d.project_id, d.current_step);
+      if (!allowed) {
+        const step = projectDocs.stepAt(d.current_step);
+        return res.status(403).json({ error: `Bu adımı yalnızca "${step.name}" onaylayabilir` });
+      }
+      const step = projectDocs.stepAt(d.current_step);
+      await db.query(
+        `INSERT INTO project_document_approvals (document_id, step_no, step_name, approver_username, is_proxy)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [docId, step.no, step.name, req.user.username, isProxy]);
+
+      const finished = step.no === 6;
+      await db.query(
+        finished
+          ? `UPDATE project_documents SET status='onaylandi', effective_date=now() WHERE id=$1`
+          : `UPDATE project_documents SET current_step = current_step + 1 WHERE id=$1`,
+        [docId]);
+      await audit.record(isProxy ? "proje_dokumani.vekaleten_onay" : "proje_dokumani.onay", req.user.username,
+        { detail: { doküman: docId, adim: step.name, vekalet: isProxy, tamamlandi: finished } });
+      res.json({ ok: true, finished, step: step.no });
+    } catch (e) { next(e); }
+  });
+
+  r.post("/:id/documents/:docId/reject", requireAuth, async (req, res, next) => {
+    try {
+      const docId = z.coerce.number().int().positive().parse(req.params.docId);
+      const reason = z.string().trim().min(10).max(2000).parse(req.body.reason);
+      const d = await db.one("SELECT * FROM project_documents WHERE id=$1", [docId]);
+      if (!d) return res.status(404).json({ error: "Bulunamadı" });
+      if (d.status !== "onay_akisinda") return res.status(409).json({ error: "Bu doküman onay akışında değil" });
+
+      const { allowed } = await projectDocs.canApproveStep(req.user, d.project_id, d.current_step);
+      if (!allowed) {
+        const step = projectDocs.stepAt(d.current_step);
+        return res.status(403).json({ error: `Bu adımı yalnızca "${step.name}" reddedebilir` });
+      }
+      await db.query("UPDATE project_documents SET status='reddedildi', reject_reason=$1 WHERE id=$2", [reason, docId]);
+      await audit.record("proje_dokumani.reddedildi", req.user.username, { detail: { doküman: docId, gerekce: reason } });
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
 
   /* --- proje ekleme ve silme (tam yetki gerektirir) --- */
   const projSchema = z.object({
