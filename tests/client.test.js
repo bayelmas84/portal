@@ -138,7 +138,7 @@ test("giriş formu ölçüleri kaynak görselin oranlarına bağlı", async () =
   assert.ok(!/font-size:\d+px/.test(panel), "panelde sabit px yazı boyutu yok");
 });
 
-test("sol menü tam yükseklikte sabit, yalnızca içerik kayar", async () => {
+test("sol ray ve alt menü tam yükseklikte sabit, yalnızca içerik kayar", async () => {
   const { app } = await boot();
   const css = (await request(app).get("/app.css")).text;
   /* Satır başından ara: koyu mod varyantlarına takılmamak için. */
@@ -146,10 +146,13 @@ test("sol menü tam yükseklikte sabit, yalnızca içerik kayar", async () => {
     const i = css.indexOf("\n" + sel + "{");
     return i < 0 ? "" : css.slice(i + 1, css.indexOf("}", i + 1) + 1);
   };
-  const shell = rule(".shell"), sidebar = rule(".app-sidebar"), main = rule(".main");
+  const shell = rule(".shell"), nv = rule(".nv"), sub = rule(".sub"), main = rule(".main");
   assert.match(shell, /height:100vh/, "kabuk ekran yüksekliğinde");
   assert.match(shell, /overflow:hidden/, "kabuk kendisi kaymıyor");
-  assert.match(sidebar, /height:100vh/, "sol menü tam yükseklikte");
+  assert.match(nv, /height:100vh/, "sol ray tam yükseklikte");
+  assert.match(sub, /height:100vh/, "alt menü tam yükseklikte — zemin rengi en alta kadar sürer");
+  assert.ok(!/max-height/.test(sub), "alt menü içerik boyuna göre kısalmıyor");
+  assert.match(sub, /background:var\(--s1\)/, "alt menü zemin rengi");
   assert.match(main, /overflow-y:auto/, "yalnızca içerik alanı kayar");
-  assert.match(css, /\.app-header\{[^}]*position:sticky/, "üst bant kayan alanın tepesinde sabit");
+  assert.match(css, /\.top\{position:sticky/, "üst bant kayan alanın tepesinde sabit");
 });

@@ -10,7 +10,6 @@ const MODULES = [
   { key: "reports", label: "Raporlar" },
   { key: "approvals", label: "Onaylar" },
   { key: "compliance", label: "Uyum ve Teftiş" },
-  { key: "employees", label: "Çalışanlar" },
   { key: "admin", label: "Admin Panel" },
   { key: "shortcuts", label: "Kısayollar" },
 ];
@@ -30,7 +29,6 @@ const SCREENS = {
           ["m.mail", "E-posta ayarları"], ["m.dir", "Dizin (AD) ayarları"], ["m.brand", "Marka ve metinler"],
           ["m.avail", "Ekran yönetimi"], ["m.short", "Kısayol yönetimi"]],
   shortcuts: [["s.all", "Tüm kısayollar"]],
-  employees: [["e.list", "Kişi Rehberi"]],
 };
 
 /* Menüde görünmeyen, yalnızca yetki kontrolünde kullanılan anahtarlar.
@@ -63,9 +61,6 @@ async function context(user) {
 
 function level(ctx, key) {
   if (key === "shortcuts" || String(key).startsWith("s.")) return "write";
-  /* Kişi rehberi: herkesin okuyabildiği, yalnızca görüntüleme amaçlı bir dizindir --
-     düzenleme yetkisi Yönetim > Kullanıcılar (m.users) ekranında ayrıca kontrol edilir. */
-  if (key === "employees" || String(key).startsWith("e.")) return "read";
   return ctx.perms[key] || "none";
 }
 function visible(ctx, key) {
