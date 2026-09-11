@@ -114,8 +114,10 @@ const PERMS = {
     training: R, "t.un": W, "t.done": W, approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },
   staff: {
-    /* Proje ekibine atanan kişiye board, sprint, backlog, kapı ve CR salt okunur açılır;
-       bu karar ekip üyeliğine göre verilir (prototipte tasarlandı, üretimde eklenecek). */
+    /* Proje ekibine (Product Owner, Business Owner, QA, Vendor, Analyst) atanan kişiye
+       board/backlog/sprint (d.projects) ve kapı (d.gate) SALT OKUNUR açılır — bu karar
+       role_key'den değil, ekip üyeliğinden gelir (bkz. middleware/auth.js:requireProjectScreen).
+       Aşağıda "none" olması yanlış değil: genel erişim yok, proje bazlı istisna orada uygulanıyor. */
     documents: R, "k.docs": R, announce: R, "a.list": R,
     training: W, "t.un": W, "t.done": W, approvals: W, "p.in": W, "p.my": W, "p.done": W,
   },

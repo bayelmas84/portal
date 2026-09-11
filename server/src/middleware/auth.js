@@ -89,6 +89,52 @@ function requireScreen(screenKey, mode = "read") {
 
 const isInspection = (req) => req.user && req.user.role_key === "inspection";
 
+/* --- Ekip üyeliğine göre salt okunur erişim ---
+   Bir kişinin role_key'i (ör. staff) delivery modülüne genel erişim vermeyebilir, ama
+   project_members'ta Product Owner, Business Owner, QA, Vendor veya Analyst olarak
+   atanmışsa, YALNIZCA o projenin board/backlog/sprint/gate verisini SALT OKUNUR görür.
+   Internal Audit ve Risk bu listede yok — onlar zorunlu ekip üyesi olsa da (proje ekibinden
+   sonra bkz. HAZIRLIK-DURUMU.md bölüm 5), bu ekranlara erişmez; onlar dokümanlar üzerinden
+   çalışır. Proje Yöneticisi ve Geliştirici zaten kendi role_key'lerinden erişim aldığı için
+   (pm/dev PERMS'te delivery: R/W) bu yola hiç düşmezler. */
+const TEAM_READONLY_PROJECT_ROLES = ["Product Owner", "Business Owner", "QA", "Vendor", "Analyst"];
+
+async function projectReadEligible(username, projectId) {
+  if (!Number.isInteger(projectId) || projectId <= 0) return false;
+  const m = await db.one(
+    "SELECT project_role FROM project_members WHERE project_id = $1 AND username = $2",
+    [projectId, username]);
+  return !!m && TEAM_READONLY_PROJECT_ROLES.includes(m.project_role);
+}
+
+/* requireScreen'in proje-kapsamlı hali: :id parametresindeki projeye göre ek bir
+   okuma yolu tanır. Rol tabanlı erişimi olan biri için davranış birebir requireScreen
+   ile aynıdır (delege eder); rol tabanlı erişimi olmayan biri için ekip üyeliğine bakar.
+   Asla yazma yetkisi vermez — yazma uçları hâlâ requireScreen(key, "write") kullanır. */
+function requireProjectScreen(screenKey, paramName = "id") {
+  return async function (req, res, next) {
+    if (!req.user) return res.status(401).json({ error: "Oturum gerekli" });
+    const ctx = req.access;
+    if (access.level(ctx, screenKey) !== "none") return requireScreen(screenKey)(req, res, next);
+
+    const projectId = Number(req.params[paramName]);
+    const eligible = await projectReadEligible(req.user.username, projectId);
+    if (!eligible) return res.status(403).json({ error: "Yetkiniz yok" });
+
+    /* Ekip üyeliği modül/ekran kapalıyken de erişim vermez. */
+    const mod = access.moduleOfScreen(screenKey);
+    const st = access.stateOf(ctx.states, screenKey);
+    const modSt = mod ? access.stateOf(ctx.states, mod) : "acik";
+    if (st === "kapali" || modSt === "kapali")
+      return res.status(409).json({ error: "Bu bölüm şu anda kullanımda değil", state: "kapali", redirect: "home" });
+    if (st === "bakim" || modSt === "bakim")
+      return res.status(503).json({ error: "Bu bölüm bakımda", state: "bakim", redirect: "home" });
+
+    req.projectReadOnly = true;
+    next();
+  };
+}
+
 /* Zorunlu okuma kilidi: süresi geçmiş okuması olan kullanıcı portalın kalanını kullanamaz.
    İzin verilen uçlar okumayı tamamlamaya yarayanlardır. */
 const GATE_ALLOW = [
@@ -110,4 +156,7 @@ function readingGate() {
   };
 }
 
-module.exports = { createSession, destroySession, attach, requireAuth, requireScreen, cookieOptions, isInspection, readingGate };
+module.exports = {
+  createSession, destroySession, attach, requireAuth, requireScreen, requireProjectScreen,
+  cookieOptions, isInspection, readingGate,
+};

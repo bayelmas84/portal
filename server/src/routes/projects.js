@@ -5,7 +5,7 @@ const db = require("../lib/db");
 const audit = require("../lib/audit");
 const projects = require("../lib/projects");
 const access = require("../services/access");
-const { requireScreen } = require("../middleware/auth");
+const { requireScreen, requireProjectScreen } = require("../middleware/auth");
 
 module.exports = function (cfg) {
   const r = express.Router();
@@ -27,7 +27,7 @@ module.exports = function (cfg) {
     res.json({ items });
   });
 
-  r.get("/:id", requireScreen("d.projects"), async (req, res, next) => {
+  r.get("/:id", requireProjectScreen("d.projects"), async (req, res, next) => {
     try {
       const id = z.coerce.number().int().positive().parse(req.params.id);
       const metrics = await projects.projectMetrics(id);
@@ -67,92 +67,11 @@ module.exports = function (cfg) {
     } catch (e) { next(e); }
   });
 
-  /* --- Faz kapıları (stage gates) ---
-     Onay kuralı iki yoldan biriyle sağlanır:
-       1) İki farklı kişiden, iki farklı rolden imza (varsayılan görevler ayrılığı kuralı), ya da
-       2) Faz kapısı onay yetkisi olan ünvanın (Proje Yönetim Direktörü) tek imzası.
-     İkinci yol kullanıldığında kayıt "tek yetkili onayı" olarak işaretlenir ve denetim kaydına
-     ayrı bir olay olarak yazılır; Teftiş bu geçişleri ayırt edebilir. */
-  r.get("/:id/gates", requireScreen("d.gate"), async (req, res, next) => {
-    try {
-      const id = z.coerce.number().int().positive().parse(req.params.id);
-      const gates = await db.many(
-        `SELECT id, name, criteria, required_signatures, passed_at, passed_by, passed_rule
-           FROM stage_gates WHERE project_id = $1 ORDER BY id`, [id]);
-      for (const g of gates) {
-        g.criteria = typeof g.criteria === "string" ? JSON.parse(g.criteria) : (g.criteria || []);
-        g.signatures = await db.many(
-          `SELECT s.username, s.role_key, s.authority, s.signed_at, u.display_name
-             FROM stage_gate_signatures s JOIN users u ON u.username = s.username
-            WHERE s.gate_id = $1 ORDER BY s.signed_at`, [g.id]);
-        g.openCriteria = g.criteria.filter((c) => !c.done).length;
-      }
-      res.json({ items: gates, canApprove: projects.isGateAuthority(req.user) || access.canWrite(req.access, "d.gate.approve") });
-    } catch (e) { next(e); }
-  });
-
-  r.put("/gates/:gateId/criteria/:index", requireScreen("d.gate", "write"), async (req, res, next) => {
-    try {
-      const gateId = z.coerce.number().int().positive().parse(req.params.gateId);
-      const index = z.coerce.number().int().min(0).max(50).parse(req.params.index);
-      const done = z.boolean().parse(req.body.done);
-      const g = await db.one("SELECT * FROM stage_gates WHERE id=$1", [gateId]);
-      if (!g) return res.status(404).json({ error: "Bulunamadı" });
-      if (g.passed_at) return res.status(409).json({ error: "Geçilmiş kapının kriterleri değiştirilemez" });
-      const crit = typeof g.criteria === "string" ? JSON.parse(g.criteria) : (g.criteria || []);
-      if (!crit[index]) return res.status(400).json({ error: "Kriter bulunamadı" });
-      crit[index].done = done;
-      crit[index].changedBy = req.user.username;
-      await db.query("UPDATE stage_gates SET criteria = $1 WHERE id = $2", [JSON.stringify(crit), gateId]);
-      await audit.record("kapi.kriter_degisti", req.user.username,
-        { detail: { kapi: g.name, kriter: crit[index].text, durum: done ? "OK" : "açık" } });
-      res.json({ ok: true, criteria: crit });
-    } catch (e) { next(e); }
-  });
-
-  r.post("/gates/:gateId/sign", requireScreen("d.gate", "write"), async (req, res, next) => {
-    try {
-      const gateId = z.coerce.number().int().positive().parse(req.params.gateId);
-      const g = await db.one("SELECT * FROM stage_gates WHERE id=$1", [gateId]);
-      if (!g) return res.status(404).json({ error: "Bulunamadı" });
-      if (g.passed_at) return res.status(409).json({ error: "Kapı zaten geçildi" });
-
-      const crit = typeof g.criteria === "string" ? JSON.parse(g.criteria) : (g.criteria || []);
-      const open = crit.filter((c) => !c.done);
-      if (open.length)
-        return res.status(422).json({ error: "Açık giriş kriteri varken kapı onaylanamaz", openCriteria: open.map((c) => c.text) });
-
-      const authority = projects.isGateAuthority(req.user);
-      const signs = await db.many("SELECT username, role_key, authority FROM stage_gate_signatures WHERE gate_id=$1", [gateId]);
-
-      if (!authority) {
-        /* Varsayılan kural: aynı kişi ikinci imzayı atamaz, iki imza iki farklı rolden olmalı. */
-        if (signs.some((s) => s.username === req.user.username))
-          return res.status(409).json({ error: "Aynı kişi ikinci imzayı atamaz" });
-        if (signs.some((s) => s.role_key === req.user.role_key))
-          return res.status(409).json({ error: "İki imza iki farklı rolden olmalı" });
-      }
-
-      await db.query(
-        `INSERT INTO stage_gate_signatures (gate_id, username, role_key, authority) VALUES ($1,$2,$3,$4)
-         ON CONFLICT (gate_id, username) DO UPDATE SET authority = EXCLUDED.authority, signed_at = now()`,
-        [gateId, req.user.username, req.user.role_key, authority]);
-
-      const all = await db.many("SELECT username, authority FROM stage_gate_signatures WHERE gate_id=$1", [gateId]);
-      const passed = authority || all.length >= (g.required_signatures || 2);
-      if (passed) {
-        const rule = authority ? "yetkili_tek_imza" : "iki_imza";
-        await db.query("UPDATE stage_gates SET passed_at = now(), passed_by = $1, passed_rule = $2 WHERE id = $3",
-          [req.user.username, rule, gateId]);
-        /* Tek yetkili onayı ayrı olay olarak yazılır; denetimde ayırt edilebilir. */
-        await audit.record(authority ? "kapi.gecildi_yetkili_onayi" : "kapi.gecildi_iki_imza", req.user.username,
-          { detail: { kapi: g.name, unvan: req.user.title_code, imza: all.length } });
-      } else {
-        await audit.record("kapi.imzalandi", req.user.username, { detail: { kapi: g.name, imza: all.length } });
-      }
-      res.json({ ok: true, passed, signatures: all.length, rule: passed ? (authority ? "yetkili_tek_imza" : "iki_imza") : null });
-    } catch (e) { next(e); }
-  });
+  /* Not: faz kapısı (stage gate) uçları burada değil, server/src/routes/gates.js'te
+     (/api/gates/...) — client oradan çağırır. Bu dosyada daha önce aynı işlevin
+     üretim şemasıyla uyuşmayan (var olmayan passed_by/passed_rule/authority sütunlarına
+     başvuran), hiçbir yerde çağrılmayan ölü ve bozuk bir kopyası vardı; kaldırıldı
+     (2026 salt-okunur erişim çalışması sırasında fark edildi — bkz. ilerleme raporu). */
 
   /* --- proje ekleme ve silme (tam yetki gerektirir) --- */
   const projSchema = z.object({
