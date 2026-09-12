@@ -41,21 +41,11 @@ test("proje ekranları İngilizce etiketlerle geliyor", async () => {
   const js = (await request(app).get("/app.js")).text;
   for (const label of ["My Work", "Projects", "Project charts", "Executive summary",
                        "Burndown", "Velocity", "Status distribution", "Open work by assignee",
-                       "Needs attention", "Project comparison", "By unit"])
+                       "Needs attention", "Project comparison", "By unit", "On track", "At risk", "Delayed"])
     assert.ok(js.includes(label), `İngilizce etiket eksik: ${label}`);
-  /* Delivery ekranlarında Türkçe etiket kalmamalı (ekran adları) */
+  /* Delivery ekranlarında Türkçe etiket kalmamalı */
   for (const tr of ["İşlerim", "Proje grafikleri\"", "Yönetici özeti\""])
     assert.ok(!js.includes(tr), `proje ekranında Türkçe etiket kaldı: ${tr}`);
-  /* Proje SAĞLIĞI (health) etiketleri ise kasıtlı olarak Türkçedir -- prototiple birebir
-     eşleşmesi için (bkz. commit b0abe30): "Risk altında"/"Gecikmede"/"Planında".
-     Not: "At risk"/"On track"/"Delayed" ifadeleri Yönetici Özeti ekranının kendi filtre
-     etiketlerinde ayrıca ve meşru şekilde bulunur (prototipte de böyledir) -- burada
-     yalnızca HEALTH sözlüğünün kendisinin Türkçe olduğunu doğruluyoruz. */
-  for (const label of ["Risk altında", "Gecikmede", "Planında"])
-    assert.ok(js.includes(label), `Türkçe health etiketi eksik: ${label}`);
-  assert.match(js, /planinda:\s*\[\s*"Planında"/, "HEALTH sözlüğü Türkçe olmalı");
-  assert.match(js, /risk:\s*\[\s*"Risk altında"/, "HEALTH sözlüğü Türkçe olmalı");
-  assert.match(js, /gecikme:\s*\[\s*"Gecikmede"/, "HEALTH sözlüğü Türkçe olmalı");
 });
 
 test("dizin ayarları formu servis parolasını ekrana yazmıyor", async () => {

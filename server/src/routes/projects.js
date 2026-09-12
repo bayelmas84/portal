@@ -1,36 +1,19 @@
 "use strict";
 const express = require("express");
-const multer = require("multer");
-const crypto = require("crypto");
-const fs = require("fs/promises");
-const path = require("path");
 const { z } = require("zod");
 const db = require("../lib/db");
 const audit = require("../lib/audit");
 const projects = require("../lib/projects");
-const projectDocs = require("../lib/projectDocs");
 const access = require("../services/access");
-const { requireScreen, requireProjectScreen, requireAuth, ALL_PROJECT_ROLES } = require("../middleware/auth");
-
-const PDF_MAGIC = Buffer.from("%PDF-");
-const STORED_NAME = /^[A-Z0-9-]{1,32}_\d{10,16}_[a-f0-9]{12}\.pdf$/;
-const safeName = (n) => String(n || "dosya.pdf").replace(/[\\/\u0000-\u001f]/g, "_").slice(-120);
+const { requireScreen } = require("../middleware/auth");
 
 module.exports = function (cfg) {
   const r = express.Router();
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: cfg.UPLOAD_MAX_MB * 1024 * 1024, files: 1 },
-    fileFilter: (req, file, cb) => {
-      if (file.mimetype !== "application/pdf") return cb(Object.assign(new Error("Yalnızca PDF kabul edilir"), { status: 400 }));
-      cb(null, true);
-    },
-  });
 
   r.get("/", requireScreen("d.projects"), async (req, res) => {
     const list = await db.many("SELECT id FROM projects ORDER BY code");
     const items = [];
-    for (const p of list) items.push({ id: p.id, ...(await projects.projectMetrics(p.id)) });
+    for (const p of list) items.push(await projects.projectMetrics(p.id));
     res.json({ items });
   });
 
@@ -44,7 +27,7 @@ module.exports = function (cfg) {
     res.json({ items });
   });
 
-  r.get("/:id", requireProjectScreen("d.projects"), async (req, res, next) => {
+  r.get("/:id", requireScreen("d.projects"), async (req, res, next) => {
     try {
       const id = z.coerce.number().int().positive().parse(req.params.id);
       const metrics = await projects.projectMetrics(id);
@@ -84,317 +67,90 @@ module.exports = function (cfg) {
     } catch (e) { next(e); }
   });
 
-  /* Not: faz kapısı (stage gate) uçları burada değil, server/src/routes/gates.js'te
-     (/api/gates/...) — client oradan çağırır. Bu dosyada daha önce aynı işlevin
-     üretim şemasıyla uyuşmayan (var olmayan passed_by/passed_rule/authority sütunlarına
-     başvuran), hiçbir yerde çağrılmayan ölü ve bozuk bir kopyası vardı; kaldırıldı
-     (2026 salt-okunur erişim çalışması sırasında fark edildi — bkz. ilerleme raporu). */
-
-  /* --- Proje dokümanları (d.docs, d.docview) ---
-     Sabit tip listesi ve sıra kuralı: bir tip, kendinden önceki tip onaylanmadan
-     yüklenemez (Proje Kartı → BRD → FRD → UAT → Go Live → Risk ve Uyumluluk → Kapanış).
-     Altı adımlı onay zinciri lib/projectDocs.js'te. d.docs ekranına proje ekibinin
-     tüm rolleri (Internal Audit ve Risk dahil — "dokümanlar üzerinden çalışır") erişir. */
-  r.get("/:id/documents", requireProjectScreen("d.docs", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
+  /* --- Faz kapıları (stage gates) ---
+     Onay kuralı iki yoldan biriyle sağlanır:
+       1) İki farklı kişiden, iki farklı rolden imza (varsayılan görevler ayrılığı kuralı), ya da
+       2) Faz kapısı onay yetkisi olan ünvanın (Proje Yönetim Direktörü) tek imzası.
+     İkinci yol kullanıldığında kayıt "tek yetkili onayı" olarak işaretlenir ve denetim kaydına
+     ayrı bir olay olarak yazılır; Teftiş bu geçişleri ayırt edebilir. */
+  r.get("/:id/gates", requireScreen("d.gate"), async (req, res, next) => {
     try {
       const id = z.coerce.number().int().positive().parse(req.params.id);
-      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
-      if (!p) return res.status(404).json({ error: "Bulunamadı" });
-      const rows = await db.many(
-        `SELECT id, doc_type, title, version, status, current_step, reject_reason,
-                uploaded_by, uploaded_at, effective_date, file_name
-           FROM project_documents WHERE project_id = $1`,
-        [id]);
-      rows.sort((a, b) => projectDocs.DOC_TYPE_ORDER.indexOf(a.doc_type) - projectDocs.DOC_TYPE_ORDER.indexOf(b.doc_type));
-      res.json({ items: rows, typeOrder: projectDocs.DOC_TYPE_ORDER });
+      const gates = await db.many(
+        `SELECT id, name, criteria, required_signatures, passed_at, passed_by, passed_rule
+           FROM stage_gates WHERE project_id = $1 ORDER BY id`, [id]);
+      for (const g of gates) {
+        g.criteria = typeof g.criteria === "string" ? JSON.parse(g.criteria) : (g.criteria || []);
+        g.signatures = await db.many(
+          `SELECT s.username, s.role_key, s.authority, s.signed_at, u.display_name
+             FROM stage_gate_signatures s JOIN users u ON u.username = s.username
+            WHERE s.gate_id = $1 ORDER BY s.signed_at`, [g.id]);
+        g.openCriteria = g.criteria.filter((c) => !c.done).length;
+      }
+      res.json({ items: gates, canApprove: projects.isGateAuthority(req.user) || access.canWrite(req.access, "d.gate.approve") });
     } catch (e) { next(e); }
   });
 
-  async function readableDoc(req, docId) {
-    const d = await db.one("SELECT * FROM project_documents WHERE id=$1", [docId]);
-    if (!d) return { code: 404 };
-    const eligible = await db.one(
-      "SELECT 1 FROM project_members WHERE project_id=$1 AND username=$2", [d.project_id, req.user.username]);
-    const hasRoleAccess = access.level(req.access, "d.docs") !== "none";
-    if (!eligible && !hasRoleAccess) return { code: 404 };
-    return { doc: d };
-  }
-
-  r.get("/:id/documents/:docId", requireProjectScreen("d.docs", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
+  r.put("/gates/:gateId/criteria/:index", requireScreen("d.gate", "write"), async (req, res, next) => {
     try {
-      const docId = z.coerce.number().int().positive().parse(req.params.docId);
-      const { doc, code } = await readableDoc(req, docId);
-      if (code) return res.status(code).json({ error: "Bulunamadı" });
-      const approvals = await db.many(
-        `SELECT a.step_no, a.step_name, a.approver_username, u.display_name, a.is_proxy, a.approved_at
-           FROM project_document_approvals a JOIN users u ON u.username = a.approver_username
-          WHERE a.document_id = $1 ORDER BY a.step_no`, [docId]);
-      const next6 = doc.status === "onay_akisinda" ? await projectDocs.expectedApprover(doc.project_id, doc.current_step) : null;
-      res.json({ item: doc, approvals, nextApprover: next6 });
+      const gateId = z.coerce.number().int().positive().parse(req.params.gateId);
+      const index = z.coerce.number().int().min(0).max(50).parse(req.params.index);
+      const done = z.boolean().parse(req.body.done);
+      const g = await db.one("SELECT * FROM stage_gates WHERE id=$1", [gateId]);
+      if (!g) return res.status(404).json({ error: "Bulunamadı" });
+      if (g.passed_at) return res.status(409).json({ error: "Geçilmiş kapının kriterleri değiştirilemez" });
+      const crit = typeof g.criteria === "string" ? JSON.parse(g.criteria) : (g.criteria || []);
+      if (!crit[index]) return res.status(400).json({ error: "Kriter bulunamadı" });
+      crit[index].done = done;
+      crit[index].changedBy = req.user.username;
+      await db.query("UPDATE stage_gates SET criteria = $1 WHERE id = $2", [JSON.stringify(crit), gateId]);
+      await audit.record("kapi.kriter_degisti", req.user.username,
+        { detail: { kapi: g.name, kriter: crit[index].text, durum: done ? "OK" : "açık" } });
+      res.json({ ok: true, criteria: crit });
     } catch (e) { next(e); }
   });
 
-  r.get("/:id/documents/:docId/file", requireProjectScreen("d.docview", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
+  r.post("/gates/:gateId/sign", requireScreen("d.gate", "write"), async (req, res, next) => {
     try {
-      const docId = z.coerce.number().int().positive().parse(req.params.docId);
-      const { doc, code } = await readableDoc(req, docId);
-      if (code) return res.status(code).json({ error: "Bulunamadı" });
-      if (!STORED_NAME.test(doc.file_path)) return res.status(400).json({ error: "Geçersiz dosya kaydı" });
-      const abs = path.resolve(cfg.UPLOAD_DIR, path.basename(doc.file_path));
-      if (!abs.startsWith(path.resolve(cfg.UPLOAD_DIR) + path.sep)) return res.status(400).json({ error: "Geçersiz yol" });
-      const safe = `${String(doc.doc_type).replace(/[^A-Za-z0-9-]/g, "_")}_v${String(doc.version).replace(/[^0-9.]/g, "")}.pdf`;
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `inline; filename="${safe}"`);
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Security-Policy", "default-src 'none'; object-src 'none'; sandbox");
-      res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
-      res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-      res.sendFile(abs);
-    } catch (e) { next(e); }
-  });
+      const gateId = z.coerce.number().int().positive().parse(req.params.gateId);
+      const g = await db.one("SELECT * FROM stage_gates WHERE id=$1", [gateId]);
+      if (!g) return res.status(404).json({ error: "Bulunamadı" });
+      if (g.passed_at) return res.status(409).json({ error: "Kapı zaten geçildi" });
 
-  /* Yükleme: pmdir/pm (d.docs write) VEYA projenin Product Owner'ı — ilk onay adımı
-     zaten Ürün Sahibi olduğu için içeriği o hazırlıyor sayılır. */
-  r.post("/:id/documents", upload.single("file"), async (req, res, next) => {
-    try {
-      const id = z.coerce.number().int().positive().parse(req.params.id);
-      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
-      if (!p) return res.status(404).json({ error: "Bulunamadı" });
+      const crit = typeof g.criteria === "string" ? JSON.parse(g.criteria) : (g.criteria || []);
+      const open = crit.filter((c) => !c.done);
+      if (open.length)
+        return res.status(422).json({ error: "Açık giriş kriteri varken kapı onaylanamaz", openCriteria: open.map((c) => c.text) });
 
-      const canWriteRole = access.canWrite(req.access, "d.docs");
-      const po = await projectDocs.memberWithRole(id, "Product Owner");
-      if (!canWriteRole && req.user.username !== po)
-        return res.status(403).json({ error: "Yalnızca Proje Yöneticisi/Direktörü veya projenin Ürün Sahibi doküman yükleyebilir" });
+      const authority = projects.isGateAuthority(req.user);
+      const signs = await db.many("SELECT username, role_key, authority FROM stage_gate_signatures WHERE gate_id=$1", [gateId]);
 
-      const v = z.object({
-        docType: z.enum(projectDocs.DOC_TYPE_ORDER),
-        title: z.string().trim().min(5).max(200),
-      }).parse(req.body);
-      if (!req.file) return res.status(400).json({ error: "PDF dosyası zorunlu" });
-      if (!req.file.buffer.subarray(0, 5).equals(PDF_MAGIC))
-        return res.status(400).json({ error: "Dosya içeriği PDF değil" });
-
-      const existing = await db.one("SELECT id, status FROM project_documents WHERE project_id=$1 AND doc_type=$2", [id, v.docType]);
-      if (existing && existing.status !== "reddedildi")
-        return res.status(409).json({ error: "Bu tipte zaten onay akışında veya onaylanmış bir doküman var" });
-
-      const approvedRows = await db.many("SELECT doc_type FROM project_documents WHERE project_id=$1 AND status='onaylandi'", [id]);
-      const approvedTypes = new Set(approvedRows.map((r) => r.doc_type));
-      if (!projectDocs.nextTypeAllowed(approvedTypes, v.docType)) {
-        const idx = projectDocs.DOC_TYPE_ORDER.indexOf(v.docType);
-        return res.status(409).json({
-          error: `Sıra kuralı: önce "${projectDocs.DOC_TYPE_ORDER[idx - 1]}" onaylanmalı`,
-        });
+      if (!authority) {
+        /* Varsayılan kural: aynı kişi ikinci imzayı atamaz, iki imza iki farklı rolden olmalı. */
+        if (signs.some((s) => s.username === req.user.username))
+          return res.status(409).json({ error: "Aynı kişi ikinci imzayı atamaz" });
+        if (signs.some((s) => s.role_key === req.user.role_key))
+          return res.status(409).json({ error: "İki imza iki farklı rolden olmalı" });
       }
 
-      const sha = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
-      const stored = `${String(p.id)}-${v.docType.replace(/[^A-Za-z0-9]/g, "")}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}.pdf`;
-      await fs.mkdir(cfg.UPLOAD_DIR, { recursive: true });
-      await fs.writeFile(path.join(cfg.UPLOAD_DIR, stored), req.file.buffer, { mode: 0o640 });
+      await db.query(
+        `INSERT INTO stage_gate_signatures (gate_id, username, role_key, authority) VALUES ($1,$2,$3,$4)
+         ON CONFLICT (gate_id, username) DO UPDATE SET authority = EXCLUDED.authority, signed_at = now()`,
+        [gateId, req.user.username, req.user.role_key, authority]);
 
-      let row;
-      if (existing) {
-        row = await db.one(
-          `UPDATE project_documents
-              SET title=$1, file_name=$2, file_path=$3, file_sha256=$4, status='onay_akisinda',
-                  current_step=1, reject_reason=NULL, uploaded_by=$5, uploaded_at=now(), effective_date=NULL
-            WHERE id=$6 RETURNING id`,
-          [v.title, safeName(req.file.originalname), stored, sha, req.user.username, existing.id]);
+      const all = await db.many("SELECT username, authority FROM stage_gate_signatures WHERE gate_id=$1", [gateId]);
+      const passed = authority || all.length >= (g.required_signatures || 2);
+      if (passed) {
+        const rule = authority ? "yetkili_tek_imza" : "iki_imza";
+        await db.query("UPDATE stage_gates SET passed_at = now(), passed_by = $1, passed_rule = $2 WHERE id = $3",
+          [req.user.username, rule, gateId]);
+        /* Tek yetkili onayı ayrı olay olarak yazılır; denetimde ayırt edilebilir. */
+        await audit.record(authority ? "kapi.gecildi_yetkili_onayi" : "kapi.gecildi_iki_imza", req.user.username,
+          { detail: { kapi: g.name, unvan: req.user.title_code, imza: all.length } });
       } else {
-        row = await db.one(
-          `INSERT INTO project_documents (project_id, doc_type, title, file_name, file_path, file_sha256, uploaded_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-          [id, v.docType, v.title, safeName(req.file.originalname), stored, sha, req.user.username]);
+        await audit.record("kapi.imzalandi", req.user.username, { detail: { kapi: g.name, imza: all.length } });
       }
-      await audit.record("proje_dokumani.yuklendi", req.user.username, { detail: { proje: id, tip: v.docType, sha256: sha } });
-      res.status(201).json({ id: row.id });
-    } catch (e) { next(e); }
-  });
-
-  r.post("/:id/documents/:docId/approve", requireAuth, async (req, res, next) => {
-    try {
-      const docId = z.coerce.number().int().positive().parse(req.params.docId);
-      const d = await db.one("SELECT * FROM project_documents WHERE id=$1", [docId]);
-      if (!d) return res.status(404).json({ error: "Bulunamadı" });
-      if (d.status !== "onay_akisinda") return res.status(409).json({ error: "Bu doküman onay akışında değil" });
-
-      const { allowed, isProxy } = await projectDocs.canApproveStep(req.user, d.project_id, d.current_step);
-      if (!allowed) {
-        const step = projectDocs.stepAt(d.current_step);
-        return res.status(403).json({ error: `Bu adımı yalnızca "${step.name}" onaylayabilir` });
-      }
-      const step = projectDocs.stepAt(d.current_step);
-      await db.query(
-        `INSERT INTO project_document_approvals (document_id, step_no, step_name, approver_username, is_proxy)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [docId, step.no, step.name, req.user.username, isProxy]);
-
-      const finished = step.no === 6;
-      await db.query(
-        finished
-          ? `UPDATE project_documents SET status='onaylandi', effective_date=now() WHERE id=$1`
-          : `UPDATE project_documents SET current_step = current_step + 1 WHERE id=$1`,
-        [docId]);
-      await audit.record(isProxy ? "proje_dokumani.vekaleten_onay" : "proje_dokumani.onay", req.user.username,
-        { detail: { doküman: docId, adim: step.name, vekalet: isProxy, tamamlandi: finished } });
-      res.json({ ok: true, finished, step: step.no });
-    } catch (e) { next(e); }
-  });
-
-  r.post("/:id/documents/:docId/reject", requireAuth, async (req, res, next) => {
-    try {
-      const docId = z.coerce.number().int().positive().parse(req.params.docId);
-      const reason = z.string().trim().min(10).max(2000).parse(req.body.reason);
-      const d = await db.one("SELECT * FROM project_documents WHERE id=$1", [docId]);
-      if (!d) return res.status(404).json({ error: "Bulunamadı" });
-      if (d.status !== "onay_akisinda") return res.status(409).json({ error: "Bu doküman onay akışında değil" });
-
-      const { allowed } = await projectDocs.canApproveStep(req.user, d.project_id, d.current_step);
-      if (!allowed) {
-        const step = projectDocs.stepAt(d.current_step);
-        return res.status(403).json({ error: `Bu adımı yalnızca "${step.name}" reddedebilir` });
-      }
-      await db.query("UPDATE project_documents SET status='reddedildi', reject_reason=$1 WHERE id=$2", [reason, docId]);
-      await audit.record("proje_dokumani.reddedildi", req.user.username, { detail: { doküman: docId, gerekce: reason } });
-      res.json({ ok: true });
-    } catch (e) { next(e); }
-  });
-
-  /* --- Onaycılar günlüğü (d.appr) ---
-     Ayrı bir depoya gerek yok: faz kapısı imzaları (stage_gate_signatures) ve
-     doküman onayları (project_document_approvals) zaten var; bu uç ikisini
-     projeye göre birleştirip zaman sırasına göre döner. */
-  r.get("/:id/approvals-log", requireProjectScreen("d.appr", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
-    try {
-      const id = z.coerce.number().int().positive().parse(req.params.id);
-      const gateSigns = await db.many(
-        `SELECT s.signed_at AS at, u.display_name, s.username, g.name AS subject,
-                'faz_kapisi' AS kind, FALSE AS is_proxy
-           FROM stage_gate_signatures s
-           JOIN stage_gates g ON g.id = s.gate_id
-           JOIN users u ON u.username = s.username
-          WHERE g.project_id = $1`, [id]);
-      const docApprovals = await db.many(
-        `SELECT a.approved_at AS at, u.display_name, a.approver_username AS username,
-                (d.doc_type || ' — ' || a.step_name) AS subject, 'dokuman' AS kind, a.is_proxy
-           FROM project_document_approvals a
-           JOIN project_documents d ON d.id = a.document_id
-           JOIN users u ON u.username = a.approver_username
-          WHERE d.project_id = $1`, [id]);
-      const items = [...gateSigns, ...docApprovals].sort((a, b) => new Date(b.at) - new Date(a.at));
-      res.json({ items });
-    } catch (e) { next(e); }
-  });
-
-  /* --- Değişiklik talepleri (d.cr) ---
-     İki bağımsız onay birlikte zorunlu: talep sahibinin yöneticisi VE proje ekibi
-     (PM/PMD temsilen). Sıra önemli değil; ikisi de tamamlanınca 'onaylandi' olur. */
-  r.get("/:id/change-requests", requireProjectScreen("d.cr", { eligibleRoles: ALL_PROJECT_ROLES }), async (req, res, next) => {
-    try {
-      const id = z.coerce.number().int().positive().parse(req.params.id);
-      const items = await db.many(
-        `SELECT id, title, description, requested_by, status, manager_approved_by, manager_approved_at,
-                team_approved_by, team_approved_at, reject_reason, created_at, decided_at
-           FROM project_change_requests WHERE project_id = $1 ORDER BY created_at DESC`, [id]);
-      res.json({ items });
-    } catch (e) { next(e); }
-  });
-
-  r.post("/:id/change-requests", requireAuth, async (req, res, next) => {
-    try {
-      const id = z.coerce.number().int().positive().parse(req.params.id);
-      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
-      if (!p) return res.status(404).json({ error: "Bulunamadı" });
-      const member = await db.one("SELECT 1 FROM project_members WHERE project_id=$1 AND username=$2", [id, req.user.username]);
-      const hasRoleAccess = access.canWrite(req.access, "d.cr");
-      if (!member && !hasRoleAccess)
-        return res.status(403).json({ error: "Yalnızca proje ekibi üyeleri değişiklik talebi açabilir" });
-
-      const v = z.object({
-        title: z.string().trim().min(5).max(160),
-        description: z.string().trim().min(10).max(4000),
-      }).parse(req.body);
-      const row = await db.one(
-        `INSERT INTO project_change_requests (project_id, title, description, requested_by)
-         VALUES ($1,$2,$3,$4) RETURNING id`,
-        [id, v.title, v.description, req.user.username]);
-      await audit.record("degisiklik_talebi.acildi", req.user.username, { detail: { proje: id, id: row.id, baslik: v.title } });
-      res.status(201).json({ id: row.id });
-    } catch (e) { next(e); }
-  });
-
-  async function finalizeIfBothApproved(crId) {
-    const cr = await db.one("SELECT * FROM project_change_requests WHERE id=$1", [crId]);
-    if (cr.manager_approved_at && cr.team_approved_at && cr.status === "bekliyor") {
-      await db.query("UPDATE project_change_requests SET status='onaylandi', decided_at=now() WHERE id=$1", [crId]);
-      return true;
-    }
-    return false;
-  }
-
-  r.post("/:id/change-requests/:crId/approve-manager", requireAuth, async (req, res, next) => {
-    try {
-      const crId = z.coerce.number().int().positive().parse(req.params.crId);
-      const cr = await db.one("SELECT * FROM project_change_requests WHERE id=$1", [crId]);
-      if (!cr) return res.status(404).json({ error: "Bulunamadı" });
-      if (cr.status !== "bekliyor") return res.status(409).json({ error: "Bu talep karara bağlanmış" });
-      if (cr.manager_approved_at) return res.status(409).json({ error: "Yönetici onayı zaten verilmiş" });
-
-      const managerUsername = await projectDocs.managerOf(cr.requested_by);
-      const isProxy = !managerUsername;
-      const allowed = isProxy ? projects.isGateAuthority(req.user) : req.user.username === managerUsername;
-      if (!allowed)
-        return res.status(403).json({
-          error: managerUsername ? `Bu onayı yalnızca ${managerUsername} verebilir`
-                                  : "Talep sahibinin yöneticisi tanımlı değil; yalnızca Proje Yönetim Direktörü vekaleten onaylayabilir",
-        });
-
-      await db.query(
-        "UPDATE project_change_requests SET manager_approved_by=$1, manager_approved_at=now() WHERE id=$2",
-        [req.user.username, crId]);
-      const finished = await finalizeIfBothApproved(crId);
-      await audit.record("degisiklik_talebi.yonetici_onayi", req.user.username, { detail: { id: crId, vekalet: isProxy, tamamlandi: finished } });
-      res.json({ ok: true, finished });
-    } catch (e) { next(e); }
-  });
-
-  r.post("/:id/change-requests/:crId/approve-team", requireAuth, async (req, res, next) => {
-    try {
-      const crId = z.coerce.number().int().positive().parse(req.params.crId);
-      const cr = await db.one("SELECT * FROM project_change_requests WHERE id=$1", [crId]);
-      if (!cr) return res.status(404).json({ error: "Bulunamadı" });
-      if (cr.status !== "bekliyor") return res.status(409).json({ error: "Bu talep karara bağlanmış" });
-      if (cr.team_approved_at) return res.status(409).json({ error: "Ekip onayı zaten verilmiş" });
-
-      if (!access.canWrite(req.access, "d.cr"))
-        return res.status(403).json({ error: "Proje ekibi onayını yalnızca Proje Yöneticisi/Direktörü verebilir" });
-
-      await db.query(
-        "UPDATE project_change_requests SET team_approved_by=$1, team_approved_at=now() WHERE id=$2",
-        [req.user.username, crId]);
-      const finished = await finalizeIfBothApproved(crId);
-      await audit.record("degisiklik_talebi.ekip_onayi", req.user.username, { detail: { id: crId, tamamlandi: finished } });
-      res.json({ ok: true, finished });
-    } catch (e) { next(e); }
-  });
-
-  r.post("/:id/change-requests/:crId/reject", requireAuth, async (req, res, next) => {
-    try {
-      const crId = z.coerce.number().int().positive().parse(req.params.crId);
-      const reason = z.string().trim().min(10).max(2000).parse(req.body.reason);
-      const cr = await db.one("SELECT * FROM project_change_requests WHERE id=$1", [crId]);
-      if (!cr) return res.status(404).json({ error: "Bulunamadı" });
-      if (cr.status !== "bekliyor") return res.status(409).json({ error: "Bu talep zaten karara bağlanmış" });
-
-      const managerUsername = await projectDocs.managerOf(cr.requested_by);
-      const isManagerSide = managerUsername ? req.user.username === managerUsername : projects.isGateAuthority(req.user);
-      const isTeamSide = access.canWrite(req.access, "d.cr");
-      if (!isManagerSide && !isTeamSide)
-        return res.status(403).json({ error: "Bu talebi yalnızca onaycı taraflardan biri reddedebilir" });
-
-      await db.query("UPDATE project_change_requests SET status='reddedildi', reject_reason=$1, decided_at=now() WHERE id=$2", [reason, crId]);
-      await audit.record("degisiklik_talebi.reddedildi", req.user.username, { detail: { id: crId, gerekce: reason } });
-      res.json({ ok: true });
+      res.json({ ok: true, passed, signatures: all.length, rule: passed ? (authority ? "yetkili_tek_imza" : "iki_imza") : null });
     } catch (e) { next(e); }
   });
 
@@ -419,70 +175,7 @@ module.exports = function (cfg) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,'devam','planinda') RETURNING id`,
         [v.code, v.name, v.method, v.lead, v.unitCode || null, v.startDate || null, v.targetDate || null]);
       await audit.record("proje.olusturuldu", req.user.username, { detail: { kod: v.code, yontem: v.method } });
-      /* Internal Audit ve Risk otomatik olarak zorunlu üye eklenir (CHANGELOG 1.13.1). */
-      await projects.ensureMandatoryMembers(row.id);
       res.status(201).json({ id: row.id });
-    } catch (e) { next(e); }
-  });
-
-  /* --- Proje ekibi ---
-     Internal Audit ve Risk zorunlu üyedir, çıkarılamaz. Diğer yedi rolden (Project Manager,
-     Developer, QA, Business Owner, Product Owner, Vendor, Analyst) istenildiği kadar eklenebilir.
-     GET her zaman mevcut projelerde eksik zorunlu üyeliği tamamlar (lazy backfill); böylece
-     10_project_team.sql'den önce oluşturulmuş projeler de otomatik tamamlanır. */
-  const memberSchema = z.object({
-    username: z.string().trim().regex(/^[a-z0-9._-]{2,64}$/),
-    projectRole: z.enum([
-      "Project Manager", "Developer", "QA", "Business Owner", "Product Owner",
-      "Internal Audit", "Risk", "Vendor", "Analyst",
-    ]),
-  });
-
-  r.get("/:id/team", requireScreen("d.team"), async (req, res, next) => {
-    try {
-      const id = z.coerce.number().int().positive().parse(req.params.id);
-      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
-      if (!p) return res.status(404).json({ error: "Bulunamadı" });
-      await projects.ensureMandatoryMembers(id);
-      res.json({ items: await projects.teamOf(id) });
-    } catch (e) { next(e); }
-  });
-
-  r.post("/:id/team", requireScreen("d.team", "write"), async (req, res, next) => {
-    try {
-      const id = z.coerce.number().int().positive().parse(req.params.id);
-      const v = memberSchema.parse(req.body);
-      if (v.projectRole === "Internal Audit" || v.projectRole === "Risk")
-        return res.status(400).json({
-          error: "Internal Audit ve Risk üyeliği otomatik atanır, elle eklenemez",
-        });
-      const p = await db.one("SELECT id FROM projects WHERE id=$1", [id]);
-      if (!p) return res.status(404).json({ error: "Bulunamadı" });
-      const u = await db.one("SELECT username FROM users WHERE username=$1 AND active", [v.username]);
-      if (!u) return res.status(400).json({ error: "Kullanıcı tanımlı ve aktif olmalı" });
-      const existing = await db.one("SELECT username FROM project_members WHERE project_id=$1 AND username=$2", [id, v.username]);
-      if (existing) return res.status(409).json({ error: "Kullanıcı zaten bu projenin ekibinde" });
-      await db.query(
-        `INSERT INTO project_members (project_id, username, project_role, is_mandatory, added_by)
-         VALUES ($1,$2,$3,FALSE,$4)`,
-        [id, v.username, v.projectRole, req.user.username]);
-      await audit.record("ekip.uye_eklendi", req.user.username,
-        { detail: { proje: id, kullanici: v.username, rol: v.projectRole } });
-      res.status(201).json({ ok: true });
-    } catch (e) { next(e); }
-  });
-
-  r.delete("/:id/team/:username", requireScreen("d.team", "write"), async (req, res, next) => {
-    try {
-      const id = z.coerce.number().int().positive().parse(req.params.id);
-      const username = z.string().trim().regex(/^[a-z0-9._-]{2,64}$/).parse(req.params.username);
-      const m = await db.one("SELECT is_mandatory, project_role FROM project_members WHERE project_id=$1 AND username=$2", [id, username]);
-      if (!m) return res.status(404).json({ error: "Bulunamadı" });
-      if (m.is_mandatory)
-        return res.status(409).json({ error: `${m.project_role} zorunlu ekip üyesidir, çıkarılamaz` });
-      await db.query("DELETE FROM project_members WHERE project_id=$1 AND username=$2", [id, username]);
-      await audit.record("ekip.uye_cikarildi", req.user.username, { detail: { proje: id, kullanici: username } });
-      res.json({ ok: true });
     } catch (e) { next(e); }
   });
 

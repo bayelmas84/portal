@@ -148,8 +148,3 @@ font-size:12px;color:var(--t2)}
 .login-form .b:not(.login-submit){background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.20);color:#fff}
 .login-form .b:not(.login-submit):hover{background:rgba(255,255,255,.17)}
 .login-form .card{background:rgba(8,20,44,.55);border-color:rgba(255,255,255,.14);color:#fff}
-
-/* Proje detayına giden tıklanabilir tablo satırları */
-tr.clickable{cursor:pointer}
-tr.clickable:hover{background:var(--s1)}
-

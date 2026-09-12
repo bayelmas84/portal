@@ -31,7 +31,6 @@ const HERO_W = 1482, HERO_H = 1061;
     view: "login", user: null, modules: [], settings: {}, mod: null, scr: null,
     data: {}, dlg: null, form: {}, toast: null, dark: matchMedia("(prefers-color-scheme: dark)").matches,
     reading: null, detail: null, quiz: null, quizResult: null, overdue: [], drill: null, showPw: false, execFilter: null, execUnit: null,
-    projTab: "overview", docOpen: null,
   };
   let csrfToken = null;
 
@@ -41,14 +40,7 @@ const HERO_W = 1482, HERO_H = 1061;
     if (opts.body instanceof FormData) init.body = opts.body;
     else if (opts.body) { init.headers["Content-Type"] = "application/json"; init.body = JSON.stringify(opts.body); }
     if (init.method !== "GET") init.headers["x-csrf-token"] = csrfToken || readCookie("tp_csrf");
-    let timer;
-    if (opts.timeoutMs) {
-      const ac = new AbortController();
-      init.signal = ac.signal;
-      timer = setTimeout(() => ac.abort(), opts.timeoutMs);
-    }
-    let res;
-    try { res = await fetch("/api" + path, init); } finally { clearTimeout(timer); }
+    const res = await fetch("/api" + path, init);
     let body = null;
     try { body = await res.json(); } catch (_) {}
     if (res.status === 401 && S.view !== "login") { S.view = "login"; render(); throw new Error("Oturum sona erdi"); }
@@ -632,56 +624,7 @@ const HERO_W = 1482, HERO_H = 1061;
 
 
   /* Delivery screens use English labels, matching Jira terminology. */
-  const HEALTH = { planinda: ["Planında", "ok"], risk: ["Risk altında", "wr"], gecikme: ["Gecikmede", "er"] };
-  // --- İkon sistemi (prototipten birebir alınmış Tabler-benzeri SVG yol verileri) ---
-  const ICONS={"adjustments":'<path d="M5 6h14M5 12h14M5 18h14"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>',"link":'<path d="M10 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.2 1.2"/><path d="M14 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.2-1.2"/>',"home":'<path d="M4 11 12 4l8 7"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-9"/>',"clipboard-list":'<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9.5 4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1h-5z"/><path d="M9 10h6M9 13.5h6M9 17h4"/>',"gantt":'<path d="M4 20V4M4 20h16"/><path d="M7 7.5h7M9 12h8M7 16.5h5"/>',"target":'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2"/>',"briefcase2":'<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M9 8V6.5A1.5 1.5 0 0 1 10.5 5h3A1.5 1.5 0 0 1 15 6.5V8"/><path d="M3 13h18"/><path d="M10.5 13v2h3v-2"/>',"briefcase":'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>',"files":'<path d="M8 3h7l4 4v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M15 3v4h4"/><path d="M6 8H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h1"/>',"speakerphone":'<path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-3"/><path d="M13 4.5 6 8H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h2l7 3.5z"/>',"school":'<path d="M12 4 2 9l10 5 10-5z"/><path d="M6 11.5V17c0 1.5 2.7 3 6 3s6-1.5 6-3v-5.5"/>',"chart-histogram":'<path d="M4 20V4M4 20h16"/><rect x="7" y="12" width="3" height="8"/><rect x="12" y="8" width="3" height="12"/><rect x="17" y="14" width="3" height="6"/>',"chart-bar":'<path d="M4 20V4M4 20h16"/><rect x="7" y="10" width="3" height="10"/><rect x="12" y="6" width="3" height="14"/><rect x="17" y="13" width="3" height="7"/>',"checkbox":'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8.5 12.5 11 15l4.5-5"/>',"apps":'<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',"settings":'<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M4.5 7.5l1.7 1M17.8 15.5l1.7 1M4.5 16.5l1.7-1M17.8 8.5l1.7-1"/>',"user-check":'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3 2.7-5 6-5 1 0 2 .2 2.8.5"/><path d="M15 17.5 17 19.5l4-4"/>',"layout-grid":'<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',"layout-kanban":'<rect x="4" y="4" width="4.5" height="16" rx="1"/><rect x="10" y="4" width="4.5" height="11" rx="1"/><rect x="16" y="4" width="4" height="7" rx="1"/>',"list-details":'<path d="M4 6h8M4 12h8M4 18h8M16 7h4M16 13h4M16 19h4"/>',"list-search":'<path d="M4 6h10M4 12h7M4 18h6"/><circle cx="16.5" cy="15.5" r="3"/><path d="M18.8 17.8 21 20"/>',"book":'<path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M17 7h2v13h-2"/><path d="M8 8h6M8 12h6"/>',"stamp":'<path d="M9 4h6a2 2 0 0 1 2 2c0 1.5-1 2.5-1 4h-8c0-1.5-1-2.5-1-4a2 2 0 0 1 2-2z"/><path d="M5 14h14v3H5z"/><path d="M4 20h16"/>',"file-text":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/>',"file-alert":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7z"/><path d="M14 3v4h4"/><path d="M12 11v3M12 17h.01"/>',"file-check":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7z"/><path d="M14 3v4h4"/><path d="M9.5 14.5 11 16l3.5-4"/>',"file-upload":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7z"/><path d="M14 3v4h4"/><path d="M12 17v-5M9.8 14.2 12 12l2.2 2.2"/>',"file-symlink":'<path d="M14 3H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/><path d="M14 3v4h4"/><path d="M13 15h5v-3"/><path d="M18 15l-4-4"/>',"inbox":'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 13h4l2 3h6l2-3h4"/>',"clock":'<circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/>',"checks":'<path d="M3 12.5 6 15.5l6-7"/><path d="M11 15.5 12.5 17 20 8"/>',"users":'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3 2.7-5 6-5s6 2 6 5"/><path d="M16 4.5a3.2 3.2 0 0 1 0 6.5"/><path d="M18 15.5c2 .7 3 2.3 3 4.5"/>',"users-group":'<circle cx="8" cy="9" r="2.6"/><circle cx="16" cy="9" r="2.6"/><path d="M3 19c0-2.5 2.2-4.3 5-4.3s5 1.8 5 4.3"/><path d="M13 19c0-2.5 2.2-4.3 5-4.3 1 0 2 .2 3 .8"/>',"building":'<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/>',"id-badge":'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><circle cx="12" cy="11" r="2.4"/><path d="M8.5 17.5c.6-1.6 2-2.4 3.5-2.4s2.9.8 3.5 2.4"/>',"shield":'<path d="M12 3 5 6v5.5C5 16 8 19.4 12 21c4-1.6 7-5 7-9.5V6z"/><path d="M9.5 12.5 11 14l3.5-4"/>',"bell-ringing":'<path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5 1.5 5h-15S6 13 6 9z"/><path d="M10 18a2 2 0 0 0 4 0"/><path d="M3.5 6.5 5 5M20.5 6.5 19 5"/>',"alert-triangle":'<path d="M12 4 21 19H3z"/><path d="M12 9.5v4M12 16.5h.01"/>',"eye":'<path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',"lock":'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',"logout":'<path d="M14 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7"/><path d="M16 15l3-3-3-3"/><path d="M19 12h-8"/>',"sun":'<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/>',"moon":'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/>',"external-link":'<path d="M13 5h6v6"/><path d="M19 5 10 14"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',"scissors":'<circle cx="7" cy="18" r="2.4"/><circle cx="7" cy="6" r="2.4"/><path d="M8.8 7.6 20 18M8.8 16.4 20 6"/>',"messages":'<path d="M3 6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H8l-5 3z"/><path d="M18 9h1a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1l-3 3v-3h-3"/>',"chart-candle":'<path d="M4 20V4"/><path d="M8 8v8M8 6v2M8 16v2"/><path d="M13 11v6M13 9v2M13 17v2"/><path d="M18 7v7M18 5v2M18 14v2"/>',"address-book":'<rect x="6" y="3" width="14" height="18" rx="2"/><path d="M4 7h2M4 12h2M4 17h2"/><circle cx="13" cy="10" r="2.2"/><path d="M9.5 16c.7-1.4 2-2.1 3.5-2.1s2.8.7 3.5 2.1"/>'};
-  function ic(name, size, extra) {
-    const n = String(name || "").replace(/^ti-/, "");
-    const body = ICONS[n] || '<circle cx="12" cy="12" r="8"/>';
-    return '<svg viewBox="0 0 24 24" width="' + (size || 16) + '" height="' + (size || 16) +
-      '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ' +
-      'aria-hidden="true" style="flex-shrink:0;vertical-align:-2px;' + (extra || "") + '">' + body + '</svg>';
-  }
-  const MODULE_META = {
-    delivery: { icon: "clipboard-list", color: "#0F6E56" },
-    documents: { icon: "files", color: "#4B3B8F" },
-    announce: { icon: "speakerphone", color: "#0178BA" },
-    training: { icon: "school", color: "#7A1F3D" },
-    reports: { icon: "chart-histogram", color: "#B8894A" },
-    approvals: { icon: "checkbox", color: "#0F6E56" },
-    compliance: { icon: "shield", color: "#8E0D4D" },
-    admin: { icon: "adjustments", color: "#33405C" },
-    shortcuts: { icon: "link", color: "#8A6A2F" },
-  };
-  const SCREEN_ICON = {
-    "d.my": "user-check", "d.projects": "layout-grid", "d.board": "layout-kanban",
-    "d.backlog": "list-details", "d.sprint": "clock", "d.gate": "checkbox",
-    "d.charts": "chart-histogram", "d.exec": "target", "d.team": "users-group",
-    "d.docs": "files", "d.docview": "file-text", "d.appr": "checks", "d.cr": "file-symlink",
-    "k.docs": "book", "k.queue": "stamp", "k.mail": "messages",
-    "a.list": "speakerphone",
-    "t.un": "file-alert", "t.done": "file-check",
-    "r.list": "list-search", "r.view": "chart-bar", "r.dev": "adjustments", "r.usage": "chart-histogram",
-    "p.in": "inbox", "p.my": "clock", "p.done": "checks",
-    "c.read": "list-details", "c.rem": "clock", "c.audit": "checks",
-    "s.all": "link",
-    "m.ann": "speakerphone", "m.users": "users", "m.units": "building", "m.titles": "id-badge",
-    "m.roles": "shield", "m.access": "checkbox", "m.notif": "messages", "m.dir": "shield",
-    "m.brand": "palette", "m.avail": "adjustments", "m.short": "apps",
-  };
-  const AVATAR_COLORS = ["#0F6E56", "#4B3B8F", "#0178BA", "#7A1F3D", "#B8894A", "#8E0D4D", "#33405C", "#8A6A2F", "#A32D2D", "#3B6D11"];
-  function avatarColor(key) {
-    let h = 0;
-    const s = String(key || "");
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-    return AVATAR_COLORS[h % AVATAR_COLORS.length];
-  }
-  function initials(name) {
-    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-    if (!parts.length) return "?";
-    return (parts[0][0] + (parts[1] ? parts[1][0] : "")).toUpperCase();
-  }
-
+  const HEALTH = { planinda: ["On track", "ok"], risk: ["At risk", "wr"], gecikme: ["Delayed", "er"] };
   const STATE_EN = { backlog: "Backlog", todo: "To Do", prog: "In Progress", review: "In Review", test: "In Testing", done: "Done" };
   const progressBar = (pct, color) => `<div style="height:8px;background:var(--s1);border-radius:20px;overflow:hidden">
     <div style="height:8px;width:${Math.max(0, Math.min(100, pct))}%;background:${color || "var(--navy)"}"></div></div>`;
@@ -708,180 +651,15 @@ const HERO_W = 1482, HERO_H = 1061;
     const items = S.data.items || [];
     return head("Projects", `${items.length} projects`)
       + table(["Code", "Project", "Method", "Lead", "Progress", "Items", "Open bugs", "Health", ""],
-        items.map((p) => `<tr class="clickable" data-a="projOpen:${p.id}">
+        items.map((p) => `<tr>
           <td class="m" style="color:var(--ta)">${esc(p.code)}</td><td>${esc(p.name)}</td>
           <td>${pill(p.method)}</td><td style="color:var(--t2)">${esc(p.lead)}</td>
           <td style="min-width:140px">${progressBar(p.completion, p.drift !== null && p.drift <= -15 ? "#a3121c" : "var(--navy)")}
             <span class="m" style="color:var(--tm)">${p.completion}% · ${p.done_points}/${p.points} SP${p.timeProgress !== null ? ` · time ${p.timeProgress}%` : ""}</span></td>
           <td class="m">${p.done_items}/${p.items}</td><td class="m">${p.open_bugs}</td>
           <td>${pill(...(HEALTH[p.health] || [p.health, ""]))}</td>
-          <td style="text-align:right" onclick="event.stopPropagation()">${scrOf("d.charts") ? `<button class="b s p" data-a="projCharts:${esc(p.code)}">Charts</button>` : ""}</td>
+          <td style="text-align:right">${scrOf("d.charts") ? `<button class="b s p" data-a="projCharts:${esc(p.code)}">Charts</button>` : ""}</td>
         </tr>`).join("") || `<tr><td colspan="9" style="color:var(--tm)">No projects yet.</td></tr>`);
-  }
-
-  /* ---------------- Proje detayı: Genel Bakış / Ekip / Dokümanlar / Faz Kapıları / Onaylar / CR ---------------- */
-  const PROJ_TABS = [
-    ["overview", "Genel Bakış", "layout-grid"], ["team", "Proje ekibi", "users-group"], ["docs", "Dokümanlar", "files"],
-    ["gates", "Faz Kapıları", "checkbox"], ["appr", "Onaycılar Günlüğü", "checks"], ["cr", "Değişiklik Talepleri", "file-symlink"],
-  ];
-  const DOC_STATUS_PILL = { onay_akisinda: ["Onay akışında", "wr"], onaylandi: ["Onaylandı", "ok"], reddedildi: ["Reddedildi", "er"] };
-  const CR_STATUS_PILL = { bekliyor: ["Bekliyor", "wr"], onaylandi: ["Onaylandı", "ok"], reddedildi: ["Reddedildi", "er"] };
-
-  async function loadProjectTab(tab) {
-    const id = S.detail.id;
-    if (tab === "overview" && !S.detail.metrics) {
-      const r = await api(`/projects/${id}`); Object.assign(S.detail, r);
-    } else if (tab === "team" && !S.data.team) {
-      S.data.team = (await api(`/projects/${id}/team`)).items;
-    } else if (tab === "docs" && !S.data.projDocs) {
-      const r = await api(`/projects/${id}/documents`); S.data.projDocs = r.items; S.data.docTypeOrder = r.typeOrder;
-    } else if (tab === "gates" && !S.data.gates) {
-      const r = await api(`/gates/project/${id}`); S.data.gates = r.items; S.data.canGateOverride = r.canOverride;
-    } else if (tab === "appr" && !S.data.apprLog) {
-      S.data.apprLog = (await api(`/projects/${id}/approvals-log`)).items;
-    } else if (tab === "cr" && !S.data.crs) {
-      S.data.crs = (await api(`/projects/${id}/change-requests`)).items;
-    }
-  }
-
-  function projectDetailView() {
-    const d = S.detail, tab = S.projTab || "overview";
-    const tabsBar = `<div style="display:flex;gap:4px;border-bottom:1px solid var(--bd);margin-bottom:16px;flex-wrap:wrap">
-      ${PROJ_TABS.map(([k, label, icon]) => `<button class="b s ${tab === k ? "p" : ""}" style="border-radius:8px 8px 0 0"
-        data-a="projTab:${k}">${ic(icon, 14)}<span style="margin-left:5px">${label}</span></button>`).join("")}</div>`;
-    let body;
-    if (tab === "team") body = projectTeamPane(d);
-    else if (tab === "docs") body = S.docOpen ? docDetailPane() : projectDocsPane(d);
-    else if (tab === "gates") body = projectGatesPane(d);
-    else if (tab === "appr") body = projectApprPane(d);
-    else if (tab === "cr") body = projectCrPane(d);
-    else body = projectOverviewPane(d);
-    return head(`${esc(d.metrics ? d.metrics.code : "")} — ${esc(d.metrics ? d.metrics.name : "")}`,
-      d.metrics ? `${pill(d.metrics.method)} ${pill(...(HEALTH[d.metrics.health] || [d.metrics.health, ""]))}` : "",
-      `<button class="b" data-a="back">← Projeler</button>`) + tabsBar + body;
-  }
-
-  function projectOverviewPane(d) {
-    if (!d.metrics) return `<p class="m" style="color:var(--tm)">Yükleniyor…</p>`;
-    const m = d.metrics;
-    return `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:16px">
-        <div class="card"><div class="lbl">Tamamlanma</div><div style="font-size:20px">${m.completion}%</div></div>
-        <div class="card"><div class="lbl">İş kalemleri</div><div style="font-size:20px">${m.done_items}/${m.items}</div></div>
-        <div class="card"><div class="lbl">Açık hata</div><div style="font-size:20px">${m.open_bugs}</div></div>
-        <div class="card"><div class="lbl">Kalan gün</div><div style="font-size:20px">${m.daysLeft === null ? "—" : m.daysLeft}</div></div>
-      </div>`
-      + table(["Anahtar", "Tip", "Başlık", "Durum", "Öncelik", "SP", "Atanan"],
-        (d.items || []).map((it) => `<tr>
-          <td class="m" style="color:var(--ta)">${esc(it.item_key)}</td><td>${pill(it.type)}</td>
-          <td>${esc(it.title)}</td><td>${pill(STATE_EN[it.state] || it.state)}</td>
-          <td>${esc(it.priority)}</td><td class="m">${it.points}</td>
-          <td style="color:var(--t2)">${esc(it.assignee || "—")}</td></tr>`).join("")
-          || `<tr><td colspan="7" style="color:var(--tm)">İş kalemi yok.</td></tr>`);
-  }
-
-  function projectTeamPane(d) {
-    const items = S.data.team || [];
-    const canWriteTeam = canWrite("d.team");
-    return (canWriteTeam ? `<div style="margin-bottom:12px"><button class="b p" data-a="teamAdd:${d.id}">+ Üye ekle</button></div>` : "")
-      + table(["Kişi", "Rol", "Zorunlu", ""],
-        items.map((m) => `<tr><td>${esc(m.display_name)}<div class="m" style="color:var(--tm)">${esc(m.username)}</div></td>
-          <td>${pill(m.project_role)}</td><td>${m.is_mandatory ? pill("Zorunlu", "wr") : ""}</td>
-          <td style="text-align:right">${canWriteTeam && !m.is_mandatory ? `<button class="b s d" data-a="teamRemove:${d.id}:${m.username}">Çıkar</button>` : ""}</td>
-        </tr>`).join("") || `<tr><td colspan="4" style="color:var(--tm)">Ekip henüz yüklenmedi.</td></tr>`);
-  }
-
-  function projectDocsPane(d) {
-    const items = S.data.projDocs || [];
-    const order = S.data.docTypeOrder || [];
-    const canUpload = canWrite("d.docs");
-    return (canUpload ? `<div style="margin-bottom:12px"><button class="b p" data-a="pdocUploadDlg:${d.id}">+ Doküman yükle</button></div>` : "")
-      + table(["Tip", "Başlık", "Durum", "Adım", "Yükleyen", ""],
-        order.map((type) => {
-          const doc = items.find((x) => x.doc_type === type);
-          if (!doc) return `<tr><td>${esc(type)}</td><td colspan="3" style="color:var(--tm)">Henüz yüklenmedi</td><td></td></tr>`;
-          const st = DOC_STATUS_PILL[doc.status] || [doc.status, ""];
-          return `<tr class="clickable" data-a="pdocOpen:${d.id}:${doc.id}">
-            <td>${esc(type)}</td><td>${esc(doc.title)}</td><td>${pill(st[0], st[1])}</td>
-            <td class="m">${doc.status === "onay_akisinda" ? `${doc.current_step}/6` : "—"}</td>
-            <td style="color:var(--t2)">${esc(doc.uploaded_by)}</td>
-            <td style="text-align:right" onclick="event.stopPropagation()">${doc.status === "reddedildi" && canUpload ? `<button class="b s p" data-a="pdocUploadDlg:${d.id}:${type}">Yeniden yükle</button>` : ""}</td>
-          </tr>`;
-        }).join(""));
-  }
-
-  function docDetailPane() {
-    const dd = S.data.docDetail;
-    if (!dd) return `<p class="m" style="color:var(--tm)">Yükleniyor…</p>`;
-    const item = dd.item, st = DOC_STATUS_PILL[item.status] || [item.status, ""];
-    const meCanAct = item.status === "onay_akisinda";
-    return `<button class="b" data-a="pdocBack">← Dokümanlar</button>
-      <div class="card" style="margin-top:12px">
-        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
-          <span style="font-size:15px">${esc(item.doc_type)} — ${esc(item.title)}</span>${pill(st[0], st[1])}</div>
-        <p class="m" style="color:var(--tm);margin-top:6px">Yükleyen: ${esc(item.uploaded_by)} · ${esc(String(item.uploaded_at).slice(0, 10))}</p>
-        ${item.file_name ? `<a href="/api/projects/${S.detail.id}/documents/${item.id}/file" target="_blank" class="b s" style="display:inline-block;margin-top:8px;text-decoration:none">PDF'i aç</a>` : ""}
-        ${item.reject_reason ? `<div class="card er" style="margin-top:10px;font-size:12px">Red gerekçesi: ${esc(item.reject_reason)}</div>` : ""}
-        ${dd.nextApprover ? `<div class="card wr" style="margin-top:10px;font-size:12px">Sıradaki onay (adım ${dd.nextApprover.stepNo}/6): ${esc(dd.nextApprover.stepName)}${dd.nextApprover.username ? ` — ${esc(dd.nextApprover.username)}` : " — atanmış kimse yok, yalnızca Proje Yönetim Direktörü vekaleten onaylayabilir"}</div>` : ""}
-        ${meCanAct ? `<div style="display:flex;gap:9px;margin-top:12px">
-          <button class="b g" data-a="pdocApprove:${S.detail.id}:${item.id}">Onayla</button>
-          <button class="b d" data-a="pdocReject:${S.detail.id}:${item.id}">Reddet</button></div>` : ""}
-      </div>
-      <div style="margin-top:16px">${table(["Adım", "Onaycı", "Vekalet", "Tarih"],
-        (dd.approvals || []).map((a) => `<tr><td>${esc(a.step_name)}</td><td>${esc(a.display_name)}</td>
-          <td>${a.is_proxy ? pill("Vekaleten", "wr") : ""}</td><td class="m">${esc(String(a.approved_at).slice(0, 16).replace("T", " "))}</td></tr>`).join("")
-          || `<tr><td colspan="4" style="color:var(--tm)">Henüz onay yok.</td></tr>`)}</div>`;
-  }
-
-  function projectGatesPane(d) {
-    const items = S.data.gates || [];
-    return items.map((g) => `<div class="card" style="margin-bottom:12px">
-        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
-          <span style="font-size:14px">${esc(g.name)}</span>
-          ${g.passedAt ? pill("Geçildi", "ok") : pill(`${g.openCriteria} açık kriter`, g.openCriteria ? "wr" : "")}
-          ${g.override ? pill("Tek yetkili onayı", "wr") : ""}</div>
-        <ul style="margin:10px 0 0;padding-left:18px;font-size:13px">
-          ${g.criteria.map((c, i) => `<li style="margin-bottom:4px">
-            <label style="display:flex;gap:7px;align-items:center;cursor:${g.passedAt ? "default" : "pointer"}">
-              <input type="checkbox" ${c.done ? "checked" : ""} ${g.passedAt ? "disabled" : ""} style="width:auto"
-                data-a="gateCrit:${g.id}:${i}:${c.done ? 0 : 1}"> ${esc(c.text)}</label></li>`).join("")}
-        </ul>
-        ${!g.passedAt ? `<div style="margin-top:10px;display:flex;gap:9px">
-          <button class="b p s" data-a="gateSign:${g.id}">İmzala</button>
-          ${S.data.canGateOverride ? `<button class="b g s" data-a="gateOverride:${g.id}">Tek imzayla ilerlet</button>` : ""}
-        </div>` : ""}
-        <div class="m" style="color:var(--tm);margin-top:8px">İmzalar: ${g.signatures.map((s) => esc(s.display_name)).join(", ") || "yok"}</div>
-      </div>`).join("") || `<p class="m" style="color:var(--tm)">Bu projede faz kapısı tanımlı değil.</p>`;
-  }
-
-  function projectApprPane() {
-    const items = S.data.apprLog || [];
-    return table(["Tarih", "Kişi", "Konu", "Tür", "Vekalet"],
-      items.map((a) => `<tr><td class="m">${esc(String(a.at).slice(0, 16).replace("T", " "))}</td>
-        <td>${esc(a.display_name)}</td><td>${esc(a.subject)}</td>
-        <td>${pill(a.kind === "faz_kapisi" ? "Faz kapısı" : "Doküman")}</td>
-        <td>${a.is_proxy ? pill("Vekaleten", "wr") : ""}</td></tr>`).join("")
-        || `<tr><td colspan="5" style="color:var(--tm)">Henüz onay kaydı yok.</td></tr>`);
-  }
-
-  function projectCrPane(d) {
-    return `<div style="margin-bottom:12px"><button class="b p" data-a="crNew:${d.id}">+ Değişiklik talebi</button></div>`
-      + (S.data.crs || []).map((cr) => {
-        const st = CR_STATUS_PILL[cr.status] || [cr.status, ""];
-        return `<div class="card" style="margin-bottom:12px">
-          <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
-            <span style="font-size:14px">${esc(cr.title)}</span>${pill(st[0], st[1])}</div>
-          <p style="font-size:13px;color:var(--t2);margin:6px 0">${esc(cr.description)}</p>
-          <p class="m" style="color:var(--tm)">Talep eden: ${esc(cr.requested_by)}
-            · Yönetici onayı: ${cr.manager_approved_by ? esc(cr.manager_approved_by) : "bekliyor"}
-            · Ekip onayı: ${cr.team_approved_by ? esc(cr.team_approved_by) : "bekliyor"}</p>
-          ${cr.reject_reason ? `<div class="card er" style="margin-top:8px;font-size:12px">Red gerekçesi: ${esc(cr.reject_reason)}</div>` : ""}
-          ${cr.status === "bekliyor" ? `<div style="display:flex;gap:9px;margin-top:10px">
-            ${!cr.manager_approved_by ? `<button class="b s p" data-a="crApproveManager:${d.id}:${cr.id}">Yönetici olarak onayla</button>` : ""}
-            ${!cr.team_approved_by ? `<button class="b s p" data-a="crApproveTeam:${d.id}:${cr.id}">Ekip adına onayla</button>` : ""}
-            <button class="b s d" data-a="crReject:${d.id}:${cr.id}">Reddet</button>
-          </div>` : ""}
-        </div>`;
-      }).join("") || "";
   }
 
   /* Burndown chart: ideal line vs actual remaining work, drawn from server snapshots. */
@@ -1136,12 +914,7 @@ const HERO_W = 1482, HERO_H = 1061;
   function screenBody() {
     if (S.reading) return readerView();
     if (S.quiz || S.quizResult) return quizView();
-    if (S.detail) {
-      if (S.detail._type === "ann") return annDetail();
-      if (S.detail._type === "doc") return docDetail();
-      if (S.detail._type === "project") return projectDetailView();
-      return reqDetail();
-    }
+    if (S.detail) return S.detail._type === "ann" ? annDetail() : S.detail._type === "doc" ? docDetail() : reqDetail();
     if (S.data.error) return `<div class="card wr">${esc(S.data.error)}</div>`;
     switch (S.scr) {
       case "a.list": return annView();
@@ -1181,67 +954,6 @@ const HERO_W = 1482, HERO_H = 1061;
     }
   }
 
-  function railView() {
-    const pendingCount = (S.data.inboxCount || 0);
-    return `<nav class="nv" aria-label="Modüller">
-        <button class="rail ${S.view === "home" ? "on" : ""}" data-a="home" title="Ana ekran" aria-label="Ana ekran">${ic("home", 18)}</button>
-        <div style="width:26px;height:1px;background:rgba(255,255,255,.14);margin:3px 0"></div>
-        ${S.modules.map((m) => {
-          const meta = MODULE_META[m.key] || { icon: "apps", color: "#33405C" };
-          return `<button class="rail ${S.view === "app" && S.mod === m.key ? "on" : ""}" data-a="mod:${m.key}" title="${esc(m.label)}" aria-label="${esc(m.label)}">
-          ${ic(meta.icon, 18)}${m.key === "approvals" && pendingCount ? `<span class="badge">${pendingCount}</span>` : ""}</button>`;
-        }).join("")}
-        <div style="flex:1"></div>
-        <button class="rail" data-a="theme" title="Tema" aria-label="Tema değiştir">${ic(S.dark ? "sun" : "moon", 17)}</button>
-        <button class="rail" data-a="logout" title="Çıkış" aria-label="Çıkış">${ic("logout", 17)}</button></nav>`;
-  }
-
-  function homeView() {
-    const hour = new Date().getHours();
-    const greet = hour < 12 ? "Günaydın" : hour < 18 ? "İyi günler" : "İyi akşamlar";
-    const stats = [
-      ["Onayımda bekleyen", S.data.inboxCount || 0, "p.in", "mod:approvals"],
-      ["Bekleyen okuma", S.data.homeTrainCount || 0, "t.un", "mod:training"],
-      ["Onay kuyruğunda doküman", S.data.homeQueueCount || 0, "k.queue", "mod:documents"],
-    ].filter(([, , key]) => scrOf(key));
-    return `<div style="padding:22px 24px;background:linear-gradient(150deg,var(--navy),#123061 60%,#0a1c40);color:#fff">
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px">
-        <span style="font-family:SFMono-Regular,Consolas,monospace;font-size:11px;letter-spacing:.26em;color:var(--gold)">${esc(BRAND.productMark)}</span>
-        <span style="flex:1"></span>
-        <span class="m" style="color:#9FB0CE">${esc(BRAND.slogan)}</span></div>
-      <div style="display:flex;align-items:center;gap:13px;flex-wrap:wrap">
-        <span style="width:42px;height:42px;border-radius:13px;background:${avatarColor(S.user.username)};color:#fff;font-size:13px;
-          display:flex;align-items:center;justify-content:center">${initials(S.user.displayName)}</span>
-        <div style="flex:1;min-width:170px"><div style="font-size:19px">${greet}, ${esc((S.user.displayName || "").split(" ")[0])}</div>
-          <div class="m" style="color:#9FB0CE;margin-top:3px">${esc(S.user.title || "")}${S.user.title && S.user.unit ? " · " : ""}${esc(S.user.unit || "")}</div></div></div>
-      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
-        ${stats.map(([label, val, , jump]) => `<div style="background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:12px;
-          padding:11px 15px;min-width:130px;cursor:pointer" data-a="${jump}">
-          <div style="font-size:9.5px;color:#8FA0BE;letter-spacing:.08em;text-transform:uppercase">${esc(label)}</div>
-          <div class="m" style="font-size:19px;color:#EBC98A;margin-top:2px">${val} <span style="font-size:10px;color:#8FA0BE">Git →</span></div></div>`).join("")}
-      </div></div>
-      <div style="padding:20px 24px">
-        <div class="lbl">Modüller</div>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(215px,1fr))">
-          ${S.modules.map((m) => {
-            const meta = MODULE_META[m.key] || { icon: "apps", color: "#33405C" };
-            return `<div class="card" style="cursor:pointer" data-a="mod:${m.key}">
-              <div style="display:flex;gap:11px;align-items:center">
-                <span style="width:36px;height:36px;border-radius:11px;background:${meta.color};color:#fff;display:flex;align-items:center;justify-content:center">${ic(meta.icon, 18)}</span>
-                <span style="flex:1;font-size:13.5px">${esc(m.label)}</span>${ic("external-link", 14, "color:" + meta.color)}</div></div>`;
-          }).join("")}
-        </div>
-        ${scrOf("s.all") ? `<div class="lbl" style="margin-top:20px">Kısayollar</div>
-        <div style="display:flex;gap:9px;flex-wrap:wrap">
-          ${(S.data.homeShortcuts || []).map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"
-            class="card" style="padding:10px 13px;display:flex;gap:9px;align-items:center;min-width:150px;text-decoration:none;color:inherit">
-            <span style="width:28px;height:28px;border-radius:9px;background:#8A6A2F;color:#fff;display:flex;align-items:center;justify-content:center">${ic("link", 15)}</span>
-            <span style="font-size:12.5px;flex:1">${esc(x.name)}</span>${ic("external-link", 13, "color:var(--tm)")}</a>`).join("")
-            || `<p class="m" style="color:var(--tm)">Kısayol tanımlı değil.</p>`}
-        </div>` : ""}
-      </div>`;
-  }
-
   function render() {
     document.documentElement.className = S.dark ? "dark" : "";
     if (S.view === "login") { app.innerHTML = loginView(); bindLogin(); return; }
@@ -1249,32 +961,25 @@ const HERO_W = 1482, HERO_H = 1061;
       app.innerHTML = lockView() + (S.toast ? `<div class="toast ${S.toast.bad ? "er" : "ok"}">${esc(S.toast.msg)}</div>` : "");
       return;
     }
-    if (S.view === "home") {
-      app.innerHTML = `<div class="shell">${railView()}<div class="main" style="overflow-y:auto">${homeView()}</div></div>
-        ${S.dlg ? dialogView() : ""}${S.toast ? `<div class="toast ${S.toast.bad ? "er" : "ok"}">${esc(S.toast.msg)}</div>` : ""}`;
-      bindForms();
-      return;
-    }
     const mod = S.modules.find((m) => m.key === S.mod);
-    const scr = (mod ? mod.screens : []).find((s) => s.key === S.scr);
+    const pendingCount = (S.data.inboxCount || 0);
     app.innerHTML = `<div class="shell">
-      ${railView()}
+      <nav class="nv" aria-label="Modüller">
+        ${S.modules.map((m) => `<button class="rail ${S.mod === m.key ? "on" : ""}" data-a="mod:${m.key}" title="${esc(m.label)}">
+          ${m.label.slice(0, 2)}${m.key === "approvals" && pendingCount ? `<span class="badge">${pendingCount}</span>` : ""}</button>`).join("")}
+        <div style="flex:1"></div>
+        <button class="rail" data-a="theme" title="Tema">${S.dark ? "☀" : "☾"}</button>
+        <button class="rail" data-a="logout" title="Çıkış">⎋</button></nav>
       <div class="sub">
-        <div style="display:flex;align-items:center;gap:9px;padding:6px 9px 12px">
-          <span style="width:28px;height:28px;border-radius:9px;background:${mod ? (MODULE_META[mod.key] || {}).color || "#33405C" : "#33405C"};color:#fff;display:flex;align-items:center;justify-content:center">
-            ${ic(mod ? (MODULE_META[mod.key] || {}).icon || "apps" : "apps", 15)}</span>
-          <span style="font-size:13px;flex:1">${esc(mod ? mod.label : "")}</span></div>
+        <div style="padding:6px 9px 12px;font-size:13px">${esc(mod ? mod.label : "")}</div>
         ${(mod ? mod.screens : []).map((s) => `<div class="si ${S.scr === s.key ? "on" : ""}" data-a="scr:${s.key}">
-          ${ic(SCREEN_ICON[s.key] || "apps", 15)}<span style="flex:1">${esc(s.label)}</span>${s.state === "bakim" ? pill("bakım", "wr") : ""}</div>`).join("")}
+          <span style="flex:1">${esc(s.label)}</span>${s.state === "bakim" ? pill("bakım", "wr") : ""}</div>`).join("")}
       </div>
       <div class="main">
-        <div class="scrbar">${(mod ? mod.screens : []).map((s) => `<div class="si ${S.scr === s.key ? "on" : ""}" data-a="scr:${s.key}">${ic(SCREEN_ICON[s.key] || "apps", 14)}<span>${esc(s.label)}</span></div>`).join("")}</div>
+        <div class="scrbar">${(mod ? mod.screens : []).map((s) => `<div class="si ${S.scr === s.key ? "on" : ""}" data-a="scr:${s.key}">${esc(s.label)}</div>`).join("")}</div>
         <div class="top"><span style="font-size:11.5px;color:var(--tm)">${esc(mod ? mod.label : "")}</span>
-          ${scr && !S.detail ? `<span style="color:var(--tm)">/</span><span style="font-size:12.5px">${esc(scr.label)}</span>` : ""}
           <span style="flex:1"></span>
-          <span class="m" style="color:var(--tm)">${esc(S.user.displayName)}</span>
-          <span style="width:28px;height:28px;border-radius:9px;background:${avatarColor(S.user.username)};color:#fff;font-size:11px;
-            display:flex;align-items:center;justify-content:center">${initials(S.user.displayName)}</span></div>
+          <span class="m" style="color:var(--tm)">${esc(S.user.displayName)}</span></div>
         <div class="body">${screenBody()}</div>
       </div></div>
       ${S.dlg ? dialogView() : ""}
@@ -1349,42 +1054,6 @@ const HERO_W = 1482, HERO_H = 1061;
           <button type="button" class="b" data-a="dlgClose">Vazgeç</button>
           <button type="submit" class="b d">${esc(d.confirmLabel || "Gönder")}</button></div></form></div></div>`;
     }
-    if (d.type === "teamMember") {
-      const roles = ["Project Manager", "Developer", "QA", "Business Owner", "Product Owner", "Vendor", "Analyst"];
-      return `<div class="ov"><div class="dlg"><form id="dlgForm">
-        <div style="font-size:15px">Ekibe üye ekle</div>
-        <p style="font-size:12px;color:var(--t2)">Internal Audit ve Risk otomatik atanır, buradan eklenemez.</p>
-        <label class="lbl" style="display:block;margin-top:12px">Kullanıcı adı</label>
-        <input name="username" required pattern="[a-z0-9._-]{2,64}" placeholder="ad.soyad" value="${esc(f.username || "")}">
-        <label class="lbl" style="display:block;margin-top:12px">Proje rolü</label>
-        <select name="projectRole">${roles.map((r) => `<option value="${r}" ${f.projectRole === r ? "selected" : ""}>${r}</option>`).join("")}</select>
-        <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
-          <button type="button" class="b" data-a="dlgClose">Vazgeç</button>
-          <button type="submit" class="b g">Ekle</button></div></form></div></div>`;
-    }
-    if (d.type === "projectDoc") {
-      const order = S.data.docTypeOrder || ["Proje Kartı", "BRD", "FRD", "UAT", "Go Live", "Risk ve Uyumluluk", "Kapanış"];
-      return `<div class="ov"><div class="dlg"><form id="dlgForm" enctype="multipart/form-data">
-        <div style="font-size:15px">Proje dokümanı yükle</div>
-        <p style="font-size:12px;color:var(--t2)">Yalnızca PDF. Yükleme altı adımlı onay zincirine girer.</p>
-        <label class="lbl" style="display:block;margin-top:12px">Tip</label>
-        <select name="docType">${order.map((t) => `<option value="${t}" ${f.docType === t ? "selected" : ""}>${t}</option>`).join("")}</select>
-        <label class="lbl" style="display:block;margin-top:12px">Başlık</label><input name="title" required minlength="5" value="${esc(f.title || "")}">
-        <label class="lbl" style="display:block;margin-top:12px">PDF dosya</label><input type="file" name="file" accept="application/pdf" required>
-        <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
-          <button type="button" class="b" data-a="dlgClose">Vazgeç</button>
-          <button type="submit" class="b g">Yükle</button></div></form></div></div>`;
-    }
-    if (d.type === "cr") {
-      return `<div class="ov"><div class="dlg"><form id="dlgForm">
-        <div style="font-size:15px">Değişiklik talebi</div>
-        <p style="font-size:12px;color:var(--t2)">Talep sahibinin yöneticisi VE proje ekibi (PM/PMD) onayı birlikte gerekir.</p>
-        <label class="lbl" style="display:block;margin-top:12px">Başlık</label><input name="title" required minlength="5" value="${esc(f.title || "")}">
-        <label class="lbl" style="display:block;margin-top:12px">Açıklama</label><textarea name="description" required minlength="10">${esc(f.description || "")}</textarea>
-        <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
-          <button type="button" class="b" data-a="dlgClose">Vazgeç</button>
-          <button type="submit" class="b g">Talebi gönder</button></div></form></div></div>`;
-    }
     return "";
   }
 
@@ -1398,8 +1067,8 @@ const HERO_W = 1482, HERO_H = 1061;
       try {
         const res = await api("/auth/login", { method: "POST", body: { username: fd.get("username"), password: fd.get("password") } });
         csrfToken = res.csrfToken || csrfToken;
-        S.loginError = null; S.view = "home";
-        await loadMe(); await refreshCounts(); await loadHomeData(); render();
+        S.loginError = null; S.view = "app";
+        await loadMe(); await loadScreen(); await refreshCounts(); render();
       } catch (err) {
         S.loginError = err.status === 429 ? "Çok fazla deneme. Bir süre sonra tekrar deneyin." : "Kullanıcı adı veya parola hatalı.";
         render();
@@ -1492,46 +1161,15 @@ const HERO_W = 1482, HERO_H = 1061;
           toast("Rapor kaydedildi.");
         } else if (S.dlg.type === "reason") {
           await S.dlg.submit(fd.get("reason"));
-        } else if (S.dlg.type === "teamMember") {
-          await api(`/projects/${S.dlg.projectId}/team`, { method: "POST",
-            body: { username: fd.get("username"), projectRole: fd.get("projectRole") } });
-          toast("Ekip üyesi eklendi."); S.data.team = null;
-        } else if (S.dlg.type === "projectDoc") {
-          await api(`/projects/${S.dlg.projectId}/documents`, { method: "POST", body: fd });
-          toast("Doküman yüklendi, onay akışı başladı."); S.data.projDocs = null;
-        } else if (S.dlg.type === "cr") {
-          await api(`/projects/${S.dlg.projectId}/change-requests`, { method: "POST",
-            body: { title: fd.get("title"), description: fd.get("description") } });
-          toast("Değişiklik talebi açıldı."); S.data.crs = null;
         }
-        const keepDetail = ["teamMember", "projectDoc", "cr"].includes(S.dlg.type)
-          || (S.dlg.type === "reason" && S.dlg.keepDetail);
-        S.dlg = null; S.form = {};
-        if (keepDetail && S.detail && S.detail._type === "project") { await loadProjectTab(S.projTab); }
-        else { S.detail = null; await loadScreen(); }
-        await refreshCounts(); render();
+        S.dlg = null; S.form = {}; S.detail = null;
+        await loadScreen(); await refreshCounts(); render();
       } catch (err) { toast(err.message, true); }
     };
   }
 
   async function refreshCounts() {
     try { S.data.inboxCount = (await api("/approvals/inbox")).items.length; } catch (_) { S.data.inboxCount = 0; }
-  }
-
-  /* Ana ekran (home) kartları için gerçek sayılar; yalnızca kullanıcının erişimi olan
-     ekranlar için istek atılır (scrOf ile kontrol edilir), gereksiz 403 önlenir.
-     Her istek zaman aşımlıdır: ağ/sunucu beklenmedik şekilde yanıt vermezse ana ekran
-     sonsuza dek yüklenmeyi beklemek yerine ilgili sayıyı 0 göstererek devam eder. */
-  async function loadHomeData() {
-    if (scrOf("t.un")) {
-      try { S.data.homeTrainCount = ((await api("/training/pending", { timeoutMs: 8000 })).items || []).length; } catch (_) { S.data.homeTrainCount = 0; }
-    }
-    if (scrOf("k.queue")) {
-      try { S.data.homeQueueCount = (await api("/documents/queue", { timeoutMs: 8000 })).items.length; } catch (_) { S.data.homeQueueCount = 0; }
-    }
-    if (scrOf("s.all")) {
-      try { S.data.homeShortcuts = (await api("/shortcuts", { timeoutMs: 8000 })).items; } catch (_) { S.data.homeShortcuts = []; }
-    }
   }
 
   app.addEventListener("click", async (ev) => {
@@ -1549,10 +1187,9 @@ const HERO_W = 1482, HERO_H = 1061;
         return;
       }
       if (k === "logout") { await api("/auth/logout", { method: "POST" }); S.view = "login"; S.user = null; return render(); }
-      if (k === "home") { S.view = "home"; S.detail = null; S.reading = null; await loadHomeData(); return render(); }
       if (k === "mod") {
         const m = S.modules.find((x) => x.key === p[0]);
-        S.view = "app"; S.mod = m.key; S.scr = m.screens[0] && m.screens[0].key; S.detail = null; S.reading = null;
+        S.mod = m.key; S.scr = m.screens[0] && m.screens[0].key; S.detail = null; S.reading = null;
         await loadScreen(); return render();
       }
       if (k === "scr") {
@@ -1561,99 +1198,9 @@ const HERO_W = 1482, HERO_H = 1061;
           toast(sc.state === "bakim" ? "Bu ekran bakımda." : "Bu ekran kullanımda değil.", true);
           S.view = "home"; return render();
         }
-        const PROJECT_SCOPED = ["d.team", "d.docs", "d.docview", "d.appr", "d.cr", "d.board", "d.backlog", "d.sprint", "d.gate"];
-        if (PROJECT_SCOPED.includes(p[0])) {
-          toast("Önce Projeler listesinden bir proje seçin.");
-          S.scr = "d.projects"; S.detail = null; S.reading = null; await loadScreen(); return render();
-        }
         S.scr = p[0]; S.detail = null; S.reading = null; await loadScreen(); return render();
       }
-      if (k === "back") {
-        if (S.detail && S.detail._type === "project") {
-          S.data.team = null; S.data.projDocs = null; S.data.docTypeOrder = null; S.data.docDetail = null;
-          S.data.gates = null; S.data.canGateOverride = null; S.data.apprLog = null; S.data.crs = null;
-          S.docOpen = null; S.projTab = "overview";
-        }
-        S.detail = null; await loadScreen(); return render();
-      }
-
-      /* ---------------- Proje detayı: navigasyon ---------------- */
-      if (k === "projOpen") {
-        S.detail = { _type: "project", id: Number(p[0]) };
-        S.projTab = "overview"; S.docOpen = null;
-        S.data.team = null; S.data.projDocs = null; S.data.gates = null; S.data.apprLog = null; S.data.crs = null;
-        await loadProjectTab("overview"); return render();
-      }
-      if (k === "projTab") { S.projTab = p[0]; S.docOpen = null; await loadProjectTab(p[0]); return render(); }
-
-      /* ---------------- Proje ekibi ---------------- */
-      if (k === "teamAdd") { S.form = { projectRole: "Developer" }; S.dlg = { type: "teamMember", projectId: p[0] }; return render(); }
-      if (k === "teamRemove") {
-        await api(`/projects/${p[0]}/team/${p[1]}`, { method: "DELETE" });
-        toast("Ekip üyesi çıkarıldı."); S.data.team = null; await loadProjectTab("team"); return render();
-      }
-
-      /* ---------------- Proje dokümanları ---------------- */
-      if (k === "pdocUploadDlg") { S.form = { docType: p[1] || (S.data.docTypeOrder || [])[0] }; S.dlg = { type: "projectDoc", projectId: p[0] }; return render(); }
-      if (k === "pdocOpen") {
-        const dd = await api(`/projects/${p[0]}/documents/${p[1]}`);
-        S.data.docDetail = dd; S.docOpen = p[1]; return render();
-      }
-      if (k === "pdocBack") { S.docOpen = null; return render(); }
-      if (k === "pdocApprove") {
-        await api(`/projects/${p[0]}/documents/${p[1]}/approve`, { method: "POST" });
-        toast("Doküman onaylandı."); S.data.docDetail = await api(`/projects/${p[0]}/documents/${p[1]}`);
-        S.data.projDocs = null; return render();
-      }
-      if (k === "pdocReject") {
-        S.dlg = { type: "reason", keepDetail: true, title: "Dokümanı reddet", confirmLabel: "Reddet",
-          note: "Doküman onay akışından çıkarılır; yükleyen düzeltip yeniden yükleyebilir.",
-          submit: async (reason) => {
-            await api(`/projects/${p[0]}/documents/${p[1]}/reject`, { method: "POST", body: { reason } });
-            toast("Doküman reddedildi."); S.data.docDetail = null; S.docOpen = null; S.data.projDocs = null;
-          } };
-        return render();
-      }
-
-      /* ---------------- Faz kapıları ---------------- */
-      if (k === "gateCrit") {
-        await api(`/gates/${p[0]}/criteria/${p[1]}`, { method: "PUT", body: { done: p[2] === "1" } });
-        S.data.gates = null; await loadProjectTab("gates"); return render();
-      }
-      if (k === "gateSign") {
-        await api(`/gates/${p[0]}/sign`, { method: "POST", body: {} });
-        toast("İmza kaydedildi."); S.data.gates = null; await loadProjectTab("gates"); return render();
-      }
-      if (k === "gateOverride") {
-        S.dlg = { type: "reason", keepDetail: true, title: "Tek imzayla ilerlet", confirmLabel: "Onayla",
-          note: "Bu, iki imza kuralını atlayan bir yetki kullanımıdır; gerekçe zorunlu ve denetim kaydına ayrı işlenir.",
-          submit: async (reason) => {
-            await api(`/gates/${p[0]}/sign`, { method: "POST", body: { override: true, reason } });
-            toast("Kapı tek imzayla ilerletildi."); S.data.gates = null;
-          } };
-        return render();
-      }
-
-      /* ---------------- Değişiklik talepleri ---------------- */
-      if (k === "crNew") { S.form = {}; S.dlg = { type: "cr", projectId: p[0] }; return render(); }
-      if (k === "crApproveManager") {
-        await api(`/projects/${p[0]}/change-requests/${p[1]}/approve-manager`, { method: "POST" });
-        toast("Yönetici onayı verildi."); S.data.crs = null; await loadProjectTab("cr"); return render();
-      }
-      if (k === "crApproveTeam") {
-        await api(`/projects/${p[0]}/change-requests/${p[1]}/approve-team`, { method: "POST" });
-        toast("Ekip onayı verildi."); S.data.crs = null; await loadProjectTab("cr"); return render();
-      }
-      if (k === "crReject") {
-        S.dlg = { type: "reason", keepDetail: true, title: "Değişiklik talebini reddet", confirmLabel: "Reddet",
-          note: "Talep kapatılır; gerekli olursa talep sahibi yeni bir talep açabilir.",
-          submit: async (reason) => {
-            await api(`/projects/${p[0]}/change-requests/${p[1]}/reject`, { method: "POST", body: { reason } });
-            toast("Talep reddedildi."); S.data.crs = null;
-          } };
-        return render();
-      }
-
+      if (k === "back") { S.detail = null; await loadScreen(); return render(); }
 
       if (k === "annNew") { S.form = { category: "Genel", criticality: "Orta" }; S.dlg = { type: "ann" }; return render(); }
       if (k === "annEdit") {
@@ -1872,8 +1419,8 @@ const HERO_W = 1482, HERO_H = 1061;
   /* ---------------- açılış ---------------- */
   (async function boot() {
     try {
-      await loadMe(); S.view = "home";
-      await refreshCounts(); await loadHomeData();
+      await loadMe(); S.view = "app";
+      await loadScreen(); await refreshCounts();
     } catch (_) { S.view = "login"; }
     render();
   })();

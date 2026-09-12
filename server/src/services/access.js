@@ -15,7 +15,7 @@ const MODULES = [
 ];
 
 const SCREENS = {
-  delivery: [["d.my", "İşlerim"], ["d.projects", "Projeler"], ["d.team", "Proje ekibi"], ["d.docs", "Proje dokümanları"], ["d.docview", "Doküman görüntüleyici"], ["d.appr", "Onaycılar günlüğü"], ["d.cr", "Değişiklik talepleri"], ["d.board", "Board"], ["d.backlog", "Backlog"], ["d.sprint", "Sprint"], ["d.gate", "Stage Gates"],
+  delivery: [["d.my", "İşlerim"], ["d.projects", "Projeler"], ["d.board", "Board"], ["d.backlog", "Backlog"], ["d.sprint", "Sprint"], ["d.gate", "Stage Gates"],
              ["d.charts", "Proje grafikleri"], ["d.exec", "Yönetici özeti"]],
   documents: [["k.docs", "Dokümanlar"], ["k.queue", "Teftiş kuyruğu"], ["k.mail", "Gönderilen bildirimler"]],
   announce: [["a.list", "Duyurular"]],
