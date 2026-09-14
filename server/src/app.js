@@ -1,4 +1,5 @@
 "use strict";
+const path = require("path");
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const { config } = require("./config");
@@ -25,7 +26,11 @@ function createApp() {
 
   app.get("/api/healthz", (req, res) => res.json({ ok: true }));
 
-  app.use(notFound);
+  // Arayüz (index.html) aynı origin'den servis edilir; böylece göreli /api/...
+  // çağrıları ayrıca CORS/ayrı origin ayarı gerektirmeden çalışır (bkz. KURULUM.md).
+  app.use(express.static(path.join(__dirname, "..", ".."), { index: "index.html" }));
+
+  app.use("/api", notFound);
   app.use(errorHandler);
   return app;
 }

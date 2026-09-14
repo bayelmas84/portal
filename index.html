@@ -835,7 +835,47 @@ let nextAnn=4,nextReq=103;
 const prefersDark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;
 let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.list",
  dlg:null,f:{},ann:null,req:null,dec:null,pop:null,proj:0,onlyMine:false,filter:"",drill:null,dirF:null,execFilter:null,execUnit:null,drag:null,docFull:false,
- read:null,readSrc:null,docView:null,page:0,dwell:[],timer:null,quiz:null,answers:{},result:null,toast:null,gate:true};
+ read:null,readSrc:null,docView:null,page:0,dwell:[],timer:null,quiz:null,answers:{},result:null,toast:null,gate:true,
+ meetingsLive:null,meetingsLiveLoading:null};
+
+/* --------------------------- gerçek backend istemcisi ---------------------------
+   API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
+   CSRF_TOKEN girişte alınır ve her durum-değiştiren istekte gönderilir; oturum
+   httpOnly cookie ile taşınır (bkz. server/src/auth/session.js). LIVE_BACKEND
+   yalnızca gerçekten çalışan bir /api/healthz varsa true olur — yoksa uygulama
+   sessizce eski bellek içi demo moduna döner, hiçbir ekranı kilitlemez. */
+const API_BASE="";
+let CSRF_TOKEN=null;
+let LIVE_BACKEND=false;
+async function checkLiveBackend(){
+ try{const r=await fetch(API_BASE+"/api/healthz");LIVE_BACKEND=r.ok;}catch(e){LIVE_BACKEND=false;}
+ return LIVE_BACKEND;}
+/* Gerçek backend'den toplantı notlarını çeker; sonucu S.meetingsLive'a yazar ve
+   render() tetikler. screenView() bu diziyi salt okuma amaçlı kullanır — hiçbir
+   ekran render sırasında kendisi fetch başlatmaz, yalnızca "henüz yüklenmedi"
+   durumunu görüp bu fonksiyonu (bir kere) tetikler. */
+async function loadMeetingsLive(projFilter){
+ S.meetingsLiveLoading=projFilter;
+ try{
+  const data=await api("GET","/api/projects/meetings?project="+encodeURIComponent(projFilter));
+  S.meetingsLive=data.items.map(m=>({
+   id:+m.id,projKey:m.project_k||"OTHER",projOther:m.project_other_subject,
+   title:m.title,date:(m.meeting_date||"").slice(0,10),time:m.meeting_time,notes:m.notes,
+   by:(function(){const u=USERS.find(x=>x.u===m.created_by);return u?u.n:m.created_by;})(),at:(m.created_at||"").replace("T"," ").slice(0,16),
+   participants:m.participants.map(uname=>{const u=USERS.find(x=>x.u===uname);return u?u.n:uname;}),
+   items:m.items.map(it=>({id:String(it.id),text:it.text,status:it.status,carriedFrom:!!it.carried_from_meeting_id}))}));
+ }catch(e){toast("Toplantı notları yüklenemedi: "+e.message,1);S.meetingsLive=[];}
+ S.meetingsLiveLoading=null;render();}
+async function api(method,path,body,isForm){
+ const opts={method,credentials:"include",headers:{}};
+ if(method!=="GET"&&CSRF_TOKEN)opts.headers["X-CSRF-Token"]=CSRF_TOKEN;
+ if(isForm){opts.body=body;}
+ else if(body!==undefined){opts.headers["Content-Type"]="application/json";opts.body=JSON.stringify(body);}
+ const res=await fetch(API_BASE+path,opts);
+ let data=null;
+ try{data=await res.json();}catch(e){/* boş gövde (ör. dosya indirme) olabilir */}
+ if(!res.ok){const err=new Error((data&&data.error)||("HTTP "+res.status));err.status=res.status;throw err;}
+ return data;}
 
 const app=document.getElementById("app");
 /* Proje ekibine atanmış kişiler (PO, BO, QA, Vendor, Analyst...) proje bilgilerini
@@ -1397,14 +1437,17 @@ function screenView(){
  /* ------------------------------ Meeting Notes ------------------------------ */
  if(v==="d.meeting"){
   const fp=S.mtProj||"ALL",canWrite=cw("d.meeting");
-  const list=MEETINGS.filter(m=>(fp==="ALL"||m.projKey===fp)&&canSeeMeeting(m))
+  if(LIVE_BACKEND&&S.meetingsLive===null&&S.meetingsLiveLoading!==fp)loadMeetingsLive(fp);
+  const source=LIVE_BACKEND?(S.meetingsLive||[]):MEETINGS;
+  const list=source.filter(m=>(fp==="ALL"||m.projKey===fp)&&canSeeMeeting(m))
    .sort((a,b)=>(b.date||"").localeCompare(a.date||"")||b.id-a.id);
-  return head("Meeting Notes","Proje bazlı toplantı notları ve gündem takibi",
+  return head("Meeting Notes","Proje bazlı toplantı notları ve gündem takibi"+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
    `<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
      <select id="fMtProjFilterSel" style="width:auto;min-width:170px">
       <option value="ALL" ${fp==="ALL"?"selected":""}>Tüm projeler</option>
       ${PROJ.map(x=>`<option value="${x.k}" ${fp===x.k?"selected":""}>${x.k} — ${esc(x.n)}</option>`).join("")}</select>
      ${canWrite?`<button class="b p" data-a="mtAdd">Yeni toplantı notu</button>`:""}</div>`)+
+  (LIVE_BACKEND&&S.meetingsLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
   table(["Proje","Tarih","Başlık","Katılımcı","Maddeler",""],list.map(m=>{
    const done=m.items.filter(i=>i.status==="done").length,total=m.items.length;
    return `<tr>
@@ -1414,13 +1457,17 @@ function screenView(){
     <td style="color:var(--t2)">${m.participants.length}</td>
     <td>${pill(done+"/"+total+" tamam")}</td>
     <td style="text-align:right"><button class="b s p" data-a="mtView:${m.id}">Görüntüle</button></td></tr>`;}).join("")
-   ||`<tr><td colspan="6" style="color:var(--tm)">Görebileceğiniz toplantı notu yok.</td></tr>`)+
+   ||`<tr><td colspan="6" style="color:var(--tm)">Görebileceğiniz toplantı notu yok.</td></tr>`))+
   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Toplantı notları yalnızca katılımcılara ve
     İç Kontrol, Teftiş, Bilgi Güvenliği ekiplerine — katılımcı olsun olmasın — her zaman görünür.
     Oluşturma ve gündem güncelleme yetkisi proje yönetimi rolündedir (Proje Yöneticisi / Proje Yönetim Direktörü).</p>`;}
 
  if(v==="d.meetingview"){
-  const m=MEETINGS.find(x=>x.id===S.mtView);
+  if(LIVE_BACKEND&&S.meetingsLive===null&&S.meetingsLiveLoading!==(S.mtProj||"ALL"))loadMeetingsLive(S.mtProj||"ALL");
+  const source=LIVE_BACKEND?(S.meetingsLive||[]):MEETINGS;
+  const m=source.find(x=>x.id===S.mtView);
+  if(!m&&LIVE_BACKEND&&S.meetingsLiveLoading!==null)
+   return head("Toplantı notu","Yükleniyor…",`<button class="b" data-a="mtClose">Listeye dön</button>`);
   if(!m)return head("Toplantı notu","Kayıt bulunamadı.",`<button class="b" data-a="mtClose">Listeye dön</button>`);
   const pr=PROJ.find(x=>x.k===m.projKey),canWrite=cw("d.meeting");
   const groups={open:[],done:[],cancelled:[],carried:[]};
@@ -2727,7 +2774,7 @@ function afterRender(){
  /* Meeting Notes listesindeki proje filtresi: yeni toplantı notu ekranındaki proje
     seçimiyle aynı dropdown deseni. */
  const mtProjFilterSel=document.getElementById("fMtProjFilterSel");
- if(mtProjFilterSel)mtProjFilterSel.onchange=e=>{S.mtProj=e.target.value;render();};
+ if(mtProjFilterSel)mtProjFilterSel.onchange=e=>{S.mtProj=e.target.value;S.meetingsLive=null;render();};
  const mtProjSel=document.getElementById("fMtProjSel");
  if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
   S.f.items=S.f.projKey&&S.f.projKey!=="OTHER"
@@ -2792,7 +2839,7 @@ app.addEventListener("drop",e=>{
  const from=it.st;it.st=to;
  audit("İş durumu sürükle-bırak ile değişti: "+it.key+" "+FLOW[from]+" → "+FLOW[to]);
  toast(it.key+": "+FLOW[from]+" → "+FLOW[to]);});
-app.addEventListener("click",ev=>{
+app.addEventListener("click",async ev=>{
  const go=ev.target.closest("[data-go]");
  if(go){window.open(go.dataset.go,"_blank","noopener");toast(go.dataset.go+" yeni sekmede açılıyor.");return;}
  const el=ev.target.closest("[data-a]");if(!el)return;
@@ -2804,7 +2851,22 @@ app.addEventListener("click",ev=>{
  if(k==="theme"){S.dark=!S.dark;render();return;}
  if(k==="togglePw"){S.showPw=!S.showPw;render();return;}
  if(k==="fill"){S.u=USERS[+p[1]].u;S.err="";render();return;}
- if(k==="signin"){const u=USERS.find(x=>x.u===(S.u||"").trim().toLowerCase());
+ if(k==="signin"){
+  await checkLiveBackend();
+  const uname=(S.u||"").trim().toLowerCase();
+  if(LIVE_BACKEND){
+   try{
+    const data=await api("POST","/api/auth/login",{username:uname});
+    CSRF_TOKEN=data.csrfToken;
+    let u=USERS.find(x=>x.u===data.user.username);
+    if(!u){u={u:data.user.username,n:data.user.name,r:data.user.role,unit:data.user.unit,
+     title:data.user.title,mgr:null,c:data.user.color,on:1};USERS.push(u);}
+    S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
+    S.meetingsLive=null;S.meetingsLiveLoading=null;
+    S.pop=null;render();return;
+   }catch(e){S.err=e.message||"Kullanıcı adı veya parola hatalı.";render();return;}
+  }
+  const u=USERS.find(x=>x.u===uname);
   if(!u){S.err="Kullanıcı adı veya parola hatalı.";render();return;}
   if(!u.on){S.err="Bu hesap pasif durumda; giriş yapılamaz.";render();return;}
   S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
@@ -2812,8 +2874,10 @@ app.addEventListener("click",ev=>{
   const annOpen=isOpen("announce")&&isOpen("a.list")&&perm("a.list")!=="none";
   const c=annOpen?ANN.find(a=>a.st==="yayında"&&a.pop&&!seenPop(a.id)&&!isAnnRead(a.id)):null;
   S.pop=c?c.id:null;render();return;}
- if(k==="signout"){clearInterval(S.timer);
-  Object.assign(S,{view:"login",me:null,u:"",ann:null,req:null,dec:null,pop:null,dlg:null,read:null,docView:null,quiz:null,result:null});
+ if(k==="signout"){
+  if(LIVE_BACKEND){try{await api("POST","/api/auth/logout");}catch(e){/* yine de yerel oturumu kapat */}CSRF_TOKEN=null;LIVE_BACKEND=false;}
+  clearInterval(S.timer);
+  Object.assign(S,{view:"login",me:null,u:"",ann:null,req:null,dec:null,pop:null,dlg:null,read:null,docView:null,quiz:null,result:null,meetingsLive:null,meetingsLiveLoading:null,mtView:null});
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
@@ -3032,6 +3096,22 @@ app.addEventListener("click",ev=>{
  if(k==="mtRemItem"){S.f.items=(S.f.items||[]).filter((_,i)=>i!==+p[1]);render();return;}
  if(k==="mtSave"){const f=S.f,pr=PROJ.find(x=>x.k===f.projKey);
   const subject=f.projKey==="OTHER"?(f.otherSubject||"").trim():"";
+  if(LIVE_BACKEND){
+   try{
+    const usernamesOf=names=>names.map(n=>{const u2=USERS.find(x=>x.n===n);return u2?u2.u:n;});
+    const data=await api("POST","/api/projects/meetings",{
+     projectK:f.projKey==="OTHER"?null:f.projKey,otherSubject:subject,
+     title:(f.title||"").trim()||undefined,date:f.date,time:f.time||undefined,
+     notes:(f.notes||"").trim()||undefined,participants:usernamesOf(f.parts||[]),
+     items:(f.items||[]).map(it=>({text:it.text,carriedFromMeetingId:it.carried?true:undefined}))});
+    S.dlg=null;S.f={};S.meetingsLive=null;
+    toast(data.mailSent===data.mailTotal&&data.mailTotal
+     ?"Toplantı notu oluşturuldu, "+data.mailSent+" katılımcıya e-posta gönderildi."
+     :"Toplantı notu oluşturuldu; SMTP ayarları tanımlı/etkin olmadığından e-posta gönderilemedi.",
+     data.mailSent===data.mailTotal&&data.mailTotal?0:1);
+    S.mtView=+data.item.id;S.mod="delivery";S.scr="d.meetingview";render();
+   }catch(e){toast("Kaydedilemedi: "+e.message,1);}
+   return;}
   const m={id:nextMeeting++,projKey:f.projKey,projOther:subject,
    title:(f.title||"").trim()||(f.projKey==="OTHER"?subject:"Toplantı Notu"),
    date:f.date,time:f.time||"",participants:[...(f.parts||[])],notes:(f.notes||"").trim(),
@@ -3049,14 +3129,43 @@ app.addEventListener("click",ev=>{
   S.mtView=m.id;S.mod="delivery";S.scr="d.meetingview";render();return;}
  if(k==="mtView"){S.mtView=+p[1];S.mod="delivery";S.scr="d.meetingview";S.dlg=null;render();return;}
  if(k==="mtClose"){S.mtView=null;S.scr="d.meeting";render();return;}
- if(k==="mtCheck"){const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
+ if(k==="mtCheck"){
+  if(LIVE_BACKEND){
+   const m=(S.meetingsLive||[]).find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
+   if(!it)return;const next=it.status==="done"?"open":"done";
+   try{await api("POST","/api/projects/meetings/"+S.mtView+"/items/"+p[1]+"/status",{status:next});it.status=next;render();}
+   catch(e){toast("Durum güncellenemedi: "+e.message,1);}
+   return;}
+  const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
   if(!it)return;it.status=it.status==="done"?"open":"done";render();return;}
- if(k==="mtCancelItem"){const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
+ if(k==="mtCancelItem"){
+  if(LIVE_BACKEND){
+   const m=(S.meetingsLive||[]).find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
+   if(!it)return;
+   try{await api("POST","/api/projects/meetings/"+S.mtView+"/items/"+p[1]+"/status",{status:"cancelled"});it.status="cancelled";render();}
+   catch(e){toast("Durum güncellenemedi: "+e.message,1);}
+   return;}
+  const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
   if(!it)return;it.status="cancelled";render();return;}
- if(k==="mtCarryItem"){const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
+ if(k==="mtCarryItem"){
+  if(LIVE_BACKEND){
+   const m=(S.meetingsLive||[]).find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
+   if(!it)return;
+   try{await api("POST","/api/projects/meetings/"+S.mtView+"/items/"+p[1]+"/status",{status:"carried"});it.status="carried";
+    toast("Madde bir sonraki toplantıya aktarılacak.");render();}
+   catch(e){toast("Durum güncellenemedi: "+e.message,1);}
+   return;}
+  const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
   if(!it)return;it.status="carried";CARRY[m.projKey]=CARRY[m.projKey]||[];CARRY[m.projKey].push({text:it.text});
   toast("Madde bir sonraki toplantıya aktarılacak.");render();return;}
- if(k==="mtReopen"){const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
+ if(k==="mtReopen"){
+  if(LIVE_BACKEND){
+   const m=(S.meetingsLive||[]).find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
+   if(!it)return;
+   try{await api("POST","/api/projects/meetings/"+S.mtView+"/items/"+p[1]+"/status",{status:"open"});it.status="open";render();}
+   catch(e){toast("Durum güncellenemedi: "+e.message,1);}
+   return;}
+  const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
   if(!it)return;
   if(it.status==="carried")CARRY[m.projKey]=(CARRY[m.projKey]||[]).filter(c=>c.text!==it.text);
   it.status="open";render();return;}

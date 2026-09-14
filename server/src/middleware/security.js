@@ -8,8 +8,10 @@ const securityHeaders = helmet({
     directives: {
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", "data:"],
+      // index.html tek dosyalık bir uygulamadır ve gömülü <script>/<style>
+      // kullanır; bu nedenle 'unsafe-inline' gereklidir (bkz. KURULUM.md notu).
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
     },

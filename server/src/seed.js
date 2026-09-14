@@ -60,6 +60,16 @@ async function seed() {
      VALUES ('TRADE','Mobil işlem platformu','Scrum','tolga.firat','Bilgi Teknolojileri','2026-08-01','2026-09-20','tolga.firat')
      ON CONFLICT (k) DO NOTHING`
   );
+  await query(
+    `INSERT INTO projects (k, name, method, lead_username, unit_name, start_date, target_date, created_by)
+     VALUES ('CORE','Portföy sistemi göçü','Waterfall','tolga.firat','Bilgi Teknolojileri','2026-06-15','2026-09-15','tolga.firat')
+     ON CONFLICT (k) DO NOTHING`
+  );
+  await query(
+    `INSERT INTO projects (k, name, method, lead_username, unit_name, start_date, target_date, created_by)
+     VALUES ('OPS','Platform operasyonları','Kanban','tolga.firat','Operasyon ve Takas','2026-07-01','2026-10-01','tolga.firat')
+     ON CONFLICT (k) DO NOTHING`
+  );
 
   console.log("[seed] tamamlandı: " + USERS.length + " kullanıcı, " + Object.keys(DEFAULT_ACCESS).length + " rol için erişim matrisi.");
 }
