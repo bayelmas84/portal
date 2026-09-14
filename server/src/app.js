@@ -27,9 +27,13 @@ function createApp() {
 
   app.get("/api/healthz", (req, res) => res.json({ ok: true }));
 
-  // Arayüz (index.html) aynı origin'den servis edilir; böylece göreli /api/...
-  // çağrıları ayrıca CORS/ayrı origin ayarı gerektirmeden çalışır (bkz. KURULUM.md).
-  app.use(express.static(path.join(__dirname, "..", ".."), { index: "index.html" }));
+  // GÜVENLİK: Yalnızca index.html servis edilir — TÜM proje kök dizinini
+  // (express.static ile) açmak backend kaynak kodunu, package.json'ı ve
+  // benzeri dosyaları HTTP üzerinden okunabilir hale getirirdi (test edildi
+  // ve doğrulandı: eski haliyle /server/src/config.js 200 ile dönüyordu).
+  // Arayüz tamamen index.html içine gömülü olduğu için başka statik dosya yok.
+  const indexPath = path.join(__dirname, "..", "..", "index.html");
+  app.get("/", (req, res) => res.sendFile(indexPath));
 
   app.use("/api", notFound);
   app.use(errorHandler);
