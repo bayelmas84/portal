@@ -837,7 +837,8 @@ let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.l
  dlg:null,f:{},ann:null,req:null,dec:null,pop:null,proj:0,onlyMine:false,filter:"",drill:null,dirF:null,execFilter:null,execUnit:null,drag:null,docFull:false,
  read:null,readSrc:null,docView:null,page:0,dwell:[],timer:null,quiz:null,answers:{},result:null,toast:null,gate:true,
  meetingsLive:null,meetingsLiveLoading:null,annLive:null,annLiveLoading:null,
- ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null};
+ ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null,
+ teamLive:null,teamLiveProj:null,teamLiveLoading:null};
 
 /* --------------------------- gerçek backend istemcisi ---------------------------
    API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
@@ -888,6 +889,15 @@ async function loadGanttLive(projK){
   S.ganttLiveProj=projK;
  }catch(e){toast("Gantt görevleri yüklenemedi: "+e.message,1);S.ganttLive=[];S.ganttLiveProj=projK;}
  S.ganttLiveLoading=null;render();}
+async function loadTeamLive(projK){
+ S.teamLiveLoading=projK;
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(projK)+"/team");
+  S.teamLive=data.items.map(m=>({n:(function(){const u=USERS.find(x=>x.u===m.username);return u?u.n:m.username;})(),
+   r:m.project_role,mandatory:m.mandatory,username:m.username}));
+  S.teamLiveProj=projK;
+ }catch(e){toast("Proje ekibi yüklenemedi: "+e.message,1);S.teamLive=[];S.teamLiveProj=projK;}
+ S.teamLiveLoading=null;render();}
 async function api(method,path,body,isForm){
  const opts={method,credentials:"include",headers:{}};
  if(method!=="GET"&&CSRF_TOKEN)opts.headers["X-CSRF-Token"]=CSRF_TOKEN;
@@ -1618,19 +1628,23 @@ function screenView(){
 
 
  /* ------------------------------ Project team ------------------------------ */
- if(v==="d.team"){const p=P(),team=teamOf(p.k);
-  return head("Project team",p.k+" — "+p.n,
+ if(v==="d.team"){const p=P();
+  if(LIVE_BACKEND&&(S.teamLiveProj!==p.k||S.teamLive===null)&&S.teamLiveLoading!==p.k)loadTeamLive(p.k);
+  const team=LIVE_BACKEND?(S.teamLiveProj===p.k?(S.teamLive||[]):[]):teamOf(p.k);
+  const loading=LIVE_BACKEND&&S.teamLiveProj!==p.k;
+  return head("Project team",p.k+" — "+p.n+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
      `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
     ${cw("d.team")?`<button class="b p" data-a="teamAdd">Add member</button>`:""}</div>`)+
+  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
   table(["Name","Title","Unit","Project role",""],team.map((m,i)=>`<tr>
    <td>${esc(m.n)}</td><td style="color:var(--t2)">${esc(titleOf(m.n))}</td>
    <td style="color:var(--t2)">${esc((USERS.find(u=>u.n===m.n)||{}).unit||"—")}</td>
    <td>${pill(m.r)}</td>
-   <td style="text-align:right">${MANDATORY_ROLES.includes(m.r)
+   <td style="text-align:right">${(LIVE_BACKEND?m.mandatory:MANDATORY_ROLES.includes(m.r))
      ? pill("zorunlu üye","wr")
-     : (cw("d.team")?`<button class="b s d" data-a="teamDel:${i}">Remove</button>`:"")}</td></tr>`).join("")
-   ||`<tr><td colspan="5" style="color:var(--tm)">No members assigned yet.</td></tr>`)+
+     : (cw("d.team")?`<button class="b s d" data-a="teamDel:${LIVE_BACKEND?encodeURIComponent(m.username):i}">Remove</button>`:"")}</td></tr>`).join("")
+   ||`<tr><td colspan="5" style="color:var(--tm)">No members assigned yet.</td></tr>`))+
   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Document approval order:
    Product Owner → Business Owner → their managers → Internal Audit → Risk.
    <b>Internal Audit and Risk are mandatory members of every project</b> and cannot be removed.</p>`;}
@@ -2553,7 +2567,8 @@ function dialogView(){
     <button id="okBtn" class="b ${okI?"g":"off"}" data-a="${okI?"issueSave":"nf"}">Create issue</button></div>`);}
  if(d.type==="team"){const p=P();
   const okT=!!f.a&&!!f.r2;
-  const free=USERS.filter(u=>u.on&&!teamOf(p.k).some(m=>m.n===u.n));
+  const curTeam=LIVE_BACKEND?(S.teamLive||[]):teamOf(p.k);
+  const free=USERS.filter(u=>u.on&&!curTeam.some(m=>m.n===u.n));
   return wrap(`<div style="font-size:15px">Add team member — ${p.k}</div>
    <div class="lbl" style="margin-top:11px">PERSON</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap">${free.map(u=>
@@ -3107,13 +3122,33 @@ app.addEventListener("click",async ev=>{
  if(k==="teamAdd"){S.f={};S.dlg={type:"team"};render();return;}
  if(k==="tmWho"){S.f.a=decodeURIComponent(p[1]);render();return;}
  if(k==="tmRole"){S.f.r2=decodeURIComponent(p[1]);render();return;}
- if(k==="teamSave"){teamOf(P().k).push({n:S.f.a,r:S.f.r2});
+ if(k==="teamSave"){
+  if(LIVE_BACKEND){
+   const u=USERS.find(x=>x.n===S.f.a);
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(P().k)+"/team",
+     {username:u?u.u:S.f.a,projectRole:S.f.r2});
+    S.teamLive=null;S.dlg=null;S.f={};toast("Team member added.");render();
+   }catch(e){toast("Eklenemedi: "+e.message,1);}
+   return;}
+  teamOf(P().k).push({n:S.f.a,r:S.f.r2});
   audit("Proje ekibine eklendi: "+S.f.a+" ("+S.f.r2+")");S.dlg=null;S.f={};
   toast("Team member added.");return;}
- if(k==="teamDel"){const t=teamOf(P().k);const m=t[+p[1]];
+ if(k==="teamDel"){
+  if(LIVE_BACKEND){
+   const uname=decodeURIComponent(p[1]);
+   const m=(S.teamLive||[]).find(x=>x.username===uname);
+   if(m&&m.mandatory){toast(m.r+" her projede zorunlu üyedir; çıkarılamaz.",1);return;}
+   S.dlg={type:"cf",title:"Remove team member",text:(m?m.n:uname)+" will be removed from "+P().k+".",act:"teamDelOk:"+p[1]};render();return;}
+  const t=teamOf(P().k);const m=t[+p[1]];
   if(MANDATORY_ROLES.includes(m.r)){
    toast(m.r+" her projede zorunlu üyedir; çıkarılamaz.",1);return;}
   S.dlg={type:"cf",title:"Remove team member",text:m.n+" will be removed from "+P().k+".",act:"teamDelOk:"+p[1]};render();return;}
+ if(k==="teamDelOk"&&LIVE_BACKEND){
+  try{await api("DELETE","/api/projects/"+encodeURIComponent(P().k)+"/team/"+p[1]);
+   S.teamLive=null;S.dlg=null;toast("Team member removed.");render();}
+  catch(e){toast("Çıkarılamadı: "+e.message,1);}
+  return;}
  if(k==="teamDelOk"){const t=teamOf(P().k);const m=t.splice(+p[1],1)[0];
   audit("Proje ekibinden çıkarıldı: "+m.n);S.dlg=null;toast(m.n+" removed.");return;}
 
