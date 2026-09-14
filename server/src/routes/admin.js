@@ -9,6 +9,7 @@ const {
   getAllAvailability,
 } = require("../lib/permissions");
 const { audit } = require("../lib/audit");
+const { notifyApprovalCreated } = require("../lib/notify");
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ async function requestAdminApproval(req, res, targetType, payload, subject) {
   );
   await audit(`Admin işlemi onaya gönderildi: ${subject}`, req.user.username, true,
     { actionType: "diğer", approvers: [req.user.manager_username] });
+  await notifyApprovalCreated({ requestedBy: req.user.username, approver: req.user.manager_username, subject, kind: "Admin işlemi" });
   res.status(202).json({ ok: true, pending: true, message: "Onaya gönderildi (onaycı: yöneticiniz)." });
 }
 
@@ -196,13 +198,14 @@ router.get("/smtp", requireRead("m.smtp"), async (req, res, next) => {
 
 router.put("/smtp", requireWrite("m.smtp"), async (req, res, next) => {
   try {
-    const { host, port, fromAddr, username, password, tls } = req.body || {};
+    const { host, port, fromAddr, fromName, username, password, tls } = req.body || {};
     if (!host) return res.status(400).json({ error: "Sunucu adresi zorunlu." });
     const p = Number(port);
     if (!Number.isInteger(p) || p < 1 || p > 65535) return res.status(400).json({ error: "Port 1-65535 arasında olmalı." });
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(fromAddr || ""))) return res.status(400).json({ error: "Geçerli bir gönderen adresi girin." });
+    if (!fromName || !fromName.trim()) return res.status(400).json({ error: "Görünen ad zorunlu." });
     await requestAdminApproval(req, res, "admin.smtp",
-      { host, port: p, fromAddr, username, password, tls },
+      { host, port: p, fromAddr, fromName: fromName.trim(), username, password, tls },
       "SMTP ayarları güncelleme");
   } catch (e) { next(e); }
 });

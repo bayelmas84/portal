@@ -8,6 +8,7 @@ const { query, withTransaction } = require("../db");
 const { requireRead, requireWrite } = require("../middleware/auth");
 const { config } = require("../config");
 const { audit } = require("../lib/audit");
+const { notifyEvent, notifyApprovalCreated, emailOf } = require("../lib/notify");
 
 const router = express.Router();
 
@@ -177,10 +178,16 @@ router.post("/documents", requireWrite("training"), upload.single("file"), async
           [u.username, docId, dueAt]
         );
       }
-      return { docId, assigned: activeUsers.length };
+      return { docId, assigned: activeUsers.length, usernames: activeUsers.map((u) => u.username), dueAt };
     });
 
     await audit(`Zorunlu okuma yayınlandı: ${docNo} v${version} — ${title} (${result.assigned} kişiye atandı)`, req.user.username);
+    // Atanan HERKESE "yeni bir eğitiminiz var" bildirimi (şablon tanımlı/aktifse).
+    const dueStr = result.dueAt.toISOString().slice(0, 10);
+    for (const username of result.usernames) {
+      const [email] = await Promise.all([emailOf(username)]);
+      await notifyEvent("training.assigned", email, { egitim_adi: title.trim(), son_tarih: dueStr, doc_no: docNo.trim() });
+    }
     res.status(201).json({ id: result.docId, assigned: result.assigned });
   } catch (e) {
     next(e);
@@ -244,6 +251,7 @@ router.post("/documents/:id/close-request", requireWrite("training"), async (req
     );
     await audit(`Eğitim kapatma talebi açıldı (1/2 — yönetici onayı bekleniyor): ${subject}`, req.user.username,
       true, { actionType: "silme", approvers: [managerUsername] });
+    await notifyApprovalCreated({ requestedBy: req.user.username, approver: managerUsername, subject, kind: "Eğitim kapatma" });
     res.status(201).json({ ok: true });
   } catch (e) {
     next(e);

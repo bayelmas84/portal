@@ -9,13 +9,13 @@ async function getSmtpSettings() {
   return rows[0];
 }
 
-async function saveSmtpSettings({ host, port, fromAddr, username, password, tls, updatedBy }) {
+async function saveSmtpSettings({ host, port, fromAddr, fromName, username, password, tls, updatedBy }) {
   const s = await getSmtpSettings();
   const passwordEncrypted = password ? encryptSecret(password) : s.password_encrypted;
   await query(
-    `UPDATE smtp_settings SET host=$1, port=$2, from_addr=$3, username=$4,
-       password_encrypted=$5, tls=$6, updated_by=$7, updated_at=now() WHERE id=1`,
-    [host, port, fromAddr, username, passwordEncrypted, tls, updatedBy]
+    `UPDATE smtp_settings SET host=$1, port=$2, from_addr=$3, from_name=$4, username=$5,
+       password_encrypted=$6, tls=$7, updated_by=$8, updated_at=now() WHERE id=1`,
+    [host, port, fromAddr, fromName || s.from_name || "Tera Portal", username, passwordEncrypted, tls, updatedBy]
   );
   await audit(`SMTP ayarları güncellendi (parola ${password ? "değişti" : "korundu"})`, updatedBy);
 }
@@ -77,7 +77,9 @@ async function sendMail(to, subject, text) {
   const password = decryptSecret(s.password_encrypted);
   try {
     const transport = buildTransport(s, password);
-    await transport.sendMail({ from: s.from_addr, to, subject, text: text || subject });
+    // Görünen ad + adres birlikte gönderilir: "Tera Portal <portal@terayatirim.com>"
+    const from = s.from_name ? `"${s.from_name}" <${s.from_addr}>` : s.from_addr;
+    await transport.sendMail({ from, to, subject, text: text || subject });
     await query("INSERT INTO mail_log (to_addr, subject) VALUES ($1,$2)", [to, subject]);
     return true;
   } catch (e) {

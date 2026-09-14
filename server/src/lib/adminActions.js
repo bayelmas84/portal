@@ -95,8 +95,8 @@ async function applyAdminAction(targetType, payload, actingUsername) {
       return;
     }
     case "admin.smtp": {
-      const { host, port, fromAddr, username, password, tls } = payload;
-      await saveSmtpSettings({ host, port: Number(port), fromAddr, username: username || "", password, tls: !!tls, updatedBy: actingUsername });
+      const { host, port, fromAddr, fromName, username, password, tls } = payload;
+      await saveSmtpSettings({ host, port: Number(port), fromAddr, fromName, username: username || "", password, tls: !!tls, updatedBy: actingUsername });
       return;
     }
     case "admin.smtp.active": {

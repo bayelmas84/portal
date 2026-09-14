@@ -357,7 +357,8 @@ const SCREENS={
  admin:[["m.ann","Duyuru yönetimi","ti-speakerphone"],["m.users","Kullanıcılar","ti-users"],
    ["m.units","Birimler","ti-building"],["m.titles","Ünvanlar","ti-id-badge"],
    ["m.roles","Roller ve yetkiler","ti-shield"],["m.access","Ekran yetkileri","ti-checkbox"],
-   ["m.notif","Bildirim tanımları","ti-messages"],["m.dir","Dizin (AD) ayarları","ti-shield"],
+   ["m.notif","Bildirim tanımları","ti-messages"],["m.mailtpl","Mail Şablonları","ti-mail-forward"],
+   ["m.dir","Dizin (AD) ayarları","ti-shield"],
    ["m.smtp","SMTP Ayarları","ti-mail"],
    ["m.brand","Marka ve metinler","ti-palette"],
    ["m.avail","Ekran yönetimi","ti-adjustments"],
@@ -370,7 +371,7 @@ const ACC={
   "d.team":R,"d.docs":R,"d.docview":R,"d.appr":R,"d.cr":R,"k.docs":R,
   /* a.del verilmez: silme talebini duyuruyu giren kişi açar, Teftiş karara bağlar. */
   "a.list":W,"a.new":W,"t.un":R,"t.done":R,"t.author":W,"r.list":R,"r.view":R,
-  "p.in":W,"p.my":W,"p.done":W,"m.ann":W,"m.users":W,"m.units":W,"m.titles":W,"m.roles":W,"m.access":W,"m.notif":W,"m.dir":W,"m.smtp":W,"m.brand":W,"m.avail":W,"m.short":W,
+  "p.in":W,"p.my":W,"p.done":W,"m.ann":W,"m.users":W,"m.units":W,"m.titles":W,"m.roles":W,"m.access":W,"m.notif":W,"m.mailtpl":W,"m.dir":W,"m.smtp":W,"m.brand":W,"m.avail":W,"m.short":W,
   "d.sprint":R,"k.mail":R},
  /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (okuma, yazma, ekleme, silme),
     kapı imzasında tek imza yeterlidir. Diğer modüllerde okuma düzeyindedir. */
@@ -812,6 +813,14 @@ async function loadOrgChartLive(){
  try{const data=await api("GET","/api/admin/org-chart");ORG_CHART_LIVE=data.items;}
  catch(e){toast("Organizasyon şeması yüklenemedi: "+e.message,1);ORG_CHART_LIVE=[];}
  ORG_CHART_LIVE_LOADING=false;render();}
+let MAILTPL_LIVE=null,MAILTPL_LIVE_LOADING=false,WIRED_EVENTS_LIVE=null;
+async function loadMailTplLive(){
+ MAILTPL_LIVE_LOADING=true;
+ try{
+  const [tpl,wired]=await Promise.all([api("GET","/api/notifications"),api("GET","/api/notifications/wired-events")]);
+  MAILTPL_LIVE=tpl.items;WIRED_EVENTS_LIVE=wired.items;
+ }catch(e){toast("Mail şablonları yüklenemedi: "+e.message,1);MAILTPL_LIVE=[];WIRED_EVENTS_LIVE=[];}
+ MAILTPL_LIVE_LOADING=false;render();}
 async function loadUnitsLive(){
  UNITS_LIVE_LOADING=true;
  try{const data=await api("GET","/api/admin/units");UNITS_LIVE=data.items;}
@@ -2483,6 +2492,30 @@ function screenView(){
    <td class="m" style="color:var(--tm)">${NOTIF_COLS.filter(c=>x.to[c[0]]).map(c=>c[1]).join(", ")||"kimseye"}</td></tr>`).join(""))+
   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Talep sahibi ve yöneticisi kişi bazında, Teftiş ekibi <span class="m">${TEFTIS_GRUP}</span> grubuna, tüm personel <span class="m">${TUM}</span> grubuna gider. Hiç alıcı seçilmezse o olayda e-posta gönderilmez ve durum denetim kaydına yazılır.</p>`;
 
+ if(v==="m.mailtpl"){
+  if(!LIVE_BACKEND)return head("Mail Şablonları","")+`<div class="card wr"><span style="font-size:12.5px">
+   Mail şablonları yalnızca gerçek backend'e bağlıyken kullanılabilir (demo modunda kullanılamaz).</span></div>`;
+  if(MAILTPL_LIVE===null&&!MAILTPL_LIVE_LOADING)loadMailTplLive();
+  if(MAILTPL_LIVE===null)return head("Mail Şablonları","")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
+  const wiredKeys=(WIRED_EVENTS_LIVE||[]).map(w=>w.key);
+  return head("Mail Şablonları",MAILTPL_LIVE.length+" tanım · giriş/değişiklik/silme yönetici + Teftiş onayına gider",
+    cw("m.mailtpl")?`<button class="b p" data-a="tplNew">Şablon ekle</button>`:"")+
+   `<div class="card" style="margin-bottom:14px;font-size:12px;line-height:1.65">
+     Gönderen: <b>Tera Portal &lt;portal@terayatirim.com&gt;</b><br>
+     Aşağıdaki olaylar kod tarafından gerçekten tetiklenir — bunlar dışında bir olay anahtarıyla şablon oluşturursanız,
+     ileride o akış koda bağlanana kadar hiçbir zaman gönderilmez:<br>
+     ${(WIRED_EVENTS_LIVE||[]).map(w=>`<span class="m" style="display:inline-block;margin:4px 8px 0 0;color:var(--t2)">
+      <b>${esc(w.key)}</b> — ${esc(w.label)} <span style="color:var(--tm)">(${esc(w.vars)})</span></span>`).join("")}
+    </div>`+
+   table(["Olay","Ad","Konu","Durum",""],MAILTPL_LIVE.map(t=>`<tr class="${t.status==='aktif'?"":"dim"}">
+    <td class="m" style="color:var(--ta)">${esc(t.event_key)}${wiredKeys.includes(t.event_key)?"":` <span class="pl wr" style="font-size:9px">bağlı değil</span>`}</td>
+    <td>${esc(t.name)}</td><td style="color:var(--t2)">${esc(t.subject)}</td>
+    <td>${t.status==="aktif"?pill("aktif","ok"):pill("kapalı","er")}</td>
+    <td style="text-align:right;white-space:nowrap">${cw("m.mailtpl")?
+     `<button class="b s" data-a="tplEdit:${t.id}">Düzenle</button>
+      <button class="b s d" data-a="tplDel:${t.id}">Sil</button>`:""}</td></tr>`).join(""))+
+   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Konu ve metinde {ad_soyad}, {konu}, {egitim_adi}, {son_tarih}, {gerekce} gibi yer tutucular kullanılabilir; gönderim anında gerçek değerle değiştirilir.</p>`;}
+
 
  if(v==="m.dir"){
   const src=DIR.active&&DIR.url?"ekran ayarı":"sunucu yapılandırması (.env)";
@@ -3228,6 +3261,23 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b ${ok2?"g":"off"}" data-a="${ok2?"bisave":"nf"}">Kaydet</button></div>`);}
+ if(d.type==="tpl"){const isNew=d.idx===undefined;
+  return wrap(`<div style="font-size:15px">${isNew?"Yeni mail şablonu":"Mail şablonunu düzenle"}</div>
+   <div class="card wr" style="margin-top:10px;font-size:12px;line-height:1.6">
+    Giriş, değişiklik ve silme — hepsi sırayla yöneticinizin, ardından Teftiş'in onayına gider.</div>
+   ${isNew?`<div class="lbl" style="margin-top:12px">Olay anahtarı <span class="m" style="color:var(--tm)">(küçük harf, nokta ile, örn. training.assigned)</span></div>
+    <input id="fTplKey" value="${esc(f.key||"")}" placeholder="training.assigned">`:""}
+   <div class="lbl" style="margin-top:12px">Şablon adı</div><input id="fTplName" value="${esc(f.name||"")}">
+   <div class="lbl" style="margin-top:12px">Konu</div><input id="fTplSubject" value="${esc(f.subject||"")}" placeholder="Yeni bir eğitiminiz var: {egitim_adi}">
+   <div class="lbl" style="margin-top:12px">Mail metni</div>
+   <textarea id="fTplBody" placeholder="Merhaba {ad_soyad}, ...">${esc(f.body||"")}</textarea>
+   <p class="m" style="color:var(--tm);margin:7px 0 0">Kullanılabilir yer tutucular olaya göre değişir — ekran üstündeki listeye bakın.</p>
+   ${!isNew?`<div class="swrow" style="margin-top:13px"><button class="sw ${f.status==="aktif"?"on":""}" data-a="tplToggleStatus"><i></i></button>
+    <span style="flex:1"><span style="display:block;font-size:12.5px">Aktif</span>
+    <span class="m" style="color:var(--tm)">${f.status==="aktif"?"aktif — gönderim için kullanılır":"kapalı — bu olayda mail gönderilmez"}</span></span></div>`:""}
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button id="okBtn" class="b off" data-a="needFields">Onaya gönder</button></div>`);}
  if(d.type==="rec"){const isNew=d.idx===undefined;
   const unitSrc=LIVE_BACKEND?(UNITS_LIVE||[]).map(u=>({k:u.code,n:u.name,on:u.active,mgr:u.manager_name})):UNITS;
   const selUnit=d.kind==="user"?unitSrc.find(u=>u.n===f.b):null;
@@ -3331,6 +3381,11 @@ function validate(){
  if(d.type==="override")return [(f.r||"").trim().length>=10,"overrideOk",""];
  if(d.type==="doc")return [d.idx!==undefined?!!f.file:((f.no||"").trim().length>3&&(f.title||"").trim().length>4&&f.cat&&f.file),
   d.idx!==undefined?"docVersion":"docCreate",""];
+ if(d.type==="tpl"){
+  const isNew=d.idx===undefined;
+  const keyOk=!isNew||/^[a-z0-9.]{3,64}$/.test((f.key||"").trim());
+  const ok=keyOk&&(f.name||"").trim().length>2&&(f.subject||"").trim().length>2&&(f.body||"").trim().length>4;
+  return [ok,"tplSave",!keyOk?"olay anahtarı yalnızca küçük harf/rakam/nokta olmalı":""];}
  if(d.type==="rec"){
   const baseOk=(f.a||"").trim().length>1&&(f.b||"").trim().length>1;
   const mgrOk=d.kind!=="unit"||!!f.mgr;
@@ -3425,6 +3480,7 @@ function afterRender(){
   ["fMtDate","date"],["fMtTime","time"],["fMtTitle","title"],["fMtNewItem","newItem"],["fMtNotes","notes"],
   ["fMtOtherSubject","otherSubject"],
   ["fGName","name"],["fGStart","start"],["fGEnd","end"],
+  ["fTplKey","key"],["fTplName","name"],["fTplSubject","subject"],["fTplBody","body"],
   ["tdDocNo","docNo"],["tdVersion","version"],["tdTitle","title"],["tdCategory","category"],["tdDueDays","dueDays"]].forEach(([id,key])=>{
   const el=document.getElementById(id);if(el)el.oninput=e=>{S.f[key]=e.target.value;refreshDlg();};});
  /* Sınav soruları: her soru metni ve her şık için dinamik alan bağlama. */
@@ -3570,6 +3626,7 @@ app.addEventListener("click",async ev=>{
   S.pendingTab=null;S.pendingFilter=null;
   UNITS_LIVE=null;UNITS_LIVE_LOADING=false;
   ORG_CHART_LIVE=null;ORG_CHART_LIVE_LOADING=false;
+  MAILTPL_LIVE=null;MAILTPL_LIVE_LOADING=false;WIRED_EVENTS_LIVE=null;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
@@ -4562,6 +4619,30 @@ app.addEventListener("click",async ev=>{
    return;}
   const src={user:USERS,unit:UNITS,title:TITLES,short:SHORTS}[p[1]],rec=src[+p[2]];
   rec.on=rec.on?0:1;toast(rec.n+(rec.on?" aktif edildi.":" pasife alındı."));return;}
+ if(k==="tplNew"){S.f={status:"aktif"};S.dlg={type:"tpl",idx:undefined};render();return;}
+ if(k==="tplEdit"){
+  const t=(MAILTPL_LIVE||[]).find(x=>String(x.id)===p[1]);if(!t)return;
+  S.f={key:t.event_key,name:t.name,subject:t.subject,body:t.body,status:t.status};
+  S.dlg={type:"tpl",idx:t.id};render();return;}
+ if(k==="tplToggleStatus"){S.f.status=S.f.status==="aktif"?"kapali":"aktif";render();return;}
+ if(k==="tplDel"){
+  const t=(MAILTPL_LIVE||[]).find(x=>String(x.id)===p[1]);if(!t)return;
+  S.dlg={type:"confirm",title:"Mail şablonu silinecek",
+   text:esc(t.name)+" silinecek. Talebiniz sırayla yöneticinizin, ardından Teftiş'in onayına gidecek.",
+   act:"tplDelOk:"+t.id};render();return;}
+ if(k==="tplDelOk"){
+  try{const data=await api("DELETE","/api/notifications/"+p[1]);S.dlg=null;toast(data.message||"Onaya gönderildi.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="tplSave"){
+  const d=S.dlg,f=S.f,isNew=d.idx===undefined;
+  try{
+   const data=await(isNew
+    ?api("POST","/api/notifications",{eventKey:f.key.trim(),name:f.name.trim(),subject:f.subject.trim(),body:f.body.trim()})
+    :api("PUT","/api/notifications/"+d.idx,{name:f.name.trim(),subject:f.subject.trim(),body:f.body.trim(),status:f.status}));
+   S.dlg=null;S.f={};toast(data.message||"Onaya gönderildi.");render();
+  }catch(e){toast(e.message,1);}
+  return;}
  if(k==="recNew"){const t=p[1];S.f={on:1};
   S.dlg={type:"rec",kind:t,idx:undefined,
    title:{user:"Kullanıcı ekle",unit:"Birim ekle",title:"Ünvan ekle",short:"Kısayol ekle"}[t],

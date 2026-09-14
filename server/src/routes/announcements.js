@@ -4,6 +4,7 @@ const { query, withTransaction } = require("../db");
 const { requireRead, requireWrite } = require("../middleware/auth");
 const { audit } = require("../lib/audit");
 const { applyAdminAction } = require("../lib/adminActions");
+const { notifyApprovalCreated, notifyApprovalDecided } = require("../lib/notify");
 
 const router = express.Router();
 
@@ -61,6 +62,7 @@ router.post("/", requireWrite("announcements"), async (req, res, next) => {
       return ann.rows[0];
     });
     await audit(`Duyuru onaya gönderildi: ${title.trim()} (onaycı: ${approver})`, req.user.username);
+    await notifyApprovalCreated({ requestedBy: req.user.username, approver, subject: title.trim(), kind: "Duyuru yayınlama" });
     res.status(201).json({ item: result });
   } catch (e) {
     next(e);
@@ -105,6 +107,7 @@ router.post("/:id/delete-request", requireWrite("announcements"), async (req, re
     );
     await audit(`Duyuru silme talebi açıldı (1/2 — yönetici onayı bekleniyor): ${ann.title}`, req.user.username,
       true, { actionType: "silme", approvers: [req.user.manager_username] });
+    await notifyApprovalCreated({ requestedBy: req.user.username, approver: req.user.manager_username, subject: ann.title, kind: "Duyuru silme" });
     res.status(201).json({ ok: true });
   } catch (e) {
     next(e);
@@ -177,8 +180,9 @@ router.post("/requests/:id/decide", requireRead("announcements"), async (req, re
       return res.status(409).json({ error: "Kimse kendi talebini onaylayamaz." });
     }
 
-    const isTwoStepDelete = reqRow.kind === "ann.delete" || reqRow.kind === "training.close";
+    const isTwoStepDelete = ["ann.delete", "training.close", "template.create", "template.update", "template.delete"].includes(reqRow.kind);
     const isFinalStep = !isTwoStepDelete || reqRow.step >= reqRow.total_steps;
+    let secondStepApprover = null; // 2. adım açılırsa, transaction dışında bildirim göndermek için
 
     await withTransaction(async (client) => {
       const status = decision === "onayla" ? "onaylandi" : "reddedildi";
@@ -217,11 +221,12 @@ router.post("/requests/:id/decide", requireRead("announcements"), async (req, re
             )).rows[0];
           if (!insp2) throw new Error("Tanımlı bir Teftiş kullanıcısı kalmadı, ikinci onay adımı açılamadı.");
           await client.query(
-            `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason, step, total_steps)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,2,2)`,
+            `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason, payload, step, total_steps)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,2,2)`,
             [reqRow.kind, reqRow.subject, reqRow.category, reqRow.target_type, reqRow.target_id,
-             reqRow.requested_by, insp2.username, reqRow.reason]
+             reqRow.requested_by, insp2.username, reqRow.reason, reqRow.payload ? JSON.stringify(reqRow.payload) : null]
           );
+          secondStepApprover = insp2.username;
         } else {
           // Son adım (Teftiş) onaylandı: GERÇEK etkiyi uygula — her zaman YUMUŞAK (soft).
           if (reqRow.kind === "ann.delete") {
@@ -235,6 +240,26 @@ router.post("/requests/:id/decide", requireRead("announcements"), async (req, re
               "UPDATE training_assignments SET cancelled_at=now() WHERE policy_document_id=$1 AND completed_at IS NULL",
               [reqRow.target_id]
             );
+          } else if (reqRow.kind === "template.create") {
+            const p = reqRow.payload;
+            await client.query(
+              `INSERT INTO notification_templates (event_key, name, subject, body, created_by)
+               VALUES ($1,$2,$3,$4,$5)`,
+              [p.eventKey, p.name, p.subject, p.body, reqRow.requested_by]
+            );
+          } else if (reqRow.kind === "template.update") {
+            const p = reqRow.payload;
+            await client.query(
+              `UPDATE notification_templates SET name=COALESCE($1,name), subject=COALESCE($2,subject),
+                 body=COALESCE($3,body), status=COALESCE($4,status), updated_by=$5, updated_at=now() WHERE id=$6`,
+              [p.name, p.subject, p.body, p.status, reqRow.requested_by, reqRow.target_id]
+            );
+          } else if (reqRow.kind === "template.delete") {
+            // Yumuşak silme: satır kalır, durumu "kapali" olur (tıpkı diğer tüm silmeler gibi).
+            await client.query(
+              "UPDATE notification_templates SET status='kapali', updated_by=$1, updated_at=now() WHERE id=$2",
+              [reqRow.requested_by, reqRow.target_id]
+            );
           }
         }
       }
@@ -245,14 +270,31 @@ router.post("/requests/:id/decide", requireRead("announcements"), async (req, re
     if (reqRow.kind === "admin.action" && decision === "onayla") {
       await applyAdminAction(reqRow.target_type, reqRow.payload, reqRow.requested_by);
     }
+    // 2. adım (Teftiş) açıldıysa yeni onaycıya bildirim gider.
+    if (secondStepApprover) {
+      await notifyApprovalCreated({
+        requestedBy: reqRow.requested_by, approver: secondStepApprover,
+        subject: reqRow.subject, kind: reqRow.kind,
+      });
+    }
 
     const approvers = [req.user.username];
+    const isDeleteKind = ["ann.delete", "training.close", "template.delete"].includes(reqRow.kind);
     await audit(
       `Talep ${decision === "onayla" ? "onaylandı" : "reddedildi"} (adım ${reqRow.step}/${reqRow.total_steps}): #${reqRow.id} ${reqRow.subject}`,
       req.user.username, decision === "onayla",
-      { actionType: decision === "onayla" ? (isTwoStepDelete && isFinalStep ? "silme" : "onay") : "red",
+      { actionType: decision === "onayla" ? (isDeleteKind && isFinalStep ? "silme" : "onay") : "red",
         approvers }
     );
+    // Bildirim ne zaman gider: tek adımlı taleplerde her zaman; iki adımlı
+    // taleplerde REDDEDİLİRSE her zaman (süreç orada biter), ONAYLANIRSA
+    // yalnızca SON adımda (ara onaylar henüz nihai karar değildir).
+    if (isFinalStep || decision !== "onayla") {
+      await notifyApprovalDecided({
+        requestedBy: reqRow.requested_by, subject: reqRow.subject,
+        decision, decisionReason: reason,
+      });
+    }
     res.json({ ok: true });
   } catch (e) {
     next(e);
