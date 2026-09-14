@@ -38,14 +38,19 @@ router.post("/", requireWrite("announcements"), async (req, res, next) => {
     if (!body || !body.trim()) return res.status(400).json({ error: "Metin zorunlu." });
     if (!["Yasal", "Genel"].includes(category)) return res.status(400).json({ error: "Geçersiz kategori." });
 
+    // Onay kuralı matrisi (m.approvalrules ekranından yönetilir); tanımlı
+    // değilse eski sabit davranışa (Yasal->Teftiş, Genel->yönetici) düşülür.
+    const ruleRow = await query("SELECT approver_role FROM approval_rules WHERE category=$1", [category]);
+    const approverRole = ruleRow.rowCount ? ruleRow.rows[0].approver_role : (category === "Yasal" ? "inspection" : "manager");
+
     let approver;
-    if (category === "Yasal") {
-      const insp = await query("SELECT username FROM users WHERE role='inspection' AND active ORDER BY username LIMIT 1");
-      if (!insp.rowCount) return res.status(409).json({ error: "Tanımlı bir Teftiş kullanıcısı yok." });
-      approver = insp.rows[0].username;
-    } else {
+    if (approverRole === "manager") {
       if (!req.user.manager_username) return res.status(409).json({ error: "Yöneticiniz tanımlı değil, onaya gönderilemiyor." });
       approver = req.user.manager_username;
+    } else {
+      const insp = await query("SELECT username FROM users WHERE role=$1 AND active ORDER BY username LIMIT 1", [approverRole]);
+      if (!insp.rowCount) return res.status(409).json({ error: `Tanımlı bir "${approverRole}" rolünde kullanıcı yok.` });
+      approver = insp.rows[0].username;
     }
 
     const result = await withTransaction(async (client) => {

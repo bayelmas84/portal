@@ -103,6 +103,14 @@ async function applyAdminAction(targetType, payload, actingUsername) {
       await setSmtpActive(!!payload.active, actingUsername);
       return;
     }
+    case "admin.approval_rule": {
+      const { category, approverRole } = payload;
+      await query(
+        "INSERT INTO approval_rules (category, approver_role, updated_by, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (category) DO UPDATE SET approver_role=$2, updated_by=$3, updated_at=now()",
+        [category, approverRole, actingUsername]
+      );
+      return;
+    }
     case "admin.settings": {
       for (const [k, v] of Object.entries(payload)) {
         await query(

@@ -44,7 +44,30 @@ router.get("/users", requireRead("m.users"), async (req, res, next) => {
 // ------------------------------- Birimler (units) ---------------------------
 // Herkese okuma açıktır: kullanıcı formu birim seçilince yöneticiyi göstermek
 // için buna ihtiyaç duyar (hassas bilgi değildir).
-// ---------------------------- Genel parametrik ayarlar ----------------------
+// ---------------------------- Onay kuralı matrisi ----------------------------
+// Hangi duyuru kategorisinin kime (yönetici / belirli bir rol) gideceği artık
+// admin panelinden yönetilebilir. Admin işlemi (tek adım onay).
+router.get("/approval-rules", requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await query("SELECT * FROM approval_rules ORDER BY category");
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.put("/approval-rules/:category", requireWrite("m.approvalrules"), async (req, res, next) => {
+  try {
+    const { approverRole } = req.body || {};
+    if (!approverRole || !/^[a-z]+$/.test(approverRole)) return res.status(400).json({ error: "Geçersiz onaycı (küçük harf, örn. manager, inspection)." });
+    if (approverRole !== "manager") {
+      const roleCheck = await query("SELECT 1 FROM users WHERE role=$1 AND active LIMIT 1", [approverRole]);
+      if (!roleCheck.rowCount) return res.status(400).json({ error: `"${approverRole}" rolünde aktif kullanıcı yok.` });
+    }
+    await requestAdminApproval(req, res, "admin.approval_rule", { category: req.params.category, approverRole },
+      `Onay kuralı değişikliği: ${req.params.category} -> ${approverRole}`);
+  } catch (e) { next(e); }
+});
+
+
 // Eğitim/doküman kuralları, sprint varsayılanları vb. Admin onayına (tek adım)
 // tabidir - tıpkı marka/SMTP ayarları gibi.
 const SETTINGS_KEYS = [
