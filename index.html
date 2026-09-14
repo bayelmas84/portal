@@ -1244,10 +1244,19 @@ function loginView(){
    <img class="hero" src="${HERO}" width="${HERO_W}" height="${HERO_H}"
      alt="Tera Yatırım — Her şey bir arada, tek bir yerde" decoding="sync" fetchpriority="high">
    <div class="login-panel">
-    <h2>${S.needsTwoFactor?"Doğrulama kodu":esc(BRAND.loginTitle)}</h2>
-    <p class="login-hint">${S.needsTwoFactor?"Authenticator uygulamanızdaki 6 haneli kodu girin.":esc(BRAND.loginHint)}</p>
+    <h2>${S.needsTwoFactor?"Doğrulama kodu":S.mustSetupTwoFactor?"2FA kurulumu zorunlu":esc(BRAND.loginTitle)}</h2>
+    <p class="login-hint">${S.needsTwoFactor?"Authenticator uygulamanızdaki 6 haneli kodu girin.":
+      S.mustSetupTwoFactor?"Rolünüz için iki faktörlü kimlik doğrulama zorunludur. E-postanıza gönderilen kodu girerek etkinleştirin.":
+      esc(BRAND.loginHint)}</p>
 
-    ${S.needsTwoFactor?`
+    ${S.mustSetupTwoFactor?`
+    <label class="field"><span>E-postanıza gönderilen kod</span>
+     <span class="input-wrap"><input id="lcode2" value="${esc(S.f&&S.f.code||"")}" placeholder="000000" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></span></label>
+    ${S.err?`<div class="login-error" role="alert">${esc(S.err)}</div>`:""}
+    <button class="b g login-submit" data-a="confirmMustSetup2fa">Etkinleştir ve giriş yap</button>
+    <button class="b s" style="margin-top:8px" data-a="resend2faEmail">Kodu tekrar gönder</button>
+    <button class="b s" style="margin-top:8px" data-a="cancel2fa">Vazgeç</button>
+    `:S.needsTwoFactor?`
     <label class="field"><span>Kod</span>
      <span class="input-wrap"><input id="lcode" value="${esc(S.f&&S.f.code||"")}" placeholder="000000" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></span></label>
     ${S.err?`<div class="login-error" role="alert">${esc(S.err)}</div>`:""}
@@ -3091,6 +3100,13 @@ function dialogView(){
     <span id="cnt" class="m" style="color:var(--tm);flex:1">0/10</span>
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b off" data-a="needFields">Reddet ve kaydet</button></div>`);}
+ if(d.type==="twofaEmail"){
+  return wrap(`<div style="font-size:15px">E-posta ile 2FA</div>
+   <p class="m" style="color:var(--tm);margin-top:8px">E-postanıza gönderilen 6 haneli kodu girin.</p>
+   <input id="f2faEmailCode" placeholder="000000" inputmode="numeric" maxlength="6">
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button class="b p" data-a="twofaEnableEmailConfirm">Etkinleştir</button></div>`);}
  if(d.type==="twofa"){
   return wrap(`<div style="font-size:15px">2FA Kurulumu</div>
    <p class="m" style="color:var(--tm);margin-top:8px">Google Authenticator / Microsoft Authenticator gibi bir uygulamada bu anahtarı manuel girin, ardından uygulamanın gösterdiği 6 haneli kodu aşağıya yazın.</p>
@@ -3117,10 +3133,12 @@ function dialogView(){
    <p style="font-size:11.5px;color:var(--tm);margin:10px 0 0">Rol, birim, ünvan ve yönetici bilgileri Active Directory ve Admin Panel üzerinden yönetilir; buradan değiştirilemez.</p>
    ${LIVE_BACKEND?`<div class="lbl" style="margin-top:15px">İki faktörlü kimlik doğrulama (2FA)</div>
     ${TWOFA_STATUS&&TWOFA_STATUS.enabled?
-     `<p class="m" style="color:var(--tm)">Etkin. Her girişte authenticator app veya e-posta koduyla doğrulanırsınız.</p>
-      <button class="b s d" data-a="twofaDisable">Devre dışı bırak</button>`
-     :`<p class="m" style="color:var(--tm)">${TWOFA_STATUS&&TWOFA_STATUS.recommended?"Rolünüz için önerilir. ":""}Kapalı — girişte yalnızca kullanıcı adı yeterli.</p>
-      <button class="b s p" data-a="twofaSetup">Etkinleştir</button>`}
+     `<p class="m" style="color:var(--tm)">Etkin (${TWOFA_STATUS.method==="app"?"authenticator app":"e-posta"} yöntemi). ${TWOFA_STATUS.required?"Rolünüz için zorunludur.":""}</p>
+      ${TWOFA_STATUS.required?"":`<button class="b s d" data-a="twofaDisable">Devre dışı bırak</button>`}`
+     :`<p class="m" style="color:var(--tm)">${TWOFA_STATUS&&TWOFA_STATUS.required?"Rolünüz için zorunludur — lütfen etkinleştirin. ":""}Kapalı — girişte yalnızca kullanıcı adı yeterli.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+       <button class="b s p" data-a="twofaEnableEmailStart">E-posta ile etkinleştir (kolay)</button>
+       <button class="b s" data-a="twofaSetup">Authenticator app ile</button></div>`}
    `:""}
    <div style="display:flex;justify-content:flex-end;margin-top:15px"><button class="b p" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="proj"){
@@ -3724,6 +3742,15 @@ app.addEventListener("click",async ev=>{
  if(k==="theme"){S.dark=!S.dark;render();return;}
  if(k==="togglePw"){S.showPw=!S.showPw;render();return;}
  if(k==="fill"){S.u=USERS[+p[1]].u;S.err="";render();return;}
+ if(k==="twofaEnableEmailStart"){
+  try{await api("POST","/api/auth/2fa/enable-email/request",{});S.f={};S.dlg={type:"twofaEmail"};toast("E-postanıza kod gönderildi.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="twofaEnableEmailConfirm"){
+  const code=(document.getElementById("f2faEmailCode")||{}).value||"";
+  try{await api("POST","/api/auth/2fa/enable-email/confirm",{code});TWOFA_STATUS={enabled:true,method:"email",required:TWOFA_STATUS&&TWOFA_STATUS.required};S.dlg=null;toast("2FA etkinleştirildi.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
  if(k==="twofaDisable"){
   try{await api("POST","/api/auth/2fa/disable",{});TWOFA_STATUS={enabled:false,recommended:TWOFA_STATUS&&TWOFA_STATUS.recommended};toast("2FA devre dışı bırakıldı.");render();}
   catch(e){toast(e.message,1);}
@@ -3737,7 +3764,25 @@ app.addEventListener("click",async ev=>{
   try{await api("POST","/api/auth/2fa/enable",{code});TWOFA_STATUS={enabled:true,recommended:TWOFA_STATUS&&TWOFA_STATUS.recommended};S.dlg=null;toast("2FA etkinleştirildi.");render();}
   catch(e){toast(e.message,1);}
   return;}
- if(k==="cancel2fa"){S.needsTwoFactor=false;S.pendingUname=null;S.err="";S.emailCodeSent=false;render();return;}
+ if(k==="resend2faEmail"){
+  try{await api("POST","/api/auth/2fa/enable-email/request",{});toast("Kod tekrar gönderildi.");}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="confirmMustSetup2fa"){
+  const code=(document.getElementById("lcode2")||{}).value||"";
+  try{
+   const data=await api("POST","/api/auth/2fa/enable-email/confirm",{code});
+   CSRF_TOKEN=data.csrfToken;
+   let u=USERS.find(x=>x.u===data.user.username);
+   if(!u){u={u:data.user.username,n:data.user.name,r:data.user.role,unit:data.user.unit,
+    title:data.user.title,mgr:null,c:data.user.color,on:1};USERS.push(u);}
+   if(data.user.managerUsername){
+    const mu=USERS.find(x=>x.u===data.user.managerUsername);
+    u.mgr=mu?mu.n:data.user.managerUsername;}
+   S.me=u;S.err="";S.mustSetupTwoFactor=false;S.view="home";S.mod="announce";S.scr="a.list";
+   S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();loadAppSettingsLive();loadApprovalRulesLive();loadTwoFactorStatusLive();render();return;
+  }catch(e){S.err=e.message||"Kod hatalı.";render();return;}}
+ if(k==="cancel2fa"){S.needsTwoFactor=false;S.mustSetupTwoFactor=false;S.pendingUname=null;S.err="";S.emailCodeSent=false;render();return;}
  if(k==="send2faEmail"){
   try{await api("POST","/api/auth/2fa/send-email-code",{});S.emailCodeSent=true;S.err="";render();}
   catch(e){S.err=e.message||"Kod gönderilemedi.";render();}
@@ -3763,6 +3808,8 @@ app.addEventListener("click",async ev=>{
    try{
     const data=await api("POST","/api/auth/login",{username:uname});
     if(data.needsTwoFactor){S.needsTwoFactor=true;S.pendingUname=uname;S.err="";S.f={};render();return;}
+    if(data.mustSetupTwoFactor){S.mustSetupTwoFactor=true;S.pendingUname=uname;S.err="";S.f={};render();
+     await api("POST","/api/auth/2fa/enable-email/request",{}).catch(()=>{});render();return;}
     CSRF_TOKEN=data.csrfToken;
     let u=USERS.find(x=>x.u===data.user.username);
     if(!u){u={u:data.user.username,n:data.user.name,r:data.user.role,unit:data.user.unit,

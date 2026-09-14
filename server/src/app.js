@@ -4,7 +4,8 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const { config } = require("./config");
 const { securityHeaders, apiLimiter, loginLimiter, notFound, errorHandler } = require("./middleware/security");
-const { attachUser, requireCsrf } = require("./middleware/auth");
+const { attachUser, requireCsrf, blockIfMustSetup2FA } = require("./middleware/auth");
+const { networkAllowlist } = require("./middleware/network");
 
 function createApp() {
   const app = express();
@@ -24,7 +25,9 @@ function createApp() {
   }
   app.use(express.json({ limit: "1mb" }));
   app.use(cookieParser());
+  app.use(networkAllowlist);
   app.use(attachUser);
+  app.use(blockIfMustSetup2FA);
   app.use("/api", apiLimiter);
   app.use("/api/auth/login", loginLimiter);
   app.use(requireCsrf);

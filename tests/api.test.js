@@ -10,6 +10,31 @@ const app = createApp();
 async function login(username) {
   const res = await request(app).post("/api/auth/login").send({ username });
   const cookie = res.headers["set-cookie"][0];
+  if (res.body.mustSetupTwoFactor) {
+    // Bu rol için 2FA zorunlu ve henüz kurulmamış: e-posta yöntemiyle
+    // kurulumu GERÇEKTEN tamamlayıp (üretimdeki akışın aynısı) normal
+    // oturuma geçiyoruz — testleri atlatmak yerine gerçek davranışı sınıyoruz.
+    await request(app).post("/api/auth/2fa/enable-email/request").set("Cookie", cookie).send({});
+    const { rows } = await pool.query(
+      "SELECT email_otp_code FROM sessions WHERE username=$1 AND must_setup_2fa=true ORDER BY created_at DESC LIMIT 1",
+      [username]
+    );
+    const confirm = await request(app).post("/api/auth/2fa/enable-email/confirm").set("Cookie", cookie)
+      .send({ code: rows[0].email_otp_code });
+    return { cookie, csrf: confirm.body.csrfToken, user: confirm.body.user };
+  }
+  if (res.body.needsTwoFactor) {
+    // 2FA bu kullanıcıda zaten etkin (önceki testte kurulmuş olabilir):
+    // e-posta koduyla normal 2. adımı tamamlıyoruz.
+    await request(app).post("/api/auth/2fa/send-email-code").set("Cookie", cookie).send({});
+    const { rows } = await pool.query(
+      "SELECT email_otp_code FROM sessions WHERE username=$1 AND pending_2fa=true ORDER BY created_at DESC LIMIT 1",
+      [username]
+    );
+    const verify = await request(app).post("/api/auth/2fa/verify").set("Cookie", cookie)
+      .send({ code: rows[0].email_otp_code });
+    return { cookie, csrf: verify.body.csrfToken, user: verify.body.user };
+  }
   return { cookie, csrf: res.body.csrfToken, user: res.body.user };
 }
 

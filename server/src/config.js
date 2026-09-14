@@ -41,6 +41,11 @@ const config = {
 
   uploadDir: process.env.UPLOAD_DIR || "/var/lib/tera-portal/uploads",
   uploadMaxMb: Number(process.env.UPLOAD_MAX_MB || 25),
+
+  // Kurumsal ağ (Tera domain) kısıtlaması: virgülle ayrılmış CIDR listesi
+  // (örn. "10.20.0.0/16,192.168.50.0/24"). Boşsa kısıtlama uygulanmaz.
+  networkAllowedCidrs: String(process.env.NETWORK_ALLOWED_CIDRS || "")
+    .split(",").map((s) => s.trim()).filter(Boolean),
 };
 
 if (config.nodeEnv === "production" && config.authMode !== "ldap") {

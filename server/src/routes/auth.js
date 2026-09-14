@@ -3,7 +3,7 @@ const express = require("express");
 const { query } = require("../db");
 const { config } = require("../config");
 const { requireAuth } = require("../middleware/auth");
-const { createSession, destroySession, completeTwoFactor } = require("../auth/session");
+const { createSession, destroySession, completeTwoFactor, completeTwoFactorSetup } = require("../auth/session");
 const { verifyAgainstDirectory } = require("../auth/ldap");
 const { audit } = require("../lib/audit");
 const { encryptSecret, decryptSecret } = require("../lib/crypto");
@@ -52,12 +52,27 @@ router.post("/login", async (req, res, next) => {
     // authMode === 'mock': yalnızca geliştirme/test — kullanıcı adı yeterli.
     // config.js, NODE_ENV=production'da AUTH_MODE!=ldap olduğunda uyarı basar.
 
-    const session = await createSession(uname, !!user.totp_enabled);
-    setSessionCookie(res, session);
     if (user.totp_enabled) {
+      const session = await createSession(uname, true, false);
+      setSessionCookie(res, session);
       await audit(`Giriş (1/2 — şifre doğrulandı, 2FA kodu bekleniyor): ${uname}`, uname, true);
-      return res.json({ needsTwoFactor: true });
+      return res.json({ needsTwoFactor: true, method: user.totp_method });
     }
+
+    // KURAL (kullanıcı isteği): admin ve Teftiş için 2FA ZORUNLUDUR. Henüz
+    // kurulmadıysa oturum "kurulum bekliyor" durumunda açılır — kullanıcı
+    // 2FA'yı etkinleştirene kadar başka hiçbir işlem yapamaz.
+    const policyRow = await query("SELECT required FROM two_factor_policy WHERE role=$1", [user.role]);
+    const mandatory = !!(policyRow.rows[0] && policyRow.rows[0].required);
+    if (mandatory) {
+      const session = await createSession(uname, false, true);
+      setSessionCookie(res, session);
+      await audit(`Giriş — 2FA kurulumu zorunlu, henüz yapılmamış: ${uname}`, uname, true);
+      return res.json({ mustSetupTwoFactor: true });
+    }
+
+    const session = await createSession(uname, false, false);
+    setSessionCookie(res, session);
     await audit(`Giriş yapıldı: ${uname}`, uname, true);
     res.json({
       user: {
@@ -186,8 +201,47 @@ router.post("/2fa/enable", requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// KOLAY YOL (kullanıcı isteği: "authenticator zor iş"): e-posta ile 2FA
+// etkinleştirme — TOTP secreti/QR gerekmez. requireAuth burada must_setup_2fa
+// durumundaki kullanıcılar için de çalışır (attachUser onlar için de
+// req.user'ı set eder; blockIfMustSetup2FA bu path'lere özellikle izin verir).
+router.post("/2fa/enable-email/request", requireAuth, async (req, res, next) => {
+  try {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    await query("UPDATE sessions SET email_otp_code=$1, email_otp_expires_at=now() + interval '5 minutes' WHERE id=$2",
+      [code, req.session.id]);
+    const sent = await sendMail(req.user.email, "Tera Portal — 2FA etkinleştirme kodu",
+      `Merhaba, 2FA etkinleştirme kodunuz: ${code}\nBu kod 5 dakika geçerlidir.`);
+    res.json({ ok: true, sent });
+  } catch (e) { next(e); }
+});
+
+router.post("/2fa/enable-email/confirm", requireAuth, async (req, res, next) => {
+  try {
+    const { code } = req.body || {};
+    if (!req.session.email_otp_code || req.session.email_otp_code !== String(code || "") ||
+        !req.session.email_otp_expires_at || new Date(req.session.email_otp_expires_at) <= new Date()) {
+      return res.status(401).json({ error: "Kod hatalı veya süresi geçmiş." });
+    }
+    await query("UPDATE sessions SET email_otp_code=NULL, email_otp_expires_at=NULL WHERE id=$1", [req.session.id]);
+    await query("UPDATE users SET totp_enabled=true, totp_method='email' WHERE username=$1", [req.user.username]);
+    const wasSetupRequired = req.mustSetupTwoFactor;
+    if (wasSetupRequired) await completeTwoFactorSetup(req.session.id);
+    await audit(`2FA etkinleştirildi (e-posta): ${req.user.username}`, req.user.username, true);
+    if (wasSetupRequired) {
+      // Zorunlu kurulum tamamlandı: normal oturuma geçiş için csrfToken da döner.
+      return res.json({ ok: true, user: req.user, csrfToken: req.session.csrf_secret });
+    }
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 router.post("/2fa/disable", requireAuth, async (req, res, next) => {
   try {
+    const policyRow = await query("SELECT required FROM two_factor_policy WHERE role=$1", [req.user.role]);
+    if (policyRow.rows[0] && policyRow.rows[0].required) {
+      return res.status(403).json({ error: "Rolünüz için 2FA zorunludur, devre dışı bırakılamaz." });
+    }
     await query("UPDATE users SET totp_enabled=false, totp_secret_encrypted=NULL WHERE username=$1", [req.user.username]);
     await audit(`2FA devre dışı bırakıldı: ${req.user.username}`, req.user.username, true);
     res.json({ ok: true });
@@ -196,10 +250,12 @@ router.post("/2fa/disable", requireAuth, async (req, res, next) => {
 
 router.get("/2fa/status", requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await query("SELECT totp_enabled FROM users WHERE username=$1", [req.user.username]);
+    const { rows } = await query("SELECT totp_enabled, totp_method FROM users WHERE username=$1", [req.user.username]);
     const policy = await query("SELECT required FROM two_factor_policy WHERE role=$1", [req.user.role]);
     res.json({
       enabled: !!(rows[0] && rows[0].totp_enabled),
+      method: rows[0] ? rows[0].totp_method : "email",
+      required: !!(policy.rows[0] && policy.rows[0].required),
       recommended: !!(policy.rows[0] && policy.rows[0].required),
     });
   } catch (e) { next(e); }
