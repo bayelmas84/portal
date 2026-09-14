@@ -152,6 +152,14 @@ router.post("/documents", requireWrite("training"), upload.single("file"), async
       }
     }
     const fileBuf = fs.readFileSync(req.file.path);
+    // GÜVENLİK: Content-Type header'ı istemci tarafından gönderilir ve
+    // güvenilmez — sahte bir dosya "application/pdf" diyerek yüklenebilir.
+    // Gerçek dosya içeriğinin PDF magic number (%PDF-) ile başladığını
+    // doğrularız; başlamıyorsa dosya silinir ve istek reddedilir.
+    if (fileBuf.length < 5 || fileBuf.slice(0, 5).toString("latin1") !== "%PDF-") {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: "Dosya içeriği geçerli bir PDF değil." });
+    }
     const sha256 = crypto.createHash("sha256").update(fileBuf).digest("hex");
     const defaultDueDays = await getNumberSetting("training_default_due_days");
     const days = Math.max(1, parseInt(dueDays, 10) || defaultDueDays);

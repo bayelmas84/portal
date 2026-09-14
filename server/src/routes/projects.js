@@ -457,6 +457,11 @@ router.post("/:k/documents", requireWrite("d.docs"), uploadPdf, async (req, res,
       }
     }
     const sha256 = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+    // GÜVENLİK: Content-Type güvenilmez (istemci beyanı) — gerçek dosya
+    // içeriğinin PDF imzasıyla (%PDF-) başladığı doğrulanır.
+    if (req.file.buffer.length < 5 || req.file.buffer.slice(0, 5).toString("latin1") !== "%PDF-") {
+      return res.status(400).json({ error: "Dosya içeriği geçerli bir PDF değil." });
+    }
     const storedName = `${crypto.randomBytes(16).toString("hex")}.pdf`;
     const fullPath = path.join(config.uploadDir, storedName);
     fs.writeFileSync(fullPath, req.file.buffer);
