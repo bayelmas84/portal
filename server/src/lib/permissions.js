@@ -14,7 +14,7 @@ const DEFAULT_ACCESS = {
     announcements: "read", training: "read",
     "d.team": "read", "d.docs": "read", "d.docview": "read", "d.appr": "read", "d.cr": "read",
     "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
-    "m.users": "write", "m.dir": "write", "m.smtp": "write", "m.brand": "write",
+    "m.users": "write", "m.units": "write", "m.dir": "write", "m.smtp": "write", "m.brand": "write",
     "m.avail": "write", "m.access": "write",
   },
   pmdir: {
@@ -61,6 +61,15 @@ const DEFAULT_ACCESS = {
     announcements: "read", training: "read",
     "d.docs": "read", "d.docview": "read",
     "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
+  },
+  // CEO: organizasyonun tepesi. Genel görünürlük (okuma) geniştir; admin panel
+  // yazma yetkisi YOKTUR (admin işlemleri zaten kendi yöneticisine gitmez çünkü
+  // CEO'nun üstünde kimse yok — bu rol admin panelini hiç kullanmaz).
+  ceo: {
+    announcements: "read", training: "read",
+    "d.team": "read", "d.docs": "read", "d.docview": "read", "d.appr": "read", "d.cr": "read",
+    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
+    "c.audit": "read",
   },
 };
 

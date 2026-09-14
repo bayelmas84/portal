@@ -39,6 +39,47 @@ router.get("/users", requireRead("m.users"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ------------------------------- Birimler (units) ---------------------------
+// Herkese okuma açıktır: kullanıcı formu birim seçilince yöneticiyi göstermek
+// için buna ihtiyaç duyar (hassas bilgi değildir).
+router.get("/units", requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT u.code, u.name, u.active, u.manager_username, m.name AS manager_name
+       FROM units u LEFT JOIN users m ON m.username = u.manager_username ORDER BY u.name`
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/units", requireWrite("m.units"), async (req, res, next) => {
+  try {
+    const { code, name, managerUsername } = req.body || {};
+    if (!code || !/^[A-ZÇĞİÖŞÜ0-9]{2,8}$/.test(code)) return res.status(400).json({ error: "Birim kodu 2-8 büyük harf/rakam olmalı." });
+    if (!name || !name.trim()) return res.status(400).json({ error: "Birim adı zorunlu." });
+    if (!managerUsername) return res.status(400).json({ error: "Her birime bir yönetici atanmalı." });
+    const mgr = await query("SELECT 1 FROM users WHERE username=$1 AND active", [managerUsername]);
+    if (!mgr.rowCount) return res.status(400).json({ error: "Seçilen yönetici bulunamadı veya pasif." });
+    await requestAdminApproval(req, res, "admin.unit.create", { code, name, managerUsername },
+      `Yeni birim: ${code} — ${name.trim()}`);
+  } catch (e) { next(e); }
+});
+
+router.put("/units/:code", requireWrite("m.units"), async (req, res, next) => {
+  try {
+    const { name, managerUsername, active } = req.body || {};
+    const existing = await query("SELECT 1 FROM units WHERE code=$1", [req.params.code]);
+    if (!existing.rowCount) return res.status(404).json({ error: "Birim bulunamadı." });
+    if (managerUsername !== undefined) {
+      if (!managerUsername) return res.status(400).json({ error: "Her birime bir yönetici atanmalı — boş bırakılamaz." });
+      const mgr = await query("SELECT 1 FROM users WHERE username=$1 AND active", [managerUsername]);
+      if (!mgr.rowCount) return res.status(400).json({ error: "Seçilen yönetici bulunamadı veya pasif." });
+    }
+    await requestAdminApproval(req, res, "admin.unit.update", { code: req.params.code, name, managerUsername, active },
+      `Birim güncelleme: ${req.params.code}`);
+  } catch (e) { next(e); }
+});
+
 const VALID_ROLES = Object.keys(DEFAULT_ACCESS).concat(["gmy", "opsdir"]).filter((v, i, a) => a.indexOf(v) === i);
 
 router.post("/users", requireWrite("m.users"), async (req, res, next) => {

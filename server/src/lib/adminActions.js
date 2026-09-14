@@ -12,16 +12,41 @@ const { setAccess, resetAccessToDefault, setAvailability } = require("./permissi
 async function applyAdminAction(targetType, payload, actingUsername) {
   switch (targetType) {
     case "admin.user.create": {
-      const { username, name, email, role, unit, title, managerUsername } = payload;
+      const { username, name, email, role, unit, title } = payload;
+      // KURAL: yönetici asla istemciden gelen değerle atanmaz — birim seçiliyse
+      // GERÇEK birim yöneticisi backend tarafından zorla atanır (birimin
+      // yöneticisini değiştirmenin tek yolu birim tanımını güncellemektir).
+      let managerUsername = null;
+      if (unit) {
+        const u = await query("SELECT manager_username FROM units WHERE code=$1", [unit]);
+        managerUsername = u.rows[0] ? u.rows[0].manager_username : null;
+      }
       await query(
         `INSERT INTO users (username,name,email,role,unit,title,manager_username)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [username, name, email, role, unit || null, title || null, managerUsername || null]
+        [username, name, email, role, unit || null, title || null, managerUsername]
       );
       return;
     }
     case "admin.user.update": {
-      const { username, name, email, role, unit, title, managerUsername, active } = payload;
+      const { username, name, email, role, unit, title, active } = payload;
+      const before = await query("SELECT unit, active, manager_username FROM users WHERE username=$1", [username]);
+      const wasInactive = before.rows[0] && before.rows[0].active === false;
+      const effectiveUnit = unit !== undefined && unit !== null ? unit : (before.rows[0] ? before.rows[0].unit : null);
+      let managerUsername; // undefined ise COALESCE mevcut değeri korur
+      if (unit !== undefined && unit !== null) {
+        // Birim değişti: yeni birimin GERÇEK yöneticisi atanır (kendisi o birimin
+        // yöneticisiyse kendine yönetici atanmaz).
+        const u = await query("SELECT manager_username FROM units WHERE code=$1", [unit]);
+        const unitManager = u.rows[0] ? u.rows[0].manager_username : null;
+        managerUsername = unitManager === username ? null : unitManager;
+      } else if (active === true && wasInactive && effectiveUnit) {
+        // KURAL: pasif kullanıcı yeniden aktif edildiğinde yöneticisi, pasif
+        // kaldığı süre boyunca değişmiş olabilecek birim yöneticisine senkronize edilir.
+        const u = await query("SELECT manager_username FROM units WHERE code=$1", [effectiveUnit]);
+        const unitManager = u.rows[0] ? u.rows[0].manager_username : null;
+        managerUsername = unitManager === username ? null : unitManager;
+      }
       await query(
         `UPDATE users SET
            name=COALESCE($1,name), email=COALESCE($2,email), role=COALESCE($3,role),
@@ -30,6 +55,31 @@ async function applyAdminAction(targetType, payload, actingUsername) {
          WHERE username=$8`,
         [name, email, role, unit, title, managerUsername, active, username]
       );
+      return;
+    }
+    case "admin.unit.create": {
+      const { code, name, managerUsername } = payload;
+      await query("INSERT INTO units (code,name,manager_username) VALUES ($1,$2,$3)", [code, name.trim(), managerUsername]);
+      return;
+    }
+    case "admin.unit.update": {
+      const { code, name, managerUsername, active } = payload;
+      const before = await query("SELECT manager_username FROM units WHERE code=$1", [code]);
+      const oldManager = before.rows[0] && before.rows[0].manager_username;
+      await query(
+        `UPDATE units SET name=COALESCE($1,name), manager_username=COALESCE($2,manager_username),
+           active=COALESCE($3,active) WHERE code=$4`,
+        [name, managerUsername, active, code]
+      );
+      // KURAL: birimin yöneticisi değiştiğinde, o birimdeki TÜM aktif çalışanların
+      // yöneticisi de yeni yöneticiye güncellenir (yeni yöneticinin kendisi hariç —
+      // birinin kendi kendisinin yöneticisi olması anlamsız olur).
+      if (managerUsername && managerUsername !== oldManager) {
+        await query(
+          "UPDATE users SET manager_username=$1 WHERE unit=$2 AND active=true AND username != $1",
+          [managerUsername, code]
+        );
+      }
       return;
     }
     case "admin.directory": {

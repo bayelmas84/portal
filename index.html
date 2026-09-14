@@ -438,19 +438,21 @@ const ACC={
 ["inspection","infosec","control"].forEach(r=>{ACC[r]["d.meeting"]=R;ACC[r]["d.meetingview"]=R;});
 ["pm","pmdir"].forEach(r=>{ACC[r]["d.meeting"]=W;ACC[r]["d.meetingview"]=W;ACC[r]["d.meetingnew"]=W;ACC[r]["d.gantt"]=W;});
 const ROLE={pmdir:"Proje Yönetim Direktörü",admin:"Admin",inspection:"Teftiş",infosec:"Bilgi Güvenliği",control:"İç Kontrol",
- gmy:"Genel Müdür Yardımcısı",opsdir:"Operasyon Direktörü",pm:"Proje Yöneticisi",dev:"Geliştirici",staff:"Personel"};
+ gmy:"Genel Müdür Yardımcısı",opsdir:"Operasyon Direktörü",pm:"Proje Yöneticisi",dev:"Geliştirici",staff:"Personel",ceo:"Genel Müdür"};
 
 let USERS=[
+ {u:"ahmet.tera",n:"Ahmet Tera",r:"ceo",c:"#0B1F48",unit:"Portföy Yönetimi",
+  title:"Genel Müdür",mgr:null,on:1},
  {u:"melis.suri",n:"Melis Suri",r:"staff",c:"#8A5A2B",unit:"Kanal Yönetimi",
   title:"Müdür",mgr:"Deniz Okur",on:1},
  {u:"leyla.varol",n:"Leyla Varol",r:"control",c:"#5B2E8C",unit:"Kurumsal Risk",
-  title:"Grup Direktörü",mgr:"Genel Müdür",on:1},
+  title:"Grup Direktörü",mgr:"Ahmet Tera",on:1},
  {u:"elif.yalcin",n:"Elif Yalçın",r:"admin",c:"#A3121C",unit:"Bilgi Teknolojileri",title:"Direktör",mgr:"Deniz Okur",on:1},
  {u:"kerem.aslan",n:"Kerem Aslan",r:"inspection",c:"#7A1F3D",unit:"Teftiş Kurulu",title:"Müdür",mgr:"Deniz Okur",on:1},
  {u:"seda.tunc",n:"Seda Tunç",r:"inspection",c:"#5A1F3D",unit:"Teftiş Kurulu",title:"Uzman",mgr:"Kerem Aslan",on:1},
  {u:"burak.temel",n:"Burak Temel",r:"infosec",c:"#0178BA",unit:"Bilgi Teknolojileri",title:"Müdür",mgr:"Elif Yalçın",on:1},
  {u:"gonul.aladag",n:"Gönül Aladağ",r:"control",c:"#8E0D4D",unit:"Uyum ve İç Kontrol",title:"Müdür",mgr:"Deniz Okur",on:1},
- {u:"deniz.okur",n:"Deniz Okur",r:"gmy",c:"#4B3B8F",unit:"Portföy Yönetimi",title:"Genel Müdür Yardımcısı",mgr:"Genel Müdür",on:1},
+ {u:"deniz.okur",n:"Deniz Okur",r:"gmy",c:"#4B3B8F",unit:"Portföy Yönetimi",title:"Genel Müdür Yardımcısı",mgr:"Ahmet Tera",on:1},
  {u:"meltem.aydin",n:"Meltem Aydın",r:"opsdir",c:"#854F0B",unit:"Operasyon ve Takas",title:"Direktör",mgr:"Deniz Okur",on:1},
  {u:"tolga.firat",n:"Tolga Fırat",r:"pm",c:"#0B1F48",unit:"Bilgi Teknolojileri",title:"Müdür",mgr:"Elif Yalçın",on:1},
  {u:"mert.balkan",n:"Mert Balkan",r:"dev",c:"#33405C",unit:"Bilgi Teknolojileri",title:"Uzman",mgr:"Tolga Fırat",on:1},
@@ -802,6 +804,12 @@ async function loadReqsLive(which){
  render();}
 let PROJECTS_LIVE_LOADED=false,PROJECTS_LIVE_LOADING=false;
 let AUDIT_LIVE=null,AUDIT_LIVE_LOADING=false;
+let UNITS_LIVE=null,UNITS_LIVE_LOADING=false;
+async function loadUnitsLive(){
+ UNITS_LIVE_LOADING=true;
+ try{const data=await api("GET","/api/admin/units");UNITS_LIVE=data.items;}
+ catch(e){toast("Birimler yüklenemedi: "+e.message,1);UNITS_LIVE=[];}
+ UNITS_LIVE_LOADING=false;render();}
 async function loadAuditLive(){
  AUDIT_LIVE_LOADING=true;
  try{const data=await api("GET","/api/audit");AUDIT_LIVE=data.items;}
@@ -2419,7 +2427,18 @@ function screenView(){
      <button class="b s" data-a="recEdit:user:${LIVE_BACKEND?u.u:i}">Düzenle</button>
      ${LIVE_BACKEND?"":`<button class="b s d" data-a="recDel:user:${i}">Sil</button>`}`:""}</td></tr>`).join("")));}
 
- if(v==="m.units")return head("Birimler",UNITS.filter(u=>u.on).length+" aktif / "+UNITS.length+" kayıt",
+ if(v==="m.units"){
+  if(LIVE_BACKEND){
+   if(UNITS_LIVE===null&&!UNITS_LIVE_LOADING)loadUnitsLive();
+   if(UNITS_LIVE===null)return head("Birimler","")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
+   return head("Birimler",UNITS_LIVE.filter(u=>u.active).length+" aktif / "+UNITS_LIVE.length+" kayıt · canlı backend",
+    cw("m.units")?`<button class="b p" data-a="recNew:unit">Birim ekle</button>`:"")+
+   table(["Kod","Birim","Yönetici","Durum",""],UNITS_LIVE.map(u=>`<tr class="${u.active?"":"dim"}">
+    <td class="m" style="color:var(--ta)">${esc(u.code)}</td><td>${esc(u.name)}</td>
+    <td style="color:var(--t2)">${esc(u.manager_name||"—")}</td><td>${onPill(u.active)}</td>
+    <td style="text-align:right;white-space:nowrap">${cw("m.units")?
+     `<button class="b s" data-a="recEdit:unit:${u.code}">Düzenle</button>`:""}</td></tr>`).join(""));}
+  return head("Birimler",UNITS.filter(u=>u.on).length+" aktif / "+UNITS.length+" kayıt",
    cw("m.units")?`<button class="b p" data-a="recNew:unit">Birim ekle</button>`:"")+
   table(["Kod","Birim","Kişi","Durum",""],UNITS.map((u,i)=>`<tr class="${u.on?"":"dim"}">
    <td class="m" style="color:var(--ta)">${u.k}</td><td>${esc(u.n)}</td>
@@ -2427,7 +2446,7 @@ function screenView(){
    <td style="text-align:right;white-space:nowrap">${cw("m.units")?
     `<button class="b s" data-a="toggle:unit:${i}">${u.on?"Pasife al":"Aktif et"}</button>
      <button class="b s" data-a="recEdit:unit:${i}">Düzenle</button>
-     <button class="b s d" data-a="recDel:unit:${i}">Sil</button>`:""}</td></tr>`).join(""));
+     <button class="b s d" data-a="recDel:unit:${i}">Sil</button>`:""}</td></tr>`).join(""));}
 
  if(v==="m.titles")return head("Ünvanlar",TITLES.filter(t=>t.on).length+" aktif / "+TITLES.length+" kayıt",
    cw("m.titles")?`<button class="b p" data-a="recNew:title">Ünvan ekle</button>`:"")+
@@ -3159,9 +3178,19 @@ function dialogView(){
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b ${ok2?"g":"off"}" data-a="${ok2?"bisave":"nf"}">Kaydet</button></div>`);}
  if(d.type==="rec"){const isNew=d.idx===undefined;
+  const unitSrc=LIVE_BACKEND?(UNITS_LIVE||[]).map(u=>({k:u.code,n:u.name,on:u.active,mgr:u.manager_name})):UNITS;
+  const selUnit=d.kind==="user"?unitSrc.find(u=>u.n===f.b):null;
   return wrap(`<div style="font-size:15px">${d.title}</div>
    <div class="lbl" style="margin-top:13px">${d.l1}</div><input id="fA" value="${esc(f.a||"")}">
-   <div class="lbl" style="margin-top:12px">${d.l2}</div><input id="fB" value="${esc(f.b||"")}">
+   ${d.kind==="user"?`<div class="lbl" style="margin-top:12px">Birim</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${unitSrc.filter(u=>u.on).map(u=>
+      `<button class="b s ${f.b===u.n?"p":""}" data-a="setUnit:${encodeURIComponent(u.n)}">${esc(u.n)}</button>`).join("")}</div>
+    <div class="lbl" style="margin-top:12px">Yönetici <span class="m" style="color:var(--tm)">(birim seçince otomatik gelir, buradan değiştirilemez)</span></div>
+    <input value="${selUnit?esc(selUnit.mgr||"—"):"Önce birim seçin"}" disabled style="opacity:.7">`
+   :`<div class="lbl" style="margin-top:12px">${d.l2}</div><input id="fB" value="${esc(f.b||"")}">
+    ${d.kind==="unit"?`<div class="lbl" style="margin-top:12px">Yönetici (zorunlu)</div>
+     <div style="display:flex;gap:6px;flex-wrap:wrap">${USERS.filter(u=>u.on).map(u=>
+       `<button class="b s ${f.mgr===u.u?"p":""}" data-a="setUnitMgr:${u.u}">${esc(u.n)}</button>`).join("")}</div>`:""}`}
    ${d.kind==="user"?`<div class="lbl" style="margin-top:12px">Rol</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.keys(ROLE).map(r=>`<button class="b s ${f.role===r?"p":""}" data-a="setRole:${r}">${ROLE[r]}</button>`).join("")}</div>
     <div class="lbl" style="margin-top:12px">Ünvan</div>
@@ -3251,7 +3280,10 @@ function validate(){
  if(d.type==="override")return [(f.r||"").trim().length>=10,"overrideOk",""];
  if(d.type==="doc")return [d.idx!==undefined?!!f.file:((f.no||"").trim().length>3&&(f.title||"").trim().length>4&&f.cat&&f.file),
   d.idx!==undefined?"docVersion":"docCreate",""];
- if(d.type==="rec")return [(f.a||"").trim().length>1&&(f.b||"").trim().length>1,"recSave",""];
+ if(d.type==="rec"){
+  const baseOk=(f.a||"").trim().length>1&&(f.b||"").trim().length>1;
+  const mgrOk=d.kind!=="unit"||!!f.mgr;
+  return [baseOk&&mgrOk,"recSave",!baseOk?"":!mgrOk?"birim yöneticisi seçin":""];}
  if(d.type==="traindoc"){
   const qs=f.questions||[];
   const miss=[];
@@ -3458,7 +3490,7 @@ app.addEventListener("click",async ev=>{
      u.mgr=mu?mu.n:data.user.managerUsername;}
     S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
     S.meetingsLive=null;S.meetingsLiveLoading=null;
-    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();render();return;
+    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();render();return;
    }catch(e){S.err=e.message||"Kullanıcı adı veya parola hatalı.";render();return;}
   }
   const u=USERS.find(x=>x.u===uname);
@@ -3483,6 +3515,7 @@ app.addEventListener("click",async ev=>{
   TRAIN_DOCS_LIVE=null;TRAIN_DOCS_LIVE_LOADING=false;PENDING_UPLOAD_FILE=null;PENDING_TRAIN_FILE=null;
   AUDIT_LIVE=null;AUDIT_LIVE_LOADING=false;
   S.pendingTab=null;S.pendingFilter=null;
+  UNITS_LIVE=null;UNITS_LIVE_LOADING=false;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
@@ -4332,6 +4365,8 @@ app.addEventListener("click",async ev=>{
  if(k==="setCrit"){S.f.crit=p[1];render();return;}
  if(k==="setPop"){S.f.pop=S.f.pop?0:1;render();return;}
  if(k==="setOn"){S.f.on=S.f.on?0:1;render();return;}
+ if(k==="setUnit"){S.f.b=decodeURIComponent(p[1]);render();return;}
+ if(k==="setUnitMgr"){S.f.mgr=p[1];render();return;}
  if(k==="setRole"){S.f.role=p[1];render();return;}
  if(k==="setTitle"){S.f.title2=dec(p[1]);render();return;}
  if(k==="annSend"){
@@ -4481,6 +4516,11 @@ app.addEventListener("click",async ev=>{
    if(!rec)return;
    S.f={a:rec.n,b:rec.unit,role:rec.r,title2:rec.title,on:rec.on};
    S.dlg={type:"rec",kind:"user",idx:p[2],title:"Kullanıcıyı düzenle",l1:"Ad soyad",l2:"Birim"};render();return;}
+  if(t==="unit"&&LIVE_BACKEND){
+   const rec=(UNITS_LIVE||[]).find(x=>x.code===p[2]);
+   if(!rec)return;
+   S.f={a:rec.code,b:rec.name,mgr:rec.manager_username,on:rec.active};
+   S.dlg={type:"rec",kind:"unit",idx:p[2],title:"Birimi düzenle",l1:"Kod",l2:"Birim adı"};render();return;}
   const i=+p[2],src={user:USERS,unit:UNITS,title:TITLES,short:SHORTS}[t],rec=src[i];
   S.f=t==="user"?{a:rec.n,b:rec.unit,role:rec.r,title2:rec.title,on:rec.on}
    :t==="short"?{a:rec.n,b:rec.url,on:rec.on}:{a:rec.k,b:rec.n,on:rec.on};
@@ -4489,8 +4529,16 @@ app.addEventListener("click",async ev=>{
    l1:{user:"Ad soyad",unit:"Kod",title:"Kod",short:"Görünen ad"}[t],
    l2:{user:"Birim",unit:"Birim adı",title:"Ünvan adı",short:"Link"}[t]};render();return;}
  if(k==="recSave"){const d=S.dlg,f=S.f;
+  if(d.kind==="unit"&&LIVE_BACKEND){
+   try{
+    const data=await(d.idx===undefined
+     ?api("POST","/api/admin/units",{code:f.a.trim().toUpperCase(),name:f.b.trim(),managerUsername:f.mgr})
+     :api("PUT","/api/admin/units/"+encodeURIComponent(d.idx),{name:f.b.trim(),managerUsername:f.mgr,active:!!f.on}));
+    S.dlg=null;S.f={};S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();
+   }catch(e){toast(e.message,1);}
+   return;}
   if(d.kind==="user"&&LIVE_BACKEND){
-   const unitCode=(UNITS.find(x=>x.n===f.b.trim())||{}).k||null;
+   const unitCode=((UNITS_LIVE||[]).find(u=>u.name===f.b.trim())||{}).code||null;
    const titleCode=(TITLES.find(x=>x.n===f.title2)||{}).k||null;
    try{
     const data=await(d.idx===undefined
