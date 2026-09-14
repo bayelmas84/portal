@@ -797,6 +797,42 @@ async function loadReqsLive(which){
  }catch(e){toast("Talepler yüklenemedi: "+e.message,1);
   if(which==="inbox")S.reqsInboxLive=[];else if(which==="mine")S.reqsMineLive=[];else S.reqsDoneLive=[];}
  render();}
+let PROJECTS_LIVE_LOADED=false,PROJECTS_LIVE_LOADING=false;
+const HEALTH_COLOR={"İzleniyor":"#0B1F48","Risk altında":"#BA7517","Gecikmede":"#A32D2D","Planında":"#3B6D11"};
+function mapProjectLive(p){
+ const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
+ const existing=PROJ.find(x=>x.k===p.k);
+ return {k:p.k,n:p.name,m:p.method,lead:p.lead_username?nameOf(p.lead_username):null,
+  health:p.health,hc:HEALTH_COLOR[p.health]||"#0B1F48",
+  unitName:p.unit_name,start:p.start_date?p.start_date.slice(0,10):null,target:p.target_date?p.target_date.slice(0,10):null,
+  timePct:null,burndown:null,velocityHist:[],
+  sprint:p.method==="Scrum"?{n:p.sprint_name,goal:p.sprint_goal,endsAt:p.sprint_ends_at,number:p.sprint_number}:null,
+  gate:p.gate_name?{n:p.gate_name,need:p.gate_required,
+   sign:(p.gate_signoffs||[]).map(s=>({n:s.name||s.username,r:s.title||"",at:(s.at||"").replace("T"," ").slice(0,16)})),
+   crit:(p.gate_criteria||[]).map(c=>[c.text,c.done?1:0])}:null,
+  itemsLoaded:existing?existing.itemsLoaded:false,
+  items:existing?existing.items:[]};}
+async function loadProjectsLive(){
+ PROJECTS_LIVE_LOADING=true;
+ try{
+  const data=await api("GET","/api/projects");
+  PROJ=data.items.map(mapProjectLive);
+  PROJECTS_LIVE_LOADED=true;
+ }catch(e){toast("Projeler yüklenemedi: "+e.message,1);}
+ PROJECTS_LIVE_LOADING=false;render();}
+async function loadIssuesLive(k){
+ const proj=PROJ.find(x=>x.k===k);if(!proj)return;
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(k)+"/issues");
+  const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
+  proj.items=data.items.map(it=>({key:it.issue_key,ty:it.issue_type,t:it.title,st:it.status,
+   pri:it.priority,pts:it.story_points,as:it.assignee_username?nameOf(it.assignee_username):null,
+   assigneeUsername:it.assignee_username,parent:it.parent_key,inSprint:it.in_sprint}));
+  proj.itemsLoaded=true;
+ }catch(e){toast("Konular yüklenemedi: "+e.message,1);}
+ render();}
+async function loadAllIssuesLive(){
+ await Promise.all(PROJ.map(p=>loadIssuesLive(p.k)));}
 async function loadTrainDocsLive(){
  TRAIN_DOCS_LIVE_LOADING=true;
  try{const data=await api("GET","/api/training/documents");TRAIN_DOCS_LIVE=data.items;}
@@ -1042,7 +1078,7 @@ let MY_ACCESS=null;
    çağrılarından derlenmiştir). Bu listede olmayan anahtarlar (kanban, backlog,
    raporlar gibi salt demo ekranlar) yerel ACC varsayılanlarını kullanmaya devam eder. */
 const BACKEND_MANAGED_KEYS=["announcements","training","d.team","d.docs","d.docview","d.cr",
- "d.gantt","d.meeting","d.meetingview","m.users","m.dir","m.smtp","m.brand","m.avail","m.access"];
+ "d.gantt","d.meeting","d.meetingview","d.board","d.gate","m.users","m.dir","m.smtp","m.brand","m.avail","m.access"];
 async function loadMyAccessLive(){
  try{const data=await api("GET","/api/auth/my-access");MY_ACCESS=data.access;}
  catch(e){MY_ACCESS={};}
@@ -1348,6 +1384,7 @@ function screenView(){
 
  /* ---- proje yönetimi ---- */
  if(v==="d.my"){
+  if(LIVE_BACKEND&&PROJ.some(p=>!p.itemsLoaded)&&!S.myWorkLoading){S.myWorkLoading=true;loadAllIssuesLive().then(()=>{S.myWorkLoading=false;render();});}
   const mine=myIssues().filter(x=>x.i.st!=="done");
   const shown=mine.filter(x=>!S.filter||(S.filter==="prog"?x.i.st==="prog":x.i.ty==="Bug"));
   const byProj={};shown.forEach(x=>{(byProj[x.p.k]=byProj[x.p.k]||[]).push(x);});
@@ -1394,8 +1431,10 @@ function screenView(){
     ${can("d.charts")?` <button class="b s" data-a="projCharts:${i}">Charts</button>`:""}</td></tr>`;}).join(""));
 
  if(v==="d.board"){const p=P(),cols=["todo","prog","review","test","done"];
+  if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
+  if(LIVE_BACKEND&&!p.itemsLoaded)return head("Board",p.n+" · "+p.m,"")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
   const pass=i=>!S.onlyMine||i.as===S.me.n;
-  return head("Board",p.n+" · "+p.m,
+  return head("Board",p.n+" · "+p.m+(LIVE_BACKEND?" · canlı backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
     <button class="b s ${S.onlyMine?"p":""}" data-a="onlyMine">Only my issues</button>
     ${cw("d.board")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.board")+
@@ -1419,7 +1458,9 @@ function screenView(){
     On phones, swipe the columns sideways.</p>`;}
 
  if(v==="d.backlog"){const p=P();
-  return head("Backlog",p.n,
+  if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
+  if(LIVE_BACKEND&&!p.itemsLoaded)return head("Backlog",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
+  return head("Backlog",p.n+(LIVE_BACKEND?" · canlı backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
      `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
     ${cw("d.backlog")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
@@ -1431,6 +1472,40 @@ function screenView(){
     `<tr><td colspan="5" style="color:var(--tm)">Backlog boş.</td></tr>`);}
 
  if(v==="d.gate"){
+  if(LIVE_BACKEND){
+   const gated=PROJ.filter(x=>x.m==="Waterfall");
+   if(!gated.length)return head("Stage Gates","Phase gates apply to Waterfall projects only"+" · canlı backend")+
+    `<div class="card"><span style="font-size:12px;color:var(--tm)">No Waterfall project defined.</span></div>`;
+   const p=gated.some(x=>x.k===P().k)?P():gated[0];
+   const projSel=gated.length>1?`<div style="display:flex;gap:7px">${gated.map(x=>
+    `<button class="b s ${x.k===p.k?"p":""}" data-a="proj:${PROJ.indexOf(x)}">${x.k}</button>`).join("")}</div>`:"";
+   if(!p.gate){
+    return head("Stage Gates",p.k+" · canlı backend",projSel)+
+     `<div class="card" style="max-width:640px">
+      <div style="font-size:13px;margin-bottom:9px">Bu proje için henüz bir stage gate tanımlanmadı.</div>
+      ${cw("d.gate")?`<div class="lbl">GATE ADI</div><input id="fGateName" placeholder="Geliştirme → Test">
+       <div class="lbl" style="margin-top:11px">KRİTERLER (her satır bir kriter)</div>
+       <textarea id="fGateCrit" placeholder="Code reviews closed&#10;Unit test coverage at 80%&#10;Test environment ready" style="min-height:90px"></textarea>
+       <div class="lbl" style="margin-top:11px">GEREKLİ İMZA SAYISI</div><input id="fGateNeed" type="number" min="1" value="2" style="max-width:100px">
+       <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b p" data-a="gateDefine">Gate'i tanımla</button></div>`
+      :`<p class="m" style="color:var(--tm)">Yalnızca proje yöneticisi gate tanımlayabilir.</p>`}</div>`;}
+   const g=p.gate,open=g.crit.filter(c=>!c[1]).length,full=g.sign.length>=g.need,signedByMe=g.sign.some(s=>s.n===S.me.n);
+   return head("Stage Gates",p.k+" · canlı backend",projSel)+
+   `<div class="card" style="max-width:640px">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="font-size:14px">${esc(g.n)}</span>
+     ${full?pill(g.sign.length+" / "+g.need+" signatures","ok"):pill(g.sign.length+" / "+g.need+" signatures","wr")}<span style="flex:1"></span>
+     ${cw("d.gate")&&!full&&!signedByMe?`<button class="b ${open?"off":"p"}" data-a="${open?"gateBlocked":"gateSign"}">Sign gate</button>`:""}</div>
+    <div class="lbl" style="margin-top:14px">Entry criteria</div>
+    ${g.crit.map((c,i)=>`<div style="display:flex;gap:9px;align-items:center;font-size:12.5px;margin-bottom:7px">
+     ${cw("d.gate")
+       ?`<button class="sw ${c[1]?"on":""}" style="cursor:pointer" data-a="critToggle:${i}"><i></i></button>`
+       :`<span style="width:42px;display:inline-flex;justify-content:center;font-size:15px;color:${c[1]?"var(--ok-fg)":"var(--tm)"}">${c[1]?"✓":"○"}</span>`}
+     <span style="flex:1;color:${c[1]?"var(--t1)":"var(--t2)"}">${esc(c[0])}</span>
+     ${c[1]?pill("OK","ok"):pill("Open","wr")}</div>`).join("")}
+    <div class="lbl" style="margin-top:14px">Signatures</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">${g.sign.map(s=>pill(s.n+" · "+s.r,"ok")).join("")||`<span style="font-size:12px;color:var(--tm)">no signatures yet</span>`}</div>
+    <p style="font-size:11.5px;color:var(--tm);margin:12px 0 0">${open?open+" criteria still open — the gate cannot be approved."
+      :full?"Gate passed — the next phase can start.":"Criteria met; waiting for more signatures."}</p></div>`;}
   const gated=PROJ.filter(x=>x.gate);
   if(!gated.length)return head("Stage Gates","Phase gates apply to Waterfall projects only")+
    `<div class="card"><span style="font-size:12px;color:var(--tm)">No Waterfall project defined.</span></div>`;
@@ -1504,6 +1579,38 @@ function screenView(){
 
 
  if(v==="d.sprint"){const p=P();
+  if(p.m!=="Scrum")return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">Bu proje sprint kullanmıyor (${p.m}).</p>`;
+  if(LIVE_BACKEND){
+   if(!p.itemsLoaded)loadIssuesLive(p.k);
+   const canClose=!p.sprint.endsAt||new Date(p.sprint.endsAt)<=new Date(new Date().toDateString());
+   const inSprintItems=(p.items||[]).filter(i=>i.inSprint);
+   const committed=inSprintItems.reduce((a,i)=>a+(i.pts||0),0);
+   const done=inSprintItems.filter(i=>i.st==="done").reduce((a,i)=>a+(i.pts||0),0);
+   const pct=committed?Math.round(done/committed*100):0;
+   const openCount=inSprintItems.filter(i=>i.st!=="done").length;
+   if(!p.sprint.n){
+    return head("Sprint",p.n+" · canlı backend",`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
+     `<div class="card" style="max-width:520px">
+       <div style="font-size:13px;margin-bottom:9px">Şu anda aktif bir sprint yok.</div>
+       ${cw("d.board")?`<div class="lbl">HEDEF</div><input id="fSpGoal" placeholder="Bu sprintte hedeflenen">
+        <div class="lbl" style="margin-top:11px">BİTİŞ TARİHİ</div><input id="fSpEnds" type="date">
+        <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b p" data-a="sprintStart">Sprint başlat</button></div>`
+       :`<p class="m" style="color:var(--tm)">Yalnızca proje ekibi sprint başlatabilir.</p>`}</div>`;}
+   return head("Sprint",p.n+" · canlı backend",`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
+   `<div class="card" style="max-width:640px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+     <span style="font-size:15px">${esc(p.sprint.n)}</span>${pill("aktif","ok")}<span style="flex:1"></span>
+     ${p.sprint.endsAt?`<span class="m" style="color:var(--t2)">bitiş: ${p.sprint.endsAt}</span>`:""}</div>
+    <p style="font-size:12.5px;color:var(--t2);margin:9px 0 0">Hedef: ${esc(p.sprint.goal||"—")}</p>
+    <div style="margin-top:12px;height:9px;background:var(--s1);border-radius:20px;overflow:hidden">
+     <div style="height:9px;width:${pct}%;background:var(--navy)"></div></div>
+    <div class="m" style="color:var(--t2);margin-top:8px">${done} / ${committed} story point · %${pct}</div>
+    ${cw("d.board")?`<div style="margin-top:13px;display:flex;justify-content:flex-end">
+     <button class="b ${canClose?"d":"off"}" data-a="${canClose?"sprintCloseAsk":"sprintNotYet"}">Sprint'i kapat</button></div>
+     ${!canClose?`<p class="m" style="color:var(--tm);margin-top:6px;text-align:right">Sprint yalnızca bitiş gününde kapatılabilir.</p>`:""}`:""}</div>
+    <div style="margin-top:14px">${table(["Kayıt","Başlık","Durum","SP","Atanan"],inSprintItems.map(i=>`<tr>
+     <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td><td>${pill(FLOW[i.st])}</td>
+     <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td></tr>`).join("")||
+     `<tr><td colspan="5" style="color:var(--tm)">Bu sprintte henüz madde yok.</td></tr>`)}</div>`;}
   if(!p.sprint)return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">Bu proje sprint kullanmıyor (${p.m}).</p>`;
   const sp=p.sprint,pct=Math.round(sp.done/sp.committed*100);
   return head("Sprint",p.n,`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
@@ -2758,11 +2865,12 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;margin-top:15px"><button class="b p" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="proj"){
   const unitPeople=u=>USERS.filter(x=>x.on&&x.unit===u);
-  const ok=(f.a||"").trim().length>1&&(f.b||"").trim().length>2&&f.method&&f.unit&&f.bo&&f.po;
+  const ok=LIVE_BACKEND?((f.a||"").trim().length>1&&(f.b||"").trim().length>2&&f.method&&f.unit)
+   :((f.a||"").trim().length>1&&(f.b||"").trim().length>2&&f.method&&f.unit&&f.bo&&f.po);
   return wrap(`<div style="font-size:15px">Yeni proje</div>
    <p style="font-size:12.5px;color:var(--t2);margin:9px 0 12px">Board kolonları ve fazlar seçtiğiniz yönteme göre oluşur.
-    İş birimi sahibi ve ürün sahibi, ilgili birimlerdeki kişilerden seçilir; ekip sonradan
-    Project team ekranından değiştirilebilir.</p>
+    ${LIVE_BACKEND?"İş birimi sahibi ve ürün sahibi, proje oluşturulduktan sonra Project team ekranından atanır."
+     :"İş birimi sahibi ve ürün sahibi, ilgili birimlerdeki kişilerden seçilir; ekip sonradan Project team ekranından değiştirilebilir."}</p>
    <div class="lbl">Proje kodu</div><input id="fA" value="${esc(f.a||"")}" placeholder="KYC">
    <div class="lbl" style="margin-top:12px">Proje adı</div><input id="fB" value="${esc(f.b||"")}" placeholder="Dijital müşteri kabulü">
    <div class="lbl" style="margin-top:12px">Yöntem</div>
@@ -2770,13 +2878,13 @@ function dialogView(){
    <div class="lbl" style="margin-top:12px">İş birimi (proje sahibi birim)</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap">${UNITS.filter(u=>u.on).map(u=>
      `<button class="b s ${f.unit===u.n?"p":""}" data-a="pjUnit:${encodeURIComponent(u.n)}">${esc(u.n)}</button>`).join("")}</div>
-   ${f.unit?`<div class="lbl" style="margin-top:12px">İş birimi sahibi (BO) — ${esc(f.unit)}</div>
+   ${!LIVE_BACKEND&&f.unit?`<div class="lbl" style="margin-top:12px">İş birimi sahibi (BO) — ${esc(f.unit)}</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap">${unitPeople(f.unit).map(x=>
      `<button class="b s ${f.bo===x.n?"p":""}" data-a="pjBO:${encodeURIComponent(x.n)}">${esc(x.n)} · ${esc(x.title)}</button>`).join("")
     ||`<span class="m" style="color:var(--er-fg)">Bu birimde aktif kişi yok.</span>`}</div>`:""}
-   <div class="lbl" style="margin-top:12px">Ürün sahibi (PO)</div>
+   ${!LIVE_BACKEND?`<div class="lbl" style="margin-top:12px">Ürün sahibi (PO)</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap">${USERS.filter(x=>x.on).map(x=>
-     `<button class="b s ${f.po===x.n?"p":""}" data-a="pjPO:${encodeURIComponent(x.n)}">${esc(x.n)} · ${esc(x.unit)}</button>`).join("")}</div>
+     `<button class="b s ${f.po===x.n?"p":""}" data-a="pjPO:${encodeURIComponent(x.n)}">${esc(x.n)} · ${esc(x.unit)}</button>`).join("")}</div>`:""}
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px"><button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b ${ok?"p":"off"}" data-a="${ok?"projCreate":"needFields"}">Projeyi oluştur</button></div>`);}
  if(d.type==="withdraw"){const r=REQS.find(x=>x.id===d.id);
@@ -2908,6 +3016,24 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:15px">
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b ${okT?"g":"off"}" data-a="${okT?"tdocSave":"needFields"}">Yayınla</button></div>`);}
+ if(d.type==="sprintClose"){
+  const p=P(),openCount=d.openCount||0;
+  const carryChosen=f.carryOver!==undefined,openChosen=f.openNew!==undefined;
+  const ok=(openCount===0||carryChosen)&&openChosen;
+  return wrap(`<div style="font-size:15px">Sprint'i kapat — ${esc(p.sprint.n)}</div>
+   ${openCount>0?`<div class="lbl" style="margin-top:13px">${openCount} açık madde var. Ne yapılsın?</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">
+     <button class="b s ${f.carryOver===true?"p":""}" data-a="spCarry:1">Yeni sprinte aktar</button>
+     <button class="b s ${f.carryOver===false?"p":""}" data-a="spCarry:0">Backlog'a al</button></div>`
+    :`<p class="m" style="color:var(--tm);margin-top:11px">Açık madde yok.</p>`}
+   <div class="lbl" style="margin-top:15px">Hemen yeni bir sprint açılsın mı?</div>
+   <div style="display:flex;gap:7px;flex-wrap:wrap">
+    <button class="b s ${f.openNew===true?"p":""}" data-a="spOpenNew:1">Evet, yeni sprint aç</button>
+    <button class="b s ${f.openNew===false?"p":""}" data-a="spOpenNew:0">Hayır, şimdilik açma</button></div>
+   ${f.openNew===true?`<div class="lbl" style="margin-top:13px">YENİ SPRINT HEDEFİ</div><input id="fSpGoal2" value="${esc(f.newGoal||"")}">
+    <div class="lbl" style="margin-top:11px">BİTİŞ TARİHİ</div><input id="fSpEnds2" type="date" value="${esc(f.newEnds||"")}">`:""}
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px"><button class="b" data-a="dlgClose">Vazgeç</button>
+    <button id="okBtn" class="b ${ok?"d":"off"}" data-a="${ok?"sprintCloseSend":"needFields"}">Sprint'i kapat</button></div>`);}
  if(d.type==="crdetail"){const pr=PROJ.find(x=>x.k===S.crView.k);
   const c=LIVE_BACKEND?(S.crLive||[]).find(x=>x.id===S.crView.i):crsOf(S.crView.k)[S.crView.i];
   if(!c)return "";
@@ -3026,9 +3152,10 @@ function validate(){
  if(d.type==="docrej")return [(f.reason||"").trim().length>=10,"docRejSend:"+d.idx,""];
  if(d.type==="docdel")return [(f.reason||"").trim().length>=10,"docDelSend:"+d.idx,""];
  if(d.type==="proj"){
-  const ok=(f.a||"").trim().length>1&&(f.b||"").trim().length>2&&f.method&&f.unit&&f.bo&&f.po;
+  const ok=LIVE_BACKEND?((f.a||"").trim().length>1&&(f.b||"").trim().length>2&&f.method&&f.unit)
+   :((f.a||"").trim().length>1&&(f.b||"").trim().length>2&&f.method&&f.unit&&f.bo&&f.po);
   return [ok,"projCreate",!f.a?"proje kodu girin":!f.b?"proje adı girin":!f.unit?"iş birimi seçin"
-   :!f.bo?"iş birimi sahibi seçin":!f.po?"ürün sahibi seçin":""];}
+   :(LIVE_BACKEND?"":(!f.bo?"iş birimi sahibi seçin":!f.po?"ürün sahibi seçin":""))];}
  if(d.type==="issue2"){const need=PARENT_OF[f.ty||"Story"];
   const okA=(f.a||"").trim().length>4,okP=!need||!!f.parent;
   return [okA&&okP,"issueSave",
@@ -3215,7 +3342,12 @@ app.addEventListener("drop",e=>{
  /* Alt kayıtları kapanmadan üst kayıt Done'a taşınamaz. */
  if(to==="done"){const open=childrenOf(pr,it.key).filter(c=>c.st!=="done");
   if(open.length){toast(it.key+" cannot be closed: "+open.length+" child item(s) still open.",1);return;}}
- const from=it.st;it.st=to;
+ const from=it.st;it.st=to;render();
+ if(LIVE_BACKEND){
+  api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(it.key),{status:to})
+   .then(()=>{toast(it.key+": "+FLOW[from]+" → "+FLOW[to]);})
+   .catch(err=>{it.st=from;toast(err.message,1);render();});
+  return;}
  audit("İş durumu sürükle-bırak ile değişti: "+it.key+" "+FLOW[from]+" → "+FLOW[to]);
  toast(it.key+": "+FLOW[from]+" → "+FLOW[to]);});
 app.addEventListener("click",async ev=>{
@@ -3245,7 +3377,7 @@ app.addEventListener("click",async ev=>{
      u.mgr=mu?mu.n:data.user.managerUsername;}
     S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
     S.meetingsLive=null;S.meetingsLiveLoading=null;
-    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();render();return;
+    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();render();return;
    }catch(e){S.err=e.message||"Kullanıcı adı veya parola hatalı.";render();return;}
   }
   const u=USERS.find(x=>x.u===uname);
@@ -3402,8 +3534,19 @@ app.addEventListener("click",async ev=>{
  if(k==="pjUnit"){S.f.unit=decodeURIComponent(p[1]);S.f.bo=null;render();return;}
  if(k==="pjBO"){S.f.bo=decodeURIComponent(p[1]);render();return;}
  if(k==="pjPO"){S.f.po=decodeURIComponent(p[1]);render();return;}
- if(k==="projCreate"){const f=S.f;
+ if(k==="projCreate"){
+  const f=S.f;
   const code=f.a.trim().toUpperCase();
+  if(LIVE_BACKEND){
+   try{
+    await api("POST","/api/projects",{k:code,name:f.b.trim(),method:f.method,unitName:f.unit||null});
+    S.dlg=null;S.f={};S.scr="d.team";
+    toast(code+" oluşturuldu. Ekibi Proje Ekibi ekranından tamamlayın (BO/PO atayın).");
+    await loadProjectsLive();
+    S.proj=PROJ.findIndex(x=>x.k===code);if(S.proj<0)S.proj=0;
+    render();
+   }catch(e){toast(e.message,1);}
+   return;}
   if(PROJ.some(x=>x.k===code)){toast("Bu proje kodu zaten kullanılıyor.",1);return;}
   PROJ.push({k:code,n:f.b.trim(),m:f.method,lead:S.me.n,health:"Planında",hc:"#3B6D11",
    unitName:f.unit,timePct:0,burndown:null,velocityHist:[],
@@ -3479,7 +3622,19 @@ app.addEventListener("click",async ev=>{
  if(k==="iPts"){S.f.pts=+p[1];render();return;}
  if(k==="iAs"){S.f.as=p[1]?decodeURIComponent(p[1]):null;render();return;}
  if(k==="iSt"){S.f.st=p[1];render();return;}
- if(k==="issueSave"){const pr=P();
+ if(k==="issueSave"){
+  if(LIVE_BACKEND){
+   const pr=P();
+   const asUser=S.f.as?(USERS.find(u=>u.n===S.f.as)||{}).u:null;
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/issues",{
+     issueType:S.f.ty||"Story",title:S.f.a.trim(),status:S.f.st||"backlog",
+     priority:S.f.pri||"Medium",storyPoints:S.f.pts||3,assigneeUsername:asUser,parentKey:S.f.parent||null});
+    S.dlg=null;S.f={};toast("Konu oluşturuldu.");
+    await loadIssuesLive(pr.k);render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  const pr=P();
   const nums=pr.items.map(i=>+String(i.key).split("-")[1]||0);
   const key=pr.k+"-"+((nums.length?Math.max.apply(null,nums):0)+1);
   pr.items.push({key,ty:S.f.ty||"Story",t:S.f.a.trim(),st:S.f.st||"backlog",
@@ -3828,11 +3983,52 @@ app.addEventListener("click",async ev=>{
    path:(S.f.c||"genel/rapor"),st:"gelistirme",owner:S.me.n,opens:0,last:null});
   audit("Yeni rapor taslağı oluşturuldu");S.dlg=null;S.f={};toast("Rapor taslağı oluşturuldu.");return;}
  if(k==="issue"){S.dlg={type:"issue",pi:+p[1],key:p[2]};render();return;}
- if(k==="move"){const it=PROJ[+p[1]].items.find(x=>x.key===p[2]);it.st=p[3];S.dlg=null;toast(p[2]+" · "+FLOW[p[3]]);return;}
- if(k==="toSprint"){PROJ[+p[1]].items.find(x=>x.key===p[2]).st="todo";toast(p[2]+" sprinte alındı.");return;}
- if(k==="crit"){const gp=PROJ.filter(x=>x.gate);const tp=gp.includes(P())?P():gp[0];
+ if(k==="move"){
+  const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]),from=it.st,to=p[3];
+  it.st=to;S.dlg=null;toast(p[2]+" · "+FLOW[to]);render();
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(p[2]),{status:to});}
+   catch(e){it.st=from;toast(e.message,1);render();}}
+  return;}
+ if(k==="toSprint"){
+  const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]);
+  it.st="todo";if(LIVE_BACKEND)it.inSprint=true;render();
+  if(LIVE_BACKEND){
+   try{await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/sprint/items",{issueKey:p[2],inSprint:true});
+    toast(p[2]+" sprinte alındı.");}
+   catch(e){it.st="backlog";it.inSprint=false;toast(e.message,1);render();}
+   return;}
+  toast(p[2]+" sprinte alındı.");return;}
+ if(k==="crit"){
+  if(LIVE_BACKEND){
+   const pr=P();
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/gate/criteria/"+p[1]+"/toggle",{});
+    pr.gate.crit[+p[1]][1]=pr.gate.crit[+p[1]][1]?0:1;render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  const gp=PROJ.filter(x=>x.gate);const tp=gp.includes(P())?P():gp[0];
   tp.gate.crit[+p[1]][1]=tp.gate.crit[+p[1]][1]?0:1;
   audit("Faz kapısı kriteri güncellendi: "+tp.k+" · "+tp.gate.crit[+p[1]][0]);render();return;}
+ if(k==="critToggle"){
+  const pr=P();
+  try{
+   await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/gate/criteria/"+p[1]+"/toggle",{});
+   pr.gate.crit[+p[1]][1]=pr.gate.crit[+p[1]][1]?0:1;render();
+  }catch(e){toast(e.message,1);}
+  return;}
+ if(k==="gateDefine"){
+  const pr=P();
+  const name=(document.getElementById("fGateName")||{}).value||"";
+  const critText=(document.getElementById("fGateCrit")||{}).value||"";
+  const need=(document.getElementById("fGateNeed")||{}).value||"1";
+  const criteria=critText.split("\n").map(x=>x.trim()).filter(Boolean);
+  if(!name.trim()||!criteria.length){toast("Gate adı ve en az bir kriter girmelisiniz.",1);return;}
+  try{
+   await api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/gate",{gateName:name.trim(),criteria,required:+need||1});
+   toast("Gate tanımlandı.");await loadProjectsLive();render();
+  }catch(e){toast(e.message,1);}
+  return;}
  if(k==="gateBlocked"){toast("The gate cannot be approved while entry criteria are open.",1);return;}
  if(k==="gateOverride"){const gp=PROJ.filter(x=>x.gate);const tp=gp.includes(P())?P():gp[0];const g=tp.gate;
   if(!canOverrideGate()){toast("Tek imzayla ilerletme yetkisi Proje Yönetim Direktörü ünvanındadır.",1);return;}
@@ -3844,7 +4040,15 @@ app.addEventListener("click",async ev=>{
   /* Override olağan akıştan sapmadır: ayrı olay olarak, gerekçesiyle kayda geçer. */
   audit("Faz kapısı tek imzayla ilerletildi ("+tp.k+") — gerekçe: "+S.f.r.trim(),0);
   S.dlg=null;S.f={};toast("Kapı tek imzayla ilerletildi ve gerekçesiyle kayda geçti.");return;}
- if(k==="gateSign"){const gp=PROJ.filter(x=>x.gate);const tp=gp.includes(P())?P():gp[0];const g=tp.gate;
+ if(k==="gateSign"){
+  if(LIVE_BACKEND){
+   const pr=P();
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/gate/sign",{});
+    toast("Gate imzalandı.");await loadProjectsLive();render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  const gp=PROJ.filter(x=>x.gate);const tp=gp.includes(P())?P():gp[0];const g=tp.gate;
   if(g.crit.filter(c=>!c[1]).length){toast("The gate cannot be approved while entry criteria are open.",1);return;}
   /* Yetkili kişi ikinci imza olmadan ilerletiyorsa gerekçe zorunludur. */
   if(canOverrideGate()&&g.sign.length<g.need){S.f={};S.dlg={type:"override"};render();return;}
@@ -3945,6 +4149,36 @@ app.addEventListener("click",async ev=>{
    const data=await api("POST","/api/training/documents",fd,true);
    TRAIN_DOCS_LIVE=null;S.dlg=null;S.f={};PENDING_TRAIN_FILE=null;
    toast("Yayınlandı — "+data.assigned+" kişiye atandı.");render();
+  }catch(e){toast(e.message,1);}
+  return;}
+
+ /* --------------------------------- Sprint --------------------------------- */
+ if(k==="sprintStart"){
+  const pr=P();
+  const goal=(document.getElementById("fSpGoal")||{}).value||"";
+  const ends=(document.getElementById("fSpEnds")||{}).value||"";
+  try{
+   await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/sprint/start",{sprintGoal:goal.trim()||null,sprintEndsAt:ends||null});
+   toast("Sprint başlatıldı.");await loadProjectsLive();render();
+  }catch(e){toast(e.message,1);}
+  return;}
+ if(k==="sprintNotYet"){toast("Sprint yalnızca bitiş gününde kapatılabilir.",1);return;}
+ if(k==="sprintCloseAsk"){
+  const pr=P();
+  if(!pr.itemsLoaded){toast("Konular henüz yüklenmedi, birazdan tekrar deneyin.",1);return;}
+  const openCount=(pr.items||[]).filter(i=>i.inSprint&&i.st!=="done").length;
+  S.f={};S.dlg={type:"sprintClose",openCount};render();return;}
+ if(k==="spCarry"){S.f.carryOver=p[1]==="1";render();return;}
+ if(k==="spOpenNew"){S.f.openNew=p[1]==="1";render();return;}
+ if(k==="sprintCloseSend"){
+  const pr=P(),f=S.f;
+  const newGoal=(document.getElementById("fSpGoal2")||{}).value||"";
+  const newEnds=(document.getElementById("fSpEnds2")||{}).value||"";
+  try{
+   await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/sprint/close",{
+    carryOver:!!f.carryOver,openNew:!!f.openNew,newSprintGoal:newGoal.trim()||null,newSprintEndsAt:newEnds||null});
+   S.dlg=null;S.f={};toast(f.openNew?"Sprint kapatıldı, yeni sprint açıldı.":"Sprint kapatıldı.");
+   await loadProjectsLive();await loadIssuesLive(pr.k);render();
   }catch(e){toast(e.message,1);}
   return;}
 

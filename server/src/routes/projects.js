@@ -55,6 +55,276 @@ router.get("/", requireRead("d.team"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Yeni proje: proje kodu benzersiz olmalı; oluşturan otomatik olarak lider olur
+// ve ekibe eklenir (zorunlu üyeler ensureMandatoryTeam ile ayrıca garanti edilir).
+router.post("/", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { k, name, method, unitName, startDate, targetDate } = req.body || {};
+    if (!k || !/^[A-Z][A-Z0-9]{1,9}$/.test(k)) {
+      return res.status(400).json({ error: "Proje kodu 2-10 karakter, büyük harf ve rakamlardan oluşmalı." });
+    }
+    if (!name || !name.trim()) return res.status(400).json({ error: "Proje adı zorunlu." });
+    if (!["Scrum", "Kanban", "Waterfall"].includes(method)) return res.status(400).json({ error: "Geçersiz metodoloji." });
+
+    const result = await withTransaction(async (client) => {
+      const proj = await client.query(
+        `INSERT INTO projects (k, name, method, lead_username, unit_name, start_date, target_date, created_by, sprint_name, sprint_number)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [k, name.trim(), method, req.user.username, unitName || null, startDate || null, targetDate || null,
+         req.user.username, method === "Scrum" ? "Sprint 1" : null, method === "Scrum" ? 1 : 0]
+      );
+      await client.query(
+        `INSERT INTO project_team (project_k, username, project_role, mandatory) VALUES ($1,$2,'Product Owner',false)`,
+        [k, req.user.username]
+      );
+      return proj.rows[0];
+    });
+    await ensureMandatoryTeam(k);
+    await audit(`Proje oluşturuldu: ${k} — ${name.trim()}`, req.user.username);
+    res.status(201).json({ item: result });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Bu proje kodu zaten kullanılıyor." });
+    next(e);
+  }
+});
+
+// ------------------------------- Konular (issue tracker) -------------------------------
+const ISSUE_PARENT_OF = { Epic: null, Story: "Epic", Task: "Story", Bug: "Story" };
+
+router.get("/:k/issues", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT pi.*, u.name AS assignee_name FROM project_issues pi
+       LEFT JOIN users u ON u.username = pi.assignee_username
+       WHERE pi.project_k=$1 ORDER BY pi.created_at`,
+      [req.params.k]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { issueType, title, priority, storyPoints, assigneeUsername, parentKey, status } = req.body || {};
+    if (!["Epic", "Story", "Task", "Bug"].includes(issueType)) return res.status(400).json({ error: "Geçersiz konu tipi." });
+    if (!title || !title.trim()) return res.status(400).json({ error: "Başlık zorunlu." });
+    const needParent = ISSUE_PARENT_OF[issueType];
+    if (needParent) {
+      if (!parentKey) return res.status(400).json({ error: `${issueType} için önce bir ${needParent} seçilmelidir.` });
+      const par = await query("SELECT issue_type FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, parentKey]);
+      if (!par.rowCount || par.rows[0].issue_type !== needParent) {
+        return res.status(400).json({ error: `Üst konu geçerli bir ${needParent} olmalıdır.` });
+      }
+    }
+    const proj = await query("SELECT k FROM projects WHERE k=$1", [req.params.k]);
+    if (!proj.rowCount) return res.status(404).json({ error: "Proje bulunamadı." });
+
+    const result = await withTransaction(async (client) => {
+      const seq = await client.query(
+        "SELECT count(*)::int AS n FROM project_issues WHERE project_k=$1", [req.params.k]
+      );
+      const issueKey = `${req.params.k}-${seq.rows[0].n + 1}`;
+      const ins = await client.query(
+        `INSERT INTO project_issues (project_k, issue_key, issue_type, title, status, priority, story_points,
+           assignee_username, parent_key, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [req.params.k, issueKey, issueType, title.trim(), status || "backlog", priority || "Medium",
+         Number(storyPoints) || 0, assigneeUsername || null, needParent ? parentKey : null, req.user.username]
+      );
+      return ins.rows[0];
+    });
+    await audit(`Konu oluşturuldu: ${result.issue_key} — ${title.trim()}`, req.user.username);
+    res.status(201).json({ item: result });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Bu konu anahtarı zaten var, tekrar deneyin." });
+    next(e);
+  }
+});
+
+router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query("SELECT * FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
+    const issue = rows[0];
+    if (!issue) return res.status(404).json({ error: "Konu bulunamadı." });
+    const { status, assigneeUsername, priority, storyPoints, title, inSprint } = req.body || {};
+    if (status && !["backlog", "todo", "prog", "review", "test", "done"].includes(status)) {
+      return res.status(400).json({ error: "Geçersiz durum." });
+    }
+    const fields = [];
+    const values = [];
+    let i = 1;
+    if (status !== undefined) { fields.push(`status=$${i++}`); values.push(status); }
+    if (assigneeUsername !== undefined) { fields.push(`assignee_username=$${i++}`); values.push(assigneeUsername || null); }
+    if (priority !== undefined) { fields.push(`priority=$${i++}`); values.push(priority); }
+    if (storyPoints !== undefined) { fields.push(`story_points=$${i++}`); values.push(Number(storyPoints) || 0); }
+    if (title !== undefined) { fields.push(`title=$${i++}`); values.push(title.trim()); }
+    if (inSprint !== undefined) { fields.push(`in_sprint=$${i++}`); values.push(!!inSprint); }
+    if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });
+    fields.push(`updated_at=now()`);
+    values.push(req.params.k, req.params.issueKey);
+    await query(
+      `UPDATE project_issues SET ${fields.join(", ")} WHERE project_k=$${i++} AND issue_key=$${i}`,
+      values
+    );
+    await audit(`Konu güncellendi: ${req.params.issueKey}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// ------------------------------------- Sprint -------------------------------------
+router.put("/:k/sprint", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { sprintGoal, sprintEndsAt } = req.body || {};
+    await query(
+      "UPDATE projects SET sprint_goal=$1, sprint_ends_at=$2 WHERE k=$3",
+      [sprintGoal || null, sprintEndsAt || null, req.params.k]
+    );
+    await audit(`Sprint bilgisi güncellendi: ${req.params.k}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// Backlog'daki bir konuyu güncel sprint'e alır/çıkarır.
+router.post("/:k/sprint/items", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { issueKey, inSprint } = req.body || {};
+    await query(
+      "UPDATE project_issues SET in_sprint=$1, status = CASE WHEN $1 AND status='backlog' THEN 'todo' ELSE status END WHERE project_k=$2 AND issue_key=$3",
+      [!!inSprint, req.params.k, issueKey]
+    );
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// Sprint'i kapatır. İki soruyu YANITLAR olarak alır (arayüzde önceden sorulmuş olmalı):
+//  - carryOver: tamamlanmamış açık maddeler yeni sprinte mi (true) yoksa backlog'a mı (false) aktarılsın
+//  - openNew: sprint kapanırken hemen yeni bir sprint açılsın mı
+// Kural: bir sprint hâlâ açıkken ve bitiş gününe gelinmemişken kapatılamaz/ikinci sprint açılamaz;
+// bitiş gününde (veya bitiş tarihi geçmişse) kapatmaya izin verilir. Bitiş tarihi hiç
+// girilmemişse (sprintEndsAt boş bırakılmışsa) kısıtlama uygulanmaz.
+function isSprintClosable(project) {
+  if (!project.sprint_name) return { ok: false, reason: "Açık bir sprint yok." };
+  if (project.sprint_ends_at) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const ends = new Date(project.sprint_ends_at); ends.setHours(0, 0, 0, 0);
+    if (today < ends) {
+      return { ok: false, reason: `Sprint henüz bitmedi (bitiş: ${project.sprint_ends_at.toISOString ? project.sprint_ends_at.toISOString().slice(0,10) : project.sprint_ends_at}); ancak son gününde kapatılabilir.` };
+    }
+  }
+  return { ok: true };
+}
+
+router.post("/:k/sprint/close", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { carryOver, openNew, newSprintGoal, newSprintEndsAt } = req.body || {};
+    const proj = await query("SELECT * FROM projects WHERE k=$1", [req.params.k]);
+    if (!proj.rowCount) return res.status(404).json({ error: "Proje bulunamadı." });
+    const check = isSprintClosable(proj.rows[0]);
+    if (!check.ok) return res.status(409).json({ error: check.reason });
+
+    const nextNumber = (proj.rows[0].sprint_number || 0) + 1;
+    await withTransaction(async (client) => {
+      if (carryOver) {
+        // Açık (tamamlanmamış) maddeler sprint bayrağıyla birlikte kalır; yeni sprint
+        // başladığında zaten "in_sprint" oldukları için otomatik olarak onun parçası olurlar.
+        // openNew=false ise de in_sprint=true kalırlar (bir sonraki sprint başlatılana kadar bekler).
+      } else {
+        await client.query(
+          `UPDATE project_issues SET in_sprint=false, status='backlog'
+           WHERE project_k=$1 AND in_sprint=true AND status != 'done'`,
+          [req.params.k]
+        );
+      }
+      // Tamamlanmış maddeler her durumda sprintten çıkar (geçmiş sprintin parçası olarak kalır, panoda görünmeye devam etmez).
+      await client.query(
+        `UPDATE project_issues SET in_sprint=false WHERE project_k=$1 AND in_sprint=true AND status='done'`,
+        [req.params.k]
+      );
+      if (openNew) {
+        await client.query(
+          `UPDATE projects SET sprint_number=$1, sprint_name=$2, sprint_goal=$3, sprint_ends_at=$4 WHERE k=$5`,
+          [nextNumber, `Sprint ${nextNumber}`, newSprintGoal || null, newSprintEndsAt || null, req.params.k]
+        );
+      } else {
+        await client.query(
+          `UPDATE projects SET sprint_name=NULL, sprint_goal=NULL, sprint_ends_at=NULL WHERE k=$1`,
+          [req.params.k]
+        );
+      }
+    });
+    await audit(
+      `Sprint kapatıldı: ${req.params.k} (${carryOver ? "açık maddeler aktarıldı" : "açık maddeler backlog'a alındı"}${openNew ? `, yeni sprint açıldı: Sprint ${nextNumber}` : ", yeni sprint açılmadı"})`,
+      req.user.username
+    );
+    res.json({ ok: true, sprintNumber: openNew ? nextNumber : null });
+  } catch (e) { next(e); }
+});
+
+// Aktif sprint yokken (kapatılırken "yeni sprint açma" denildiyse veya daha önce hiç
+// başlatılmadıysa) yeni bir sprint başlatır. Aktif bir sprint varsa ve bitiş gününe
+// gelinmediyse reddedilir (aynı anda ikinci bir sprint açılamaz).
+router.post("/:k/sprint/start", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { sprintGoal, sprintEndsAt } = req.body || {};
+    const proj = await query("SELECT * FROM projects WHERE k=$1", [req.params.k]);
+    if (!proj.rowCount) return res.status(404).json({ error: "Proje bulunamadı." });
+    if (proj.rows[0].sprint_name) {
+      const check = isSprintClosable(proj.rows[0]);
+      if (!check.ok) return res.status(409).json({ error: "Açık bir sprint varken (son gününe gelinmeden) ikinci bir sprint açılamaz." });
+    }
+    const nextNumber = (proj.rows[0].sprint_number || 0) + 1;
+    await query(
+      `UPDATE projects SET sprint_number=$1, sprint_name=$2, sprint_goal=$3, sprint_ends_at=$4 WHERE k=$5`,
+      [nextNumber, `Sprint ${nextNumber}`, sprintGoal || null, sprintEndsAt || null, req.params.k]
+    );
+    await audit(`Sprint başlatıldı: ${req.params.k} — Sprint ${nextNumber}`, req.user.username);
+    res.json({ ok: true, sprintNumber: nextNumber });
+  } catch (e) { next(e); }
+});
+
+// ---------------------------------- Stage gate ----------------------------------
+router.put("/:k/gate", requireWrite("d.gate"), async (req, res, next) => {
+  try {
+    const { gateName, criteria, required } = req.body || {};
+    if (!Array.isArray(criteria)) return res.status(400).json({ error: "Kriter listesi geçersiz." });
+    await query(
+      "UPDATE projects SET gate_name=$1, gate_criteria=$2, gate_required=$3, gate_signoffs='[]'::jsonb WHERE k=$4",
+      [gateName || null, JSON.stringify(criteria.map((c) => ({ text: String(c.text || c).trim(), done: false }))),
+       Math.max(1, parseInt(required, 10) || 1), req.params.k]
+    );
+    await audit(`Stage gate tanımlandı: ${req.params.k} — ${gateName}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/gate/criteria/:idx/toggle", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const proj = await query("SELECT gate_criteria FROM projects WHERE k=$1", [req.params.k]);
+    if (!proj.rowCount) return res.status(404).json({ error: "Proje bulunamadı." });
+    const criteria = proj.rows[0].gate_criteria || [];
+    const idx = parseInt(req.params.idx, 10);
+    if (!criteria[idx]) return res.status(404).json({ error: "Kriter bulunamadı." });
+    criteria[idx].done = !criteria[idx].done;
+    await query("UPDATE projects SET gate_criteria=$1 WHERE k=$2", [JSON.stringify(criteria), req.params.k]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/gate/sign", requireWrite("d.gate"), async (req, res, next) => {
+  try {
+    const proj = await query("SELECT gate_signoffs FROM projects WHERE k=$1", [req.params.k]);
+    if (!proj.rowCount) return res.status(404).json({ error: "Proje bulunamadı." });
+    const signoffs = proj.rows[0].gate_signoffs || [];
+    if (signoffs.some((s) => s.username === req.user.username)) {
+      return res.status(409).json({ error: "Bu kapıyı zaten imzaladınız." });
+    }
+    signoffs.push({ username: req.user.username, name: req.user.name, title: req.user.title, at: new Date().toISOString() });
+    await query("UPDATE projects SET gate_signoffs=$1 WHERE k=$2", [JSON.stringify(signoffs), req.params.k]);
+    await audit(`Stage gate imzalandı: ${req.params.k}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 // ---------------------------------- Ekip ----------------------------------
 // Ekip listesi kimin PO/BO/onaycı olduğunu belirlemek için proje yönetimi dışındaki
 // ekranlarda da (ör. doküman onay zinciri) gerekir; bu bilgi hassas değildir,

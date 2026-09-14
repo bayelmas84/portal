@@ -13,14 +13,14 @@ const DEFAULT_ACCESS = {
   admin: {
     announcements: "read", training: "read",
     "d.team": "read", "d.docs": "read", "d.docview": "read", "d.appr": "read", "d.cr": "read",
-    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read",
+    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
     "m.users": "write", "m.dir": "write", "m.smtp": "write", "m.brand": "write",
     "m.avail": "write", "m.access": "write",
   },
   pmdir: {
     announcements: "read", training: "read",
     "d.team": "write", "d.docs": "write", "d.docview": "write", "d.appr": "write", "d.cr": "write",
-    "d.meeting": "write", "d.meetingview": "write", "d.gantt": "write",
+    "d.meeting": "write", "d.meetingview": "write", "d.gantt": "write", "d.board": "write", "d.gate": "write",
     "m.users": "read", "m.dir": "read", "m.smtp": "read", "m.brand": "read",
     "m.avail": "read", "m.access": "read",
   },
@@ -41,26 +41,26 @@ const DEFAULT_ACCESS = {
   },
   gmy: {
     announcements: "read", training: "read",
-    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read",
+    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
   },
   opsdir: {
     announcements: "read", training: "read",
-    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read",
+    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
   },
   pm: {
     announcements: "read", training: "read",
     "d.team": "write", "d.docs": "write", "d.docview": "write", "d.appr": "read", "d.cr": "write",
-    "d.meeting": "write", "d.meetingview": "write", "d.gantt": "write",
+    "d.meeting": "write", "d.meetingview": "write", "d.gantt": "write", "d.board": "write", "d.gate": "write",
   },
   dev: {
     announcements: "read", training: "read",
     "d.docs": "read", "d.docview": "read", "d.cr": "read",
-    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read",
+    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read", "d.board": "write", "d.gate": "read",
   },
   staff: {
     announcements: "read", training: "read",
     "d.docs": "read", "d.docview": "read",
-    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read",
+    "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
   },
 };
 
