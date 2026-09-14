@@ -3386,7 +3386,9 @@ function dialogView(){
       <div style="font-size:12.5px">${esc(t2.t)}</div></div>`)}
     ${empty?`<p class="m" style="color:var(--tm);margin-top:10px">Bekleyen bildiriminiz yok.</p>`:""}
    </div>
-   <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b" data-a="dlgClose">Kapat</button></div>`);}
+   <div style="display:flex;justify-content:space-between;margin-top:12px">
+    <button class="b s" data-a="dailyDigestEmail">Özeti e-postama gönder</button>
+    <button class="b" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="search"){
   const groups={};(S.searchResults||[]).forEach(r=>{(groups[r.group]=groups[r.group]||[]).push(r);});
   return wrap(`<div style="font-size:15px">Ara</div>
@@ -4867,6 +4869,12 @@ app.addEventListener("click",async ev=>{
   catch(e){toast(e.message,1);}
   return;}
  if(k==="auditExport"){window.open(API_BASE+"/api/audit/export.csv","_blank");return;}
+ if(k==="dailyDigestEmail"){
+  if(!LIVE_BACKEND){toast("Bu özellik yalnızca gerçek backend'e bağlıyken kullanılabilir.",1);return;}
+  try{const data=await api("POST","/api/notifications/daily-digest/email",{});
+   toast(data.sent?"Özet e-postanıza gönderildi.":(data.message||"Gönderilecek bir şey yok."));}
+  catch(e){toast(e.message,1);}
+  return;}
  if(k==="bellOpen"){S.dlg={type:"bell"};render();return;}
  if(k==="searchOpen"){S.f={q:""};S.dlg={type:"search"};S.searchResults=[];render();return;}
  if(k==="searchGo"){

@@ -7,7 +7,8 @@
 // ucunda (announcements.js) onay tamamlanınca gerçekleşir.
 const express = require("express");
 const { query } = require("../db");
-const { requireRead, requireWrite } = require("../middleware/auth");
+const { requireRead, requireWrite, requireAuth } = require("../middleware/auth");
+const { sendMail } = require("../lib/mailer");
 const { audit } = require("../lib/audit");
 const { notifyApprovalCreated } = require("../lib/notify");
 
@@ -91,6 +92,60 @@ router.delete("/:id", requireWrite("m.mailtpl"), async (req, res, next) => {
     if (!existing.rowCount) return res.status(404).json({ error: "Şablon bulunamadı." });
     await openTwoStepApproval(req, res, "template.delete", `Mail şablonu silme: ${existing.rows[0].name}`,
       req.params.id, {});
+  } catch (e) { next(e); }
+});
+
+// ------------------------------ Günlük özet ---------------------------------
+// Gerçek bir zamanlanmış (cron) görev bu ortamın kapsamı dışında (sunucu
+// sürekli arka planda çalışmıyor); bunun yerine kullanıcı istediği an
+// "bugünün özetini" görebilir veya kendi e-postasına gönderebilir. Üretimde
+// bu uç, harici bir zamanlayıcı (cron/sistem görevi) tarafından her kullanıcı
+// için günde bir kez çağrılarak gerçek bir "günlük özet e-postasına" da
+// dönüştürülebilir — kod değişikliği gerekmez.
+async function buildDigest(username) {
+  const [pendingApprovals, unreadAnn, pendingTraining] = await Promise.all([
+    query(
+      `SELECT id, kind, subject FROM approval_requests WHERE approver=$1 AND status='bekliyor' ORDER BY created_at DESC LIMIT 10`,
+      [username]
+    ).catch(() => ({ rows: [] })),
+    query(
+      `SELECT a.id, a.title FROM announcements a
+       WHERE a.status='yayinda' AND NOT EXISTS (
+         SELECT 1 FROM announcement_reads r WHERE r.announcement_id=a.id AND r.username=$1)
+       ORDER BY a.created_at DESC LIMIT 10`,
+      [username]
+    ).catch(() => ({ rows: [] })),
+    query(
+      `SELECT ta.id, pd.title FROM training_assignments ta JOIN policy_documents pd ON pd.id=ta.policy_document_id
+       WHERE ta.username=$1 AND ta.completed_at IS NULL ORDER BY ta.due_at ASC LIMIT 10`,
+      [username]
+    ).catch(() => ({ rows: [] })),
+  ]);
+  return { pendingApprovals: pendingApprovals.rows, unreadAnnouncements: unreadAnn.rows, pendingTraining: pendingTraining.rows };
+}
+
+router.get("/daily-digest", requireAuth, async (req, res, next) => {
+  try {
+    const digest = await buildDigest(req.user.username);
+    res.json({ ...digest, generatedAt: new Date().toISOString() });
+  } catch (e) { next(e); }
+});
+
+router.post("/daily-digest/email", requireAuth, async (req, res, next) => {
+  try {
+    const digest = await buildDigest(req.user.username);
+    const total = digest.pendingApprovals.length + digest.unreadAnnouncements.length + digest.pendingTraining.length;
+    if (!total) return res.json({ ok: true, sent: false, message: "Bekleyen işiniz yok, e-posta gönderilmedi." });
+    const lines = [
+      `Merhaba ${req.user.name},`, "",
+      digest.pendingApprovals.length ? `Onayınızı bekleyen ${digest.pendingApprovals.length} talep var.` : null,
+      digest.unreadAnnouncements.length ? `${digest.unreadAnnouncements.length} okunmamış duyurunuz var: ${digest.unreadAnnouncements.map((a) => a.title).join(", ")}` : null,
+      digest.pendingTraining.length ? `${digest.pendingTraining.length} bekleyen eğitim/okumanız var: ${digest.pendingTraining.map((t) => t.title).join(", ")}` : null,
+      "", "Tera Portal",
+    ].filter(Boolean);
+    const sent = await sendMail(req.user.email, "Tera Portal — günlük özetiniz", lines.join("\n"));
+    await audit(`Günlük özet e-postası gönderildi: ${req.user.username} (${sent ? "başarılı" : "SMTP kapalı"})`, req.user.username, sent);
+    res.json({ ok: true, sent });
   } catch (e) { next(e); }
 });
 
