@@ -758,11 +758,29 @@ const ganttRange=(tasks,pr)=>{
  if(!dates.length)return null;
  return {min:dates.reduce((a,b)=>a<b?a:b),max:dates.reduce((a,b)=>a>b?a:b)};};
 /* teamOf her zaman zorunlu üyeleri (Teftiş, Risk) içerir; eksikse tamamlanır. */
-const teamOf=k=>{const list=TEAM[k]||(TEAM[k]=[]);
+let TEAM_CACHE_LIVE={};
+let PENDING_UPLOAD_FILE=null;
+async function loadTeamCacheLive(k){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(k)+"/team");
+  TEAM_CACHE_LIVE[k]=data.items.map(m=>({n:(function(){const u=USERS.find(x=>x.u===m.username);return u?u.n:m.username;})(),
+   r:m.project_role,mandatory:m.mandatory,username:m.username}));
+ }catch(e){TEAM_CACHE_LIVE[k]=[];}
+ render();}
+/* teamOf: canlı backend'de gerçek ekip atamalarını (onay zinciri hesapları
+   d.docs/d.docview bunu kullanır) önbellekten okur, yoksa arka planda yükler. */
+const teamOf=k=>{
+ if(LIVE_BACKEND){
+  if(!(k in TEAM_CACHE_LIVE)){TEAM_CACHE_LIVE[k]=[];loadTeamCacheLive(k);}
+  return TEAM_CACHE_LIVE[k];
+ }
+ const list=TEAM[k]||(TEAM[k]=[]);
  const full=withMandatory(list);
  if(full.length!==list.length)TEAM[k]=full;
  return TEAM[k];};
-const docsOf=k=>PDOC[k]||(PDOC[k]=[]);
+const docsOf=k=>{
+ if(LIVE_BACKEND)return (S.docsLive&&S.docsLive[k])||[];
+ return PDOC[k]||(PDOC[k]=[]);};
 const crsOf=k=>CR[k]||(CR[k]=[]);
 /* Bir kullanıcının bu projedeki takım rolleri */
 const myTeamRoles=p=>teamOf(p.k).filter(m=>m.n===S.me.n).map(m=>m.r);
@@ -839,7 +857,8 @@ let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.l
  meetingsLive:null,meetingsLiveLoading:null,annLive:null,annLiveLoading:null,
  ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null,
  teamLive:null,teamLiveProj:null,teamLiveLoading:null,
- crLive:null,crLiveProj:null,crLiveLoading:null};
+ crLive:null,crLiveProj:null,crLiveLoading:null,
+ docsLive:null,docsLiveLoading:false};
 
 /* --------------------------- gerçek backend istemcisi ---------------------------
    API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
@@ -911,6 +930,24 @@ async function loadCRLive(projK){
   S.crLiveProj=projK;
  }catch(e){toast("Değişiklik talepleri yüklenemedi: "+e.message,1);S.crLive=[];S.crLiveProj=projK;}
  S.crLiveLoading=null;render();}
+const DOC_TYPE_TO_CODE={"Proje Kartı":"PK",BRD:"BRD",FRD:"FRD",UAT:"UAT","Go Live":"GL","Risk ve Uyumluluk":"RSK","Kapanış":"KAP"};
+async function loadDocsLive(){
+ S.docsLiveLoading=true;
+ try{
+  const byProj={};
+  for(const pr of PROJ){
+   const data=await api("GET","/api/projects/"+encodeURIComponent(pr.k)+"/documents");
+   byProj[pr.k]=data.items.map(d=>({
+    id:+d.id,type:DOC_TYPE_TO_CODE[d.doc_type]||d.doc_type,name:d.title,file:d.file_name,
+    pages:d.page_count,by:(function(){const u=USERS.find(x=>x.u===d.uploaded_by);return u?u.n:d.uploaded_by;})(),
+    at:(d.uploaded_at||"").replace("T"," ").slice(0,16),status:d.status,currentStep:d.current_step,
+    rejectReason:d.reject_reason,
+    appr:d.approvals.map(a=>({step:["po","bo","po_mgr","bo_mgr","audit","risk"][a.step_no-1],
+     n:a.name,t:a.title,at:(a.approved_at||"").replace("T"," ").slice(0,16),onBehalf:a.is_proxy}))}));
+  }
+  S.docsLive=byProj;
+ }catch(e){toast("Dokümanlar yüklenemedi: "+e.message,1);S.docsLive={};}
+ S.docsLiveLoading=false;render();}
 async function api(method,path,body,isForm){
  const opts={method,credentials:"include",headers:{}};
  if(method!=="GET"&&CSRF_TOKEN)opts.headers["X-CSRF-Token"]=CSRF_TOKEN;
@@ -1664,12 +1701,13 @@ function screenView(){
 
  /* --------------------------- Project documents ---------------------------- */
  if(v==="d.docs"){
+  if(LIVE_BACKEND&&S.docsLive===null&&!S.docsLiveLoading)loadDocsLive();
   const all=[];PROJ.forEach(pr=>docsOf(pr.k).forEach(d=>all.push({pr,d})));
   const fp=S.docProj||"ALL";
   const rows=all.filter(x=>fp==="ALL"||x.pr.k===fp)
    .sort((a,b)=>a.pr.k.localeCompare(b.pr.k)||docTypeIdx(a.d.type)-docTypeIdx(b.d.type));
   const cur=P();
-  return head("Project documents","PDF only · a document cannot be approved before the previous one",
+  return head("Project documents","PDF only · a document cannot be approved before the previous one"+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">
      <button class="b s ${fp==="ALL"?"p":""}" data-a="docProj:ALL">All projects</button>
      ${PROJ.map(x=>`<button class="b s ${fp===x.k?"p":""}" data-a="docProj:${x.k}">${x.k}</button>`).join("")}
@@ -1681,6 +1719,7 @@ function screenView(){
      <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
       ${kickoffReady(x)?pill("kick-off ready","ok"):pill("kick-off blocked","er")}
       ${goliveReady(x)?pill("go-live ready","ok"):pill("go-live blocked","wr")}</div></div>`).join("")}</div>`+
+  (LIVE_BACKEND&&S.docsLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
   table(["Project","Type","Document","File","Uploaded by","Approvals","Status",""],rows.map(({pr,d})=>{
    const done=docFullyApproved(d),mine=d.by===S.me.n,block=prevBlocking(pr,d);
    const steps=stepsFor(pr,d);
@@ -1698,7 +1737,7 @@ function screenView(){
     <button class="b s p" data-a="pdocView:${pr.k}:${d.id}">View</button>
     ${!done&&mine?` <button class="b s" data-a="pdocEdit:${pr.k}:${d.id}">Edit</button>
       <button class="b s d" data-a="pdocDel:${pr.k}:${d.id}">Remove</button>`:""}
-   </td></tr>`;}).join("")||`<tr><td colspan="8" style="color:var(--tm)">No documents.</td></tr>`)+
+   </td></tr>`;}).join("")||`<tr><td colspan="8" style="color:var(--tm)">No documents.</td></tr>`))+
   `<div class="card" style="margin-top:13px;font-size:12px;line-height:1.7">
     <b>Approval chain</b> — every document is approved by three tiers: the project owner unit manager,
     the internal audit manager and the IT manager. UAT additionally requires the business unit
@@ -1711,7 +1750,9 @@ function screenView(){
 
  /* Doküman görüntüleme ekranı: onay yalnızca buradan, görüntüledikten sonra verilir */
  if(v==="d.docview"){const ref=S.docView2;
+  if(LIVE_BACKEND&&S.docsLive===null&&!S.docsLiveLoading)loadDocsLive();
   if(!ref)return head("Document","No document selected.");
+  if(LIVE_BACKEND&&S.docsLive===null)return head("Document","Yükleniyor…");
   const pr=PROJ.find(x=>x.k===ref.k),d=docsOf(ref.k).find(x=>x.id===ref.id);
   if(!pr||!d)return head("Document","Document not found.");
   const steps=stepsFor(pr,d),done=docFullyApproved(d),block=prevBlocking(pr,d);
@@ -1721,7 +1762,8 @@ function screenView(){
    `<button class="b" data-a="scr:d.docs">Back to list</button>`)+
   `<div class="card" style="padding:10px 12px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
     ${pill(d.file)}${pill(d.pages+" pages")}${pill("uploaded "+d.at)}
-    ${done?pill("approved · view only","ok"):pill("in approval","wr")}</div>
+    ${done?pill("approved · view only","ok"):pill("in approval","wr")}
+    ${LIVE_BACKEND?`<a href="/api/projects/${encodeURIComponent(pr.k)}/documents/${d.id}/file" target="_blank" rel="noopener" class="b s">Gerçek PDF'i aç</a>`:""}</div>
    <div class="docframe ${S.docFull?"full":""}">
     ${S.docFull?`<button class="b s" data-a="docFull" style="position:sticky;top:0;float:right;z-index:2">Küçült</button>`:""}
     <div class="sheet" style="max-width:${S.docFull?"960px":"820px"};margin:0 auto">
@@ -2829,7 +2871,7 @@ function afterRender(){
  if(fpd)fpd.onchange=e=>{const file=e.target.files&&e.target.files[0];if(!file)return;
   if(file.type!=="application/pdf"&&!/\.pdf$/i.test(file.name)){
    toast("Only PDF files are accepted — "+file.name+" rejected.",1);e.target.value="";return;}
-  S.f.file=file.name;render();};
+  PENDING_UPLOAD_FILE=file;S.f.file=file.name;render();};
  [["dUrl","url"],["dBase","baseDn"],["dBind","bindDn"],["dFilter","filter"]].forEach(([id,key])=>{
   const el=document.getElementById(id);
   if(el)el.oninput=e=>{S.dirF=S.dirF||{};S.dirF[key]=e.target.value;};});
@@ -2949,8 +2991,12 @@ app.addEventListener("click",async ev=>{
   S.pop=c?c.id:null;render();return;}
  if(k==="signout"){
   if(LIVE_BACKEND){try{await api("POST","/api/auth/logout");}catch(e){/* yine de yerel oturumu kapat */}CSRF_TOKEN=null;LIVE_BACKEND=false;}
+  TEAM_CACHE_LIVE={};
   clearInterval(S.timer);
-  Object.assign(S,{view:"login",me:null,u:"",ann:null,req:null,dec:null,pop:null,dlg:null,read:null,docView:null,quiz:null,result:null,meetingsLive:null,meetingsLiveLoading:null,mtView:null});
+  Object.assign(S,{view:"login",me:null,u:"",ann:null,req:null,dec:null,pop:null,dlg:null,read:null,docView:null,quiz:null,result:null,
+   meetingsLive:null,meetingsLiveLoading:null,mtView:null,annLive:null,annLiveLoading:false,
+   ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null,teamLive:null,teamLiveProj:null,teamLiveLoading:null,
+   crLive:null,crLiveProj:null,crLiveLoading:null,docsLive:null,docsLiveLoading:false});
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
@@ -3307,7 +3353,16 @@ app.addEventListener("click",async ev=>{
  if(k==="docFull"){S.docFull=!S.docFull;render();return;}
  if(k==="pdocSeen"){S.docSeen=(S.docSeen||[]).concat([p[1]+"#"+p[2]]);
   audit("Doküman görüntülendi: "+p[1]+"#"+p[2]);toast("Review recorded — approval is now available.");return;}
- if(k==="pdocAppr2"){const pr=PROJ.find(x=>x.k===p[1]),d=docsOf(p[1]).find(x=>x.id===+p[2]),step=p[3];
+ if(k==="pdocAppr2"){
+  const pr=PROJ.find(x=>x.k===p[1]),d=docsOf(p[1]).find(x=>x.id===+p[2]),step=p[3];
+  if(LIVE_BACKEND){
+   try{
+    const data=await api("POST","/api/projects/"+encodeURIComponent(p[1])+"/documents/"+p[2]+"/approve",{});
+    S.docsLive=null;
+    toast(data.finished?"Fully approved — the document is now view only.":"Approval recorded (step "+data.step+").");
+    render();
+   }catch(e){toast(e.message,1);}
+   return;}
   const st=nextStep(pr,d);
   if(!st||st.k!==step){toast("Bu adım sırada değil.",1);return;}
   if(st.who&&st.who!==S.me.n&&S.me.r!=="pmdir"){
@@ -3324,31 +3379,54 @@ app.addEventListener("click",async ev=>{
    +(onBehalf?" (vekaleten: "+onBehalf+")":""),onBehalf?1:undefined);
   toast(docFullyApproved(d)?"Fully approved — the document is now view only.":"Approval recorded ("+step+").");
   return;}
- if(k==="pdocRej"){const pr=PROJ.find(x=>x.k===p[1]),d=docsOf(p[1]).find(x=>x.id===+p[2]);
-  S.f={};S.dlg={type:"pdocrej",k:p[1],id:+p[2]};render();return;}
- if(k==="pdocRejSend"){const d=docsOf(S.dlg.k).find(x=>x.id===S.dlg.id);
+ if(k==="pdocRej"){S.f={};S.dlg={type:"pdocrej",k:p[1],id:+p[2]};render();return;}
+ if(k==="pdocRejSend"){
+  if(LIVE_BACKEND){
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(S.dlg.k)+"/documents/"+S.dlg.id+"/reject",
+     {reason:S.f.reason.trim()});
+    S.docsLive=null;S.dlg=null;S.f={};
+    toast("Document rejected — approvals reset and the uploader is notified.",1);render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  const d=docsOf(S.dlg.k).find(x=>x.id===S.dlg.id);
   d.appr=[];d.rej={n:S.me.n,t:S.me.title,at:now(),why:S.f.reason.trim()};
   audit("Doküman reddedildi: "+d.name,0);S.dlg=null;S.f={};
   toast("Document rejected — approvals reset and the uploader is notified.",1);return;}
- if(k==="pdocAdd"){S.f={};S.dlg={type:"pdoc"};render();return;}
+ if(k==="pdocAdd"){S.f={};PENDING_UPLOAD_FILE=null;S.dlg={type:"pdoc"};render();return;}
  if(k==="pdType"){S.f.type=p[1];
   if(!S.f.a)S.f.a=DOC_TYPES[docTypeIdx(p[1])].n+" — "+P().n;render();return;}
  if(k==="pdocPick"){S.f.file=(P().k+"_"+(S.f.type||"DOC").toLowerCase()+".pdf");render();return;}
  if(k==="pdocBad"){toast("Only PDF files are accepted — .docx rejected.",1);return;}
  if(k==="pdocSave"){
+  if(LIVE_BACKEND){
+   if(!PENDING_UPLOAD_FILE){toast("Gerçek bir PDF dosyası seçmelisiniz (Use sample PDF demoda çalışır, canlıda gerçek dosya gerekir).",1);return;}
+   const fd=new FormData();
+   fd.append("docType",DOC_TYPES[docTypeIdx(S.f.type)].n);
+   fd.append("title",S.f.a.trim());
+   fd.append("file",PENDING_UPLOAD_FILE);
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(P().k)+"/documents",fd,true);
+    S.docsLive=null;S.dlg=null;S.f={};PENDING_UPLOAD_FILE=null;toast("Document uploaded.");render();
+   }catch(e){toast(e.message,1);}
+   return;}
   if(!teamOf(P().k).some(m=>m.n===S.me.n)&&S.me.r!=="pmdir"){
    toast("Only project team members can upload project documents.",1);return;}
   docsOf(P().k).push({id:npdoc++,type:S.f.type,name:S.f.a.trim(),file:S.f.file,
    by:S.me.n,at:now(),pages:3,appr:[]});
   audit("Proje dokümanı eklendi: "+S.f.a.trim());S.dlg=null;S.f={};toast("Document uploaded.");return;}
- if(k==="pdocEdit"){const d=docsOf(p[1]).find(x=>x.id===+p[2]);
+ if(k==="pdocEdit"){
+  if(LIVE_BACKEND){toast("Yeniden adlandırma bu sürümde henüz desteklenmiyor; yeni sürüm yüklemek için aynı tipte tekrar yükleyin.",1);return;}
+  const d=docsOf(p[1]).find(x=>x.id===+p[2]);
   if(d.by!==S.me.n){toast("Only the uploader can rename a document.",1);return;}
   if((d.appr||[]).length){toast("A document that already has approvals cannot be renamed.",1);return;}
   S.f={a:d.name,type:d.type};S.dlg={type:"pdoc",k:p[1],id:+p[2]};render();return;}
  if(k==="pdocRename"){const d=docsOf(P().k)[S.dlg.idx];
   if(docApproved(d)){toast("Approved documents are read-only.",1);return;}
   d.name=S.f.a.trim();audit("Proje dokümanı adı değişti: "+d.name);S.dlg=null;S.f={};toast("Document renamed.");return;}
- if(k==="pdocDel"){const d=docsOf(p[1]).find(x=>x.id===+p[2]);
+ if(k==="pdocDel"){
+  if(LIVE_BACKEND){toast("Kaldırma bu sürümde henüz desteklenmiyor.",1);return;}
+  const d=docsOf(p[1]).find(x=>x.id===+p[2]);
   if(d.by!==S.me.n){toast("Only the uploader can remove a document.",1);return;}
   if((d.appr||[]).length){toast("A document that already has approvals cannot be removed.",1);return;}
   S.dlg={type:"cf",title:"Remove document",text:d.name+" will be removed.",act:"pdocDelOk:"+p[1]+":"+p[2]};render();return;}

@@ -5,7 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const multer = require("multer");
 const { query, withTransaction } = require("../db");
-const { requireRead, requireWrite } = require("../middleware/auth");
+const { requireRead, requireWrite, requireAuth } = require("../middleware/auth");
 const { canWrite, MEETING_ALWAYS_ROLES } = require("../lib/permissions");
 const { audit } = require("../lib/audit");
 const { sendMail } = require("../lib/mailer");
@@ -56,7 +56,10 @@ router.get("/", requireRead("d.team"), async (req, res, next) => {
 });
 
 // ---------------------------------- Ekip ----------------------------------
-router.get("/:k/team", requireRead("d.team"), async (req, res, next) => {
+// Ekip listesi kimin PO/BO/onaycı olduğunu belirlemek için proje yönetimi dışındaki
+// ekranlarda da (ör. doküman onay zinciri) gerekir; bu bilgi hassas değildir,
+// bu yüzden d.team yazma yetkisi olmayan herkes de görebilir (yalnızca oturum açık olmalı).
+router.get("/:k/team", requireAuth, async (req, res, next) => {
   try {
     await ensureMandatoryTeam(req.params.k);
     const { rows } = await query(
@@ -108,7 +111,17 @@ router.get("/:k/documents", requireRead("d.docs"), async (req, res, next) => {
       "SELECT * FROM project_documents WHERE project_k=$1 ORDER BY uploaded_at",
       [req.params.k]
     );
-    res.json({ items: rows });
+    const out = [];
+    for (const d of rows) {
+      const appr = await query(
+        `SELECT pda.step_no, pda.step_name, pda.approver_username, pda.is_proxy, pda.approved_at, u.name, u.title
+         FROM project_document_approvals pda JOIN users u ON u.username=pda.approver_username
+         WHERE pda.document_id=$1 ORDER BY pda.step_no`,
+        [d.id]
+      );
+      out.push({ ...d, approvals: appr.rows });
+    }
+    res.json({ items: out });
   } catch (e) { next(e); }
 });
 
@@ -234,6 +247,20 @@ router.post("/:k/documents/:docId/approve", requireRead("d.docview"), async (req
     });
     await audit(`Doküman onay adımı ${step.no} (${step.name}) tamamlandı${isProxy ? " (vekaleten)" : ""} — ${doc.doc_type}/${req.params.k}`, req.user.username);
     res.json({ step: step.no, finished: result.finished });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/documents/:docId/reject", requireRead("d.docview"), async (req, res, next) => {
+  try {
+    const { reason } = req.body || {};
+    if (!reason || reason.trim().length < 5) return res.status(400).json({ error: "Ret gerekçesi en az 5 karakter olmalı." });
+    const { rows } = await query("SELECT * FROM project_documents WHERE id=$1 AND project_k=$2", [req.params.docId, req.params.k]);
+    const doc = rows[0];
+    if (!doc) return res.status(404).json({ error: "Doküman bulunamadı." });
+    if (doc.status !== "onay_akisinda") return res.status(409).json({ error: "Bu doküman onay akışında değil." });
+    await query("UPDATE project_documents SET status='reddedildi', reject_reason=$1 WHERE id=$2", [reason.trim(), doc.id]);
+    await audit(`Proje dokümanı reddedildi: ${doc.doc_type} — ${req.params.k} (${reason.trim()})`, req.user.username, false);
+    res.json({ ok: true });
   } catch (e) { next(e); }
 });
 
