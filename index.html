@@ -836,7 +836,8 @@ const prefersDark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: d
 let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.list",
  dlg:null,f:{},ann:null,req:null,dec:null,pop:null,proj:0,onlyMine:false,filter:"",drill:null,dirF:null,execFilter:null,execUnit:null,drag:null,docFull:false,
  read:null,readSrc:null,docView:null,page:0,dwell:[],timer:null,quiz:null,answers:{},result:null,toast:null,gate:true,
- meetingsLive:null,meetingsLiveLoading:null,annLive:null,annLiveLoading:null};
+ meetingsLive:null,meetingsLiveLoading:null,annLive:null,annLiveLoading:null,
+ ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null};
 
 /* --------------------------- gerçek backend istemcisi ---------------------------
    API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
@@ -878,6 +879,15 @@ async function loadAnnouncementsLive(){
    at:(a.created_at||"").replace("T"," ").slice(0,16),readByMe:!!a.read_by_me}));
  }catch(e){toast("Duyurular yüklenemedi: "+e.message,1);S.annLive=[];}
  S.annLiveLoading=false;render();}
+async function loadGanttLive(projK){
+ S.ganttLiveLoading=projK;
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(projK)+"/gantt");
+  S.ganttLive=data.items.map(t=>({id:String(t.id),name:t.name,start:(t.start_date||"").slice(0,10),
+   end:(t.end_date||"").slice(0,10),progress:t.progress}));
+  S.ganttLiveProj=projK;
+ }catch(e){toast("Gantt görevleri yüklenemedi: "+e.message,1);S.ganttLive=[];S.ganttLiveProj=projK;}
+ S.ganttLiveLoading=null;render();}
 async function api(method,path,body,isForm){
  const opts={method,credentials:"include",headers:{}};
  if(method!=="GET"&&CSRF_TOKEN)opts.headers["X-CSRF-Token"]=CSRF_TOKEN;
@@ -1572,12 +1582,16 @@ function screenView(){
 
  /* -------------------------------- Gantt Chart ------------------------------- */
  if(v==="d.gantt"){
-  const p=P(),tasks=GANTT[p.k]||(GANTT[p.k]=[]),canWrite=cw("d.gantt");
+  const p=P(),canWrite=cw("d.gantt");
+  if(LIVE_BACKEND&&(S.ganttLiveProj!==p.k||S.ganttLive===null)&&S.ganttLiveLoading!==p.k)loadGanttLive(p.k);
+  const tasks=LIVE_BACKEND?(S.ganttLiveProj===p.k?(S.ganttLive||[]):[]):(GANTT[p.k]||(GANTT[p.k]=[]));
+  const loading=LIVE_BACKEND&&S.ganttLiveProj!==p.k;
   const rng=ganttRange(tasks,p),totalDays=rng?Math.max(1,dayDiff(rng.min,rng.max)):1;
-  return head("Gantt Chart",p.k+" — "+p.n,
+  return head("Gantt Chart",p.k+" — "+p.n+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
      `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
     ${canWrite?`<button class="b p" data-a="ganttAdd">Görev ekle</button>`:""}</div>`)+
+  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
   (tasks.length?`<div class="card" style="overflow:auto">
     <div style="min-width:640px">
     ${rng?`<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--tm);margin-bottom:8px">
@@ -1596,7 +1610,7 @@ function screenView(){
        <span class="m" style="width:34px;text-align:right;flex-shrink:0">${t.progress||0}%</span>
        ${canWrite?`<button class="b s d" data-a="ganttDel:${t.id}">Sil</button>`:""}</div>`;}).join("")}
     </div></div>`
-   :`<div class="card"><span style="font-size:12.5px;color:var(--tm)">Bu proje için henüz görev eklenmedi.</span></div>`)+
+   :`<div class="card"><span style="font-size:12.5px;color:var(--tm)">Bu proje için henüz görev eklenmedi.</span></div>`))+
   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Gantt şeması yalnızca proje yönetimi rolündekilerce
     (Proje Yöneticisi / Proje Yönetim Direktörü) hazırlanabilir; proje ekibi ve diğer yetkili roller salt okunur görür.</p>`;}
 
@@ -3191,10 +3205,24 @@ app.addEventListener("click",async ev=>{
  /* -------------------------------- Gantt Chart ------------------------------- */
  if(k==="ganttAdd"){S.f={progress:0};S.dlg={type:"gantt"};render();return;}
  if(k==="gProg"){S.f.progress=+p[1];render();return;}
- if(k==="ganttSave"){const tasks=GANTT[P().k]||(GANTT[P().k]=[]);
+ if(k==="ganttSave"){
+  if(LIVE_BACKEND){
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(P().k)+"/gantt",
+     {name:S.f.name.trim(),startDate:S.f.start,endDate:S.f.end,progress:S.f.progress||0});
+    S.ganttLive=null;S.dlg=null;S.f={};toast("Görev eklendi.");render();
+   }catch(e){toast("Eklenemedi: "+e.message,1);}
+   return;}
+  const tasks=GANTT[P().k]||(GANTT[P().k]=[]);
   tasks.push({id:"gt"+(nextGantt++),name:S.f.name.trim(),start:S.f.start,end:S.f.end,progress:S.f.progress||0});
   audit("Gantt görevi eklendi: "+S.f.name.trim()+" ("+P().k+")");S.dlg=null;S.f={};toast("Görev eklendi.");return;}
- if(k==="ganttDel"){const tasks=GANTT[P().k]||[];const idx=tasks.findIndex(t=>t.id===p[1]);
+ if(k==="ganttDel"){
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/projects/"+encodeURIComponent(P().k)+"/gantt/"+p[1]);
+    S.ganttLive=null;toast("Görev silindi.");render();}
+   catch(e){toast("Silinemedi: "+e.message,1);}
+   return;}
+  const tasks=GANTT[P().k]||[];const idx=tasks.findIndex(t=>t.id===p[1]);
   if(idx>-1){const t=tasks.splice(idx,1)[0];audit("Gantt görevi silindi: "+t.name+" ("+P().k+")");}
   toast("Görev silindi.");return;}
 
