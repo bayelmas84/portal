@@ -1011,6 +1011,12 @@ async function loadMyAccessLive(){
  try{const data=await api("GET","/api/auth/my-access");MY_ACCESS=data.access;}
  catch(e){MY_ACCESS={};}
  render();}
+async function loadAvailabilityLive(){
+ try{
+  const map=(await api("GET","/api/admin/availability")).items||{};
+  BACKEND_MANAGED_KEYS.forEach(k=>{if(map[k]&&map[k]!=="acik")AVAIL[k]=map[k];else delete AVAIL[k];});
+ }catch(e){/* alınamazsa yerel varsayılanlarla devam edilir */}
+ render();}
 function lvl(k){
  if(LIVE_BACKEND&&MY_ACCESS&&BACKEND_MANAGED_KEYS.includes(k)){
   const base=MY_ACCESS[k]||"none";
@@ -3053,7 +3059,7 @@ app.addEventListener("click",async ev=>{
      u.mgr=mu?mu.n:data.user.managerUsername;}
     S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
     S.meetingsLive=null;S.meetingsLiveLoading=null;
-    S.pop=null;loadBrandLive();loadMyAccessLive();render();return;
+    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();render();return;
    }catch(e){S.err=e.message||"Kullanıcı adı veya parola hatalı.";render();return;}
   }
   const u=USERS.find(x=>x.u===uname);
@@ -3101,15 +3107,26 @@ app.addEventListener("click",async ev=>{
  if(k==="avail"){const key=p[1],val=p[2];
   if(key==="admin"||key==="m.avail"){toast("Admin Panel ve Ekran yönetimi kapatılamaz.",1);return;}
   if(val==="acik")delete AVAIL[key];else AVAIL[key]=val;
+  if(LIVE_BACKEND&&BACKEND_MANAGED_KEYS.includes(key)){
+   try{await api("PUT","/api/admin/availability",{screenKey:key,status:val});}
+   catch(e){toast(e.message,1);return;}}
   audit("Ekran durumu değişti: "+key+" → "+AV_LABEL[val]);
   /* kapanan ekranda duruyorsanız ana ekrana alınırsınız */
   if((S.mod===key||S.scr===key)&&val!=="acik"){S.view="home";}
   toast(key+" → "+AV_LABEL[val]);return;}
- if(k==="availReset"){AVAIL={};audit("Tüm ekranlar açıldı");toast("Tüm modül ve ekranlar açıldı.");return;}
+ if(k==="availReset"){
+  if(LIVE_BACKEND){
+   try{await Promise.all(BACKEND_MANAGED_KEYS.map(key=>api("PUT","/api/admin/availability",{screenKey:key,status:"acik"})));}
+   catch(e){toast(e.message,1);}}
+  AVAIL={};audit("Tüm ekranlar açıldı");toast("Tüm modül ve ekranlar açıldı.");return;}
  if(k==="availDefault"){AVAIL={};
   MODULES.forEach(m=>{if(!DEFAULT_OPEN.includes(m[0]))AVAIL[m[0]]="kapali";});
   Object.keys(SCREENS).forEach(mk=>{if(!DEFAULT_OPEN.includes(mk))
     (SCREENS[mk]||[]).forEach(x=>{AVAIL[x[0]]="kapali";});});
+  if(LIVE_BACKEND){
+   try{await Promise.all(BACKEND_MANAGED_KEYS.map(key=>
+    api("PUT","/api/admin/availability",{screenKey:key,status:(key==="admin"||key==="m.avail")?"acik":(AVAIL[key]||"acik")})));}
+   catch(e){toast(e.message,1);}}
   audit("Ekran durumları kurulum varsayılanına döndürüldü");
   toast("Varsayılana dönüldü: yalnızca Proje Yönetimi, Admin Panel ve Kısayollar açık.");return;}
  if(k==="dirRole"){DIR.defaultRole=p[1];render();return;}

@@ -1,7 +1,7 @@
 "use strict";
 const express = require("express");
 const { query } = require("../db");
-const { requireRead, requireWrite } = require("../middleware/auth");
+const { requireRead, requireWrite, requireAuth } = require("../middleware/auth");
 const { encryptSecret } = require("../lib/crypto");
 const { testDirectoryConnection } = require("../auth/ldap");
 const { getSmtpSettings, saveSmtpSettings, setSmtpActive, testSmtpConnection } = require("../lib/mailer");
@@ -210,7 +210,10 @@ router.post("/access/reset", requireWrite("m.access"), async (req, res, next) =>
 });
 
 // --------------------------- Ekran yönetimi (m.avail) ------------------------
-router.get("/availability", requireRead("m.avail"), async (req, res, next) => {
+// Herhangi bir ekranın acik/bakimda/kapali oldugunu bilmek gezinme icin gereklidir
+// ve hassas bilgi degildir; bu yuzden m.avail yazma yetkisi olmayan herkes de
+// (yalnizca oturum acik olmali) gorebilir.
+router.get("/availability", requireAuth, async (req, res, next) => {
   try {
     res.json({ items: await getAllAvailability() });
   } catch (e) { next(e); }
