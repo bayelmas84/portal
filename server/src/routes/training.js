@@ -8,6 +8,7 @@ const { query, withTransaction } = require("../db");
 const { requireRead, requireWrite } = require("../middleware/auth");
 const { config } = require("../config");
 const { audit } = require("../lib/audit");
+const { getNumberSetting } = require("../lib/settings");
 const { notifyEvent, notifyApprovalCreated, emailOf } = require("../lib/notify");
 
 const router = express.Router();
@@ -96,7 +97,8 @@ router.post("/:assignmentId/quiz", requireRead("training"), async (req, res, nex
       else wrong.push(q.id);
     }
     const score = total > 0 ? Math.round((earned / total) * 100) : 0;
-    const pass = score >= config.quizPassScore;
+    const passScore = await getNumberSetting("quiz_pass_score");
+    const pass = score >= passScore;
 
     await query(
       `UPDATE training_assignments SET attempts = attempts + 1, quiz_score = $1,
@@ -151,7 +153,8 @@ router.post("/documents", requireWrite("training"), upload.single("file"), async
     }
     const fileBuf = fs.readFileSync(req.file.path);
     const sha256 = crypto.createHash("sha256").update(fileBuf).digest("hex");
-    const days = Math.max(1, parseInt(dueDays, 10) || 14);
+    const defaultDueDays = await getNumberSetting("training_default_due_days");
+    const days = Math.max(1, parseInt(dueDays, 10) || defaultDueDays);
 
     const result = await withTransaction(async (client) => {
       const docRes = await client.query(

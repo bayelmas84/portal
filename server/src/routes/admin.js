@@ -44,6 +44,34 @@ router.get("/users", requireRead("m.users"), async (req, res, next) => {
 // ------------------------------- Birimler (units) ---------------------------
 // Herkese okuma açıktır: kullanıcı formu birim seçilince yöneticiyi göstermek
 // için buna ihtiyaç duyar (hassas bilgi değildir).
+// ---------------------------- Genel parametrik ayarlar ----------------------
+// Eğitim/doküman kuralları, sprint varsayılanları vb. Admin onayına (tek adım)
+// tabidir - tıpkı marka/SMTP ayarları gibi.
+const SETTINGS_KEYS = [
+  "reading_seconds_per_page", "quiz_pass_score", "training_default_due_days",
+  "sprint_default_days", "story_point_scale",
+];
+router.get("/settings", requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await query("SELECT key, value FROM app_settings");
+    const map = {};
+    rows.forEach((r) => { map[r.key] = r.value; });
+    res.json({ item: map });
+  } catch (e) { next(e); }
+});
+
+router.put("/settings", requireWrite("m.settings"), async (req, res, next) => {
+  try {
+    const entries = Object.entries(req.body || {}).filter(([k]) => SETTINGS_KEYS.includes(k));
+    if (!entries.length) return res.status(400).json({ error: "Geçerli bir ayar gönderilmedi." });
+    for (const [, v] of entries) {
+      if (!/^[0-9,]+$/.test(String(v))) return res.status(400).json({ error: "Değerler yalnızca sayı (ve virgülle ayrılmış liste) olabilir." });
+    }
+    await requestAdminApproval(req, res, "admin.settings", Object.fromEntries(entries),
+      `Uygulama ayarları güncelleme: ${entries.map(([k]) => k).join(", ")}`);
+  } catch (e) { next(e); }
+});
+
 router.get("/units", requireAuth, async (req, res, next) => {
   try {
     const { rows } = await query(

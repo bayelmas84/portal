@@ -103,6 +103,15 @@ async function applyAdminAction(targetType, payload, actingUsername) {
       await setSmtpActive(!!payload.active, actingUsername);
       return;
     }
+    case "admin.settings": {
+      for (const [k, v] of Object.entries(payload)) {
+        await query(
+          "INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (key) DO UPDATE SET value=$2, updated_by=$3, updated_at=now()",
+          [k, String(v), actingUsername]
+        );
+      }
+      return;
+    }
     case "admin.brand": {
       const allowed = ["company", "companyShort", "product", "slogan", "loginTitle", "loginHint", "footer", "accent"];
       const entries = Object.entries(payload || {}).filter(([k]) => allowed.includes(k));

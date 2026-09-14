@@ -319,7 +319,8 @@ function ic(name,size,extra){
  return '<svg viewBox="0 0 24 24" width="'+(size||16)+'" height="'+(size||16)+
   '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" '+
   'aria-hidden="true" style="flex-shrink:0;vertical-align:-2px;'+(extra||"")+'">'+body+'</svg>';}
-const W="write",R="read",SPP=30,PASS=70,TEFTIS="Kerem Aslan";
+const W="write",R="read",TEFTIS="Kerem Aslan";
+let SPP=30,PASS=70;
 
 /* ---------------------------------- veri ---------------------------------- */
 const MODULES=[
@@ -358,6 +359,7 @@ const SCREENS={
    ["m.units","Birimler","ti-building"],["m.titles","Ünvanlar","ti-id-badge"],
    ["m.roles","Roller ve yetkiler","ti-shield"],["m.access","Ekran yetkileri","ti-checkbox"],
    ["m.notif","Bildirim tanımları","ti-messages"],["m.mailtpl","Mail Şablonları","ti-mail-forward"],
+   ["m.settings","Genel Ayarlar","ti-adjustments-horizontal"],
    ["m.dir","Dizin (AD) ayarları","ti-shield"],
    ["m.smtp","SMTP Ayarları","ti-mail"],
    ["m.brand","Marka ve metinler","ti-palette"],
@@ -371,7 +373,7 @@ const ACC={
   "d.team":R,"d.docs":R,"d.docview":R,"d.appr":R,"d.cr":R,"k.docs":R,
   /* a.del verilmez: silme talebini duyuruyu giren kişi açar, Teftiş karara bağlar. */
   "a.list":W,"a.new":W,"t.un":R,"t.done":R,"t.author":W,"r.list":R,"r.view":R,
-  "p.in":W,"p.my":W,"p.done":W,"m.ann":W,"m.users":W,"m.units":W,"m.titles":W,"m.roles":W,"m.access":W,"m.notif":W,"m.mailtpl":W,"m.dir":W,"m.smtp":W,"m.brand":W,"m.avail":W,"m.short":W,
+  "p.in":W,"p.my":W,"p.done":W,"m.ann":W,"m.users":W,"m.units":W,"m.titles":W,"m.roles":W,"m.access":W,"m.notif":W,"m.mailtpl":W,"m.settings":W,"m.dir":W,"m.smtp":W,"m.brand":W,"m.avail":W,"m.short":W,
   "d.sprint":R,"k.mail":R},
  /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (okuma, yazma, ekleme, silme),
     kapı imzasında tek imza yeterlidir. Diğer modüllerde okuma düzeyindedir. */
@@ -814,6 +816,16 @@ async function loadOrgChartLive(){
  catch(e){toast("Organizasyon şeması yüklenemedi: "+e.message,1);ORG_CHART_LIVE=[];}
  ORG_CHART_LIVE_LOADING=false;render();}
 let MAILTPL_LIVE=null,MAILTPL_LIVE_LOADING=false,WIRED_EVENTS_LIVE=null;
+let APP_SETTINGS_LIVE=null,APP_SETTINGS_LIVE_LOADING=false;
+async function loadAppSettingsLive(){
+ APP_SETTINGS_LIVE_LOADING=true;
+ try{
+  const data=await api("GET","/api/admin/settings");
+  APP_SETTINGS_LIVE=data.item;
+  if(data.item.reading_seconds_per_page)SPP=Number(data.item.reading_seconds_per_page);
+  if(data.item.quiz_pass_score)PASS=Number(data.item.quiz_pass_score);
+ }catch(e){APP_SETTINGS_LIVE={};}
+ APP_SETTINGS_LIVE_LOADING=false;render();}
 async function loadMailTplLive(){
  MAILTPL_LIVE_LOADING=true;
  try{
@@ -2516,6 +2528,27 @@ function screenView(){
       <button class="b s d" data-a="tplDel:${t.id}">Sil</button>`:""}</td></tr>`).join(""))+
    `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Konu ve metinde {ad_soyad}, {konu}, {egitim_adi}, {son_tarih}, {gerekce} gibi yer tutucular kullanılabilir; gönderim anında gerçek değerle değiştirilir.</p>`;}
 
+ if(v==="m.settings"){
+  if(!LIVE_BACKEND)return head("Genel Ayarlar","")+`<div class="card wr"><span style="font-size:12.5px">
+   Genel ayarlar yalnızca gerçek backend'e bağlıyken kullanılabilir.</span></div>`;
+  if(APP_SETTINGS_LIVE===null&&!APP_SETTINGS_LIVE_LOADING)loadAppSettingsLive();
+  if(APP_SETTINGS_LIVE===null)return head("Genel Ayarlar","")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
+  const s=APP_SETTINGS_LIVE;
+  const f=S.f.settingsOpen?S.f:s;
+  const FIELDS=[
+   ["reading_seconds_per_page","Sayfa başı okuma süresi (sn)"],
+   ["quiz_pass_score","Sınav geçme notu (%)"],
+   ["training_default_due_days","Eğitim varsayılan süre (gün)"],
+   ["sprint_default_days","Sprint varsayılan süre (gün)"],
+   ["story_point_scale","Story point ölçeği (virgülle)"]];
+  return head("Genel Ayarlar","Değişiklikler yöneticinizin onayına gider · canlı backend")+
+   `<div class="card" style="max-width:520px">
+    ${FIELDS.map(([k,label])=>`<div class="lbl" style="margin-top:12px">${label}</div>
+     <input id="fSet_${k}" value="${esc(String(s[k]||""))}" ${cw("m.settings")?"":"disabled"}>`).join("")}
+    ${cw("m.settings")?`<div style="display:flex;justify-content:flex-end;margin-top:15px">
+     <button class="b p" data-a="settingsSave">Onaya gönder</button></div>`:""}
+   </div>`;}
+
 
  if(v==="m.dir"){
   const src=DIR.active&&DIR.url?"ekran ayarı":"sunucu yapılandırması (.env)";
@@ -3599,7 +3632,7 @@ app.addEventListener("click",async ev=>{
      u.mgr=mu?mu.n:data.user.managerUsername;}
     S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
     S.meetingsLive=null;S.meetingsLiveLoading=null;
-    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();render();return;
+    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();loadAppSettingsLive();render();return;
    }catch(e){S.err=e.message||"Kullanıcı adı veya parola hatalı.";render();return;}
   }
   const u=USERS.find(x=>x.u===uname);
@@ -3627,6 +3660,7 @@ app.addEventListener("click",async ev=>{
   UNITS_LIVE=null;UNITS_LIVE_LOADING=false;
   ORG_CHART_LIVE=null;ORG_CHART_LIVE_LOADING=false;
   MAILTPL_LIVE=null;MAILTPL_LIVE_LOADING=false;WIRED_EVENTS_LIVE=null;
+  APP_SETTINGS_LIVE=null;APP_SETTINGS_LIVE_LOADING=false;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
@@ -4632,6 +4666,13 @@ app.addEventListener("click",async ev=>{
    act:"tplDelOk:"+t.id};render();return;}
  if(k==="tplDelOk"){
   try{const data=await api("DELETE","/api/notifications/"+p[1]);S.dlg=null;toast(data.message||"Onaya gönderildi.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="settingsSave"){
+  const keys=["reading_seconds_per_page","quiz_pass_score","training_default_due_days","sprint_default_days","story_point_scale"];
+  const payload={};
+  keys.forEach(key=>{const el=document.getElementById("fSet_"+key);if(el)payload[key]=el.value.trim();});
+  try{const data=await api("PUT","/api/admin/settings",payload);toast(data.message||"Onaya gönderildi.");render();}
   catch(e){toast(e.message,1);}
   return;}
  if(k==="tplSave"){
