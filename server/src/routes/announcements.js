@@ -19,7 +19,7 @@ router.get("/", requireRead("announcements"), async (req, res, next) => {
          SELECT 1 FROM announcement_reads r WHERE r.announcement_id=a.id AND r.username=$1
        ) AS read_by_me
        FROM announcements a
-       WHERE a.status='yayinda' OR a.created_by=$1
+       WHERE a.status != 'silindi' AND (a.status='yayinda' OR a.created_by=$1)
        ORDER BY a.created_at DESC`,
       [req.user.username]
     );
@@ -68,6 +68,9 @@ router.post("/", requireWrite("announcements"), async (req, res, next) => {
 
 // Yayındaki bir duyuru için silme talebi: yalnızca giren kişi veya Teftiş açabilir,
 // zaten bekleyen bir silme talebi varsa ikinci bir tane açılmaz.
+// Sıralı onay: önce talebi açanın yöneticisi, SONRA Teftiş onaylar (toplam 2 onay,
+// paralel değil). Onaylanınca duyuru GERÇEKTEN silinmez — durumu "silindi" olur ve
+// listeleme sorguları bunu hariç tutar (uygulama genelinde geçerli kural).
 router.post("/:id/delete-request", requireWrite("announcements"), async (req, res, next) => {
   try {
     const { reason } = req.body || {};
@@ -86,22 +89,21 @@ router.post("/:id/delete-request", requireWrite("announcements"), async (req, re
     );
     if (pending.rowCount) return res.status(409).json({ error: "Bu duyuru için zaten bekleyen bir silme talebi var." });
 
-    let approver;
-    if (ann.category === "Yasal") {
-      const insp = await query("SELECT username FROM users WHERE role='inspection' AND active AND username != $1 ORDER BY username LIMIT 1", [req.user.username]);
-      if (!insp.rowCount) return res.status(409).json({ error: "Tanımlı başka bir Teftiş kullanıcısı yok." });
-      approver = insp.rows[0].username;
-    } else {
-      if (!req.user.manager_username) return res.status(409).json({ error: "Yöneticiniz tanımlı değil, onaya gönderilemiyor." });
-      approver = req.user.manager_username;
-    }
-
-    await query(
-      `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason)
-       VALUES ('ann.delete',$1,$2,'announcement',$3,$4,$5,$6)`,
-      [ann.title, ann.category, ann.id, req.user.username, approver, reason.trim()]
+    if (!req.user.manager_username) return res.status(409).json({ error: "Yöneticiniz tanımlı değil, silme talebi açılamıyor." });
+    const insp = await query(
+      "SELECT username FROM users WHERE role='inspection' AND active AND username != $1 ORDER BY username LIMIT 1",
+      [req.user.username]
     );
-    await audit(`Duyuru silme talebi açıldı: ${ann.title} (onaycı: ${approver})`, req.user.username);
+    if (!insp.rowCount) return res.status(409).json({ error: "Tanımlı bir Teftiş kullanıcısı yok, silme talebi açılamıyor." });
+
+    // Yalnızca 1. adım (yönetici) burada açılır; Teftiş adımı yönetici onaylayınca otomatik açılır.
+    await query(
+      `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason, step, total_steps)
+       VALUES ('ann.delete',$1,$2,'announcement',$3,$4,$5,$6,1,2)`,
+      [ann.title, ann.category, ann.id, req.user.username, req.user.manager_username, reason.trim()]
+    );
+    await audit(`Duyuru silme talebi açıldı (1/2 — yönetici onayı bekleniyor): ${ann.title}`, req.user.username,
+      true, { actionType: "silme", approvers: [req.user.manager_username] });
     res.status(201).json({ ok: true });
   } catch (e) {
     next(e);
@@ -172,49 +174,69 @@ router.post("/requests/:id/decide", requireRead("announcements"), async (req, re
       return res.status(409).json({ error: "Kimse kendi talebini onaylayamaz." });
     }
 
+    const isTwoStepDelete = reqRow.kind === "ann.delete" || reqRow.kind === "training.close";
+    const isFinalStep = !isTwoStepDelete || reqRow.step >= reqRow.total_steps;
+
     await withTransaction(async (client) => {
       const status = decision === "onayla" ? "onaylandi" : "reddedildi";
       await client.query(
         "UPDATE approval_requests SET status=$1, decision_reason=$2, decided_at=now() WHERE id=$3",
         [status, reason || null, reqRow.id]
       );
+
       if (reqRow.kind === "ann.publish") {
         const newStatus = decision === "onayla" ? "yayinda" : "geri_cekildi";
         await client.query("UPDATE announcements SET status=$1 WHERE id=$2", [newStatus, reqRow.target_id]);
-      } else if (reqRow.kind === "ann.delete") {
-        if (decision === "onayla") {
-          await client.query("DELETE FROM announcements WHERE id=$1", [reqRow.target_id]);
-        }
-        // reddedilirse duyuru "yayinda" durumunda kalmaya devam eder, ekstra işlem gerekmez.
-      } else if (reqRow.kind === "training.close") {
-        // İKİ imza gerekir (yönetici + Teftiş). Biri reddederse kardeş talep de düşer.
-        // İkisi de onaylanınca doküman GERÇEKTEN kapanır ve tamamlanmamış atamalar silinir
-        // (tamamlanmış kayıtlar — sınav geçmişi — asla dokunulmaz, kalıcı kalır).
-        if (decision !== "onayla") {
+        return;
+      }
+
+      if (isTwoStepDelete) {
+        if (decision !== "onayla") return; // reddedilirse hiçbir şey değişmez, kayıt "yayinda" kalır.
+        if (!isFinalStep) {
+          // 1. adım (yönetici) onaylandı: 2. adımı (Teftiş) aç.
+          const insp = await client.query(
+            "SELECT username FROM users WHERE role='inspection' AND active AND username NOT IN ($1,$2) ORDER BY username LIMIT 1",
+            [reqRow.requested_by, req.user.username]
+          );
+          // Talebi açan zaten Teftiş'ten değilse kendisi de onaycı olabilir (görevler ayrılığı
+          // yalnızca "kendi talebini onaylayamaz" ile korunur); bulunamazsa herhangi bir Teftiş kullanılır.
+          const insp2 = insp.rowCount ? insp.rows[0] :
+            (await client.query(
+              "SELECT username FROM users WHERE role='inspection' AND active AND username != $1 ORDER BY username LIMIT 1",
+              [reqRow.requested_by]
+            )).rows[0];
+          if (!insp2) throw new Error("Tanımlı bir Teftiş kullanıcısı kalmadı, ikinci onay adımı açılamadı.");
           await client.query(
-            `UPDATE approval_requests SET status='geri_cekildi', decision_reason=$1, decided_at=now()
-             WHERE kind='training.close' AND target_id=$2 AND status='bekliyor'`,
-            [`Diğer onaycı reddetti: ${reason || ""}`.trim(), reqRow.target_id]
+            `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason, step, total_steps)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,2,2)`,
+            [reqRow.kind, reqRow.subject, reqRow.category, reqRow.target_type, reqRow.target_id,
+             reqRow.requested_by, insp2.username, reqRow.reason]
           );
         } else {
-          const remaining = await client.query(
-            "SELECT 1 FROM approval_requests WHERE kind='training.close' AND target_id=$1 AND status='bekliyor'",
-            [reqRow.target_id]
-          );
-          if (!remaining.rowCount) {
+          // Son adım (Teftiş) onaylandı: GERÇEK etkiyi uygula — her zaman YUMUŞAK (soft).
+          if (reqRow.kind === "ann.delete") {
+            await client.query("UPDATE announcements SET status='silindi' WHERE id=$1", [reqRow.target_id]);
+          } else if (reqRow.kind === "training.close") {
             await client.query(
               "UPDATE policy_documents SET status='kapali', closed_at=now(), closed_reason=$1 WHERE id=$2",
               [reqRow.reason, reqRow.target_id]
             );
             await client.query(
-              "DELETE FROM training_assignments WHERE policy_document_id=$1 AND completed_at IS NULL",
+              "UPDATE training_assignments SET cancelled_at=now() WHERE policy_document_id=$1 AND completed_at IS NULL",
               [reqRow.target_id]
             );
           }
         }
       }
     });
-    await audit(`Talep ${decision === "onayla" ? "onaylandı" : "reddedildi"}: #${reqRow.id} ${reqRow.subject}`, req.user.username);
+
+    const approvers = [req.user.username];
+    await audit(
+      `Talep ${decision === "onayla" ? "onaylandı" : "reddedildi"} (adım ${reqRow.step}/${reqRow.total_steps}): #${reqRow.id} ${reqRow.subject}`,
+      req.user.username, decision === "onayla",
+      { actionType: decision === "onayla" ? (isTwoStepDelete && isFinalStep ? "silme" : "onay") : "red",
+        approvers }
+    );
     res.json({ ok: true });
   } catch (e) {
     next(e);

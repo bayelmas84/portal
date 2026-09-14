@@ -27,7 +27,7 @@ const DEFAULT_ACCESS = {
   inspection: {
     announcements: "write", training: "write",
     "d.docs": "read", "d.docview": "read", "d.appr": "read",
-    "d.meeting": "read", "d.meetingview": "read",
+    "d.meeting": "read", "d.meetingview": "read", "c.audit": "read",
   },
   infosec: {
     announcements: "write", training: "read",
@@ -37,7 +37,7 @@ const DEFAULT_ACCESS = {
   control: {
     announcements: "write", training: "read",
     "d.docs": "read", "d.docview": "read", "d.appr": "read",
-    "d.meeting": "read", "d.meetingview": "read",
+    "d.meeting": "read", "d.meetingview": "read", "c.audit": "read",
   },
   gmy: {
     announcements: "read", training: "read",

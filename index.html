@@ -330,6 +330,7 @@ const MODULES=[
  ["reports","Raporlar","ti-chart-histogram","#B8894A"],
  ["approvals","Onaylar","ti-checkbox","#0F6E56"],
  ["compliance","Uyum ve Teftiş","ti-shield","#8E0D4D"],
+ ["audit","Denetim Kaydı","ti-list-search","#5A1F3D"],
  ["admin","Admin Panel","ti-adjustments","#33405C"],
  ["shortcuts","Kısayollar","ti-link","#8A6A2F"]];
 const SCREENS={
@@ -350,7 +351,8 @@ const SCREENS={
  reports:[["r.list","Rapor kataloğu","ti-list-search"],["r.view","Örnek rapor","ti-chart-bar"],
    ["r.dev","Rapor geliştirme","ti-adjustments"],["r.usage","Kullanım raporu","ti-chart-histogram"]],
  approvals:[["p.in","Onayımda bekleyenler","ti-inbox"],["p.my","Onay beklediklerim","ti-clock"],["p.done","Onayladıklarım","ti-checks"]],
- compliance:[["c.read","Okuma raporu","ti-list-details"],["c.rem","Hatırlatma planı","ti-clock"],["c.audit","Denetim kaydı","ti-checks"]],
+ compliance:[["c.read","Okuma raporu","ti-list-details"],["c.rem","Hatırlatma planı","ti-clock"]],
+ audit:[["c.audit","Denetim Kaydı","ti-list-search"]],
  shortcuts:[["s.all","Tüm kısayollar","ti-link"]],
  admin:[["m.ann","Duyuru yönetimi","ti-speakerphone"],["m.users","Kullanıcılar","ti-users"],
    ["m.units","Birimler","ti-building"],["m.titles","Ünvanlar","ti-id-badge"],
@@ -391,7 +393,7 @@ const ACC={
   "t.un":W,"t.done":W,"t.author":W,
   "r.list":R,"r.view":R,"r.dev":R,"r.usage":R,
   "p.in":W,"p.my":W,"p.done":W,
-  "c.read":W,"c.rem":W,"c.audit":W},
+  "c.read":W,"c.rem":W,"c.audit":W,audit:R},
  /* Bilgi Güvenliği: proje yönetiminde işi yok; yalnızca proje dokümanlarını görür. */
  infosec:{delivery:R,documents:W,announce:W,training:R,reports:R,approvals:W,
   "d.docs":R,"d.docview":R,
@@ -401,7 +403,7 @@ const ACC={
  control:{delivery:R,documents:W,announce:W,training:R,reports:R,approvals:W,
   "d.docs":R,"d.docview":R,"d.appr":R,
   "k.docs":W,"k.new":W,"a.list":W,"a.new":W,"a.del":W,"t.un":W,"t.done":W,"r.list":R,"r.view":R,
-  "p.in":W,"p.my":W,"p.done":W,"compliance":W,"c.read":W,"c.rem":W,"k.mail":R},
+  "p.in":W,"p.my":W,"p.done":W,"compliance":W,"c.read":W,"c.rem":W,"c.audit":W,audit:R,"k.mail":R},
  gmy:{delivery:R,documents:R,announce:R,training:R,reports:R,approvals:W,
   "d.my":R,"d.projects":R,"d.board":R,"d.sprint":R,"d.gate":W,"d.charts":R,"d.exec":R,"r.usage":R,"k.docs":R,"a.list":R,"t.un":W,"t.done":W,
   "r.list":R,"r.view":R,"p.in":W,"p.my":W,"p.done":W},
@@ -799,6 +801,12 @@ async function loadReqsLive(which){
   if(which==="inbox")S.reqsInboxLive=[];else if(which==="mine")S.reqsMineLive=[];else S.reqsDoneLive=[];}
  render();}
 let PROJECTS_LIVE_LOADED=false,PROJECTS_LIVE_LOADING=false;
+let AUDIT_LIVE=null,AUDIT_LIVE_LOADING=false;
+async function loadAuditLive(){
+ AUDIT_LIVE_LOADING=true;
+ try{const data=await api("GET","/api/audit");AUDIT_LIVE=data.items;}
+ catch(e){toast("Denetim kaydı yüklenemedi: "+e.message,1);AUDIT_LIVE=[];}
+ AUDIT_LIVE_LOADING=false;render();}
 const HEALTH_COLOR={"İzleniyor":"#0B1F48","Risk altında":"#BA7517","Gecikmede":"#A32D2D","Planında":"#3B6D11"};
 function mapProjectLive(p){
  const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
@@ -1092,7 +1100,7 @@ let MY_ACCESS=null;
    çağrılarından derlenmiştir). Bu listede olmayan anahtarlar (kanban, backlog,
    raporlar gibi salt demo ekranlar) yerel ACC varsayılanlarını kullanmaya devam eder. */
 const BACKEND_MANAGED_KEYS=["announcements","training","d.team","d.docs","d.docview","d.cr",
- "d.gantt","d.meeting","d.meetingview","d.board","d.gate","m.users","m.dir","m.smtp","m.brand","m.avail","m.access"];
+ "d.gantt","d.meeting","d.meetingview","d.board","d.gate","c.audit","m.users","m.dir","m.smtp","m.brand","m.avail","m.access"];
 async function loadMyAccessLive(){
  try{const data=await api("GET","/api/auth/my-access");MY_ACCESS=data.access;}
  catch(e){MY_ACCESS={};}
@@ -1662,9 +1670,28 @@ function screenView(){
    <td style="color:var(--t2)">${r.next}</td><td class="m">${r.cc}</td></tr>`).join(""))+
   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Son 3, 2, 1 ve son günde hatırlatma gider; süre geçtiğinde her gün yöneticiye CC ile tekrarlanır.</p>`;
 
- if(v==="c.audit")return head("Denetim kaydı","Hash zinciriyle korunur · yalnızca Teftiş ve İç Kontrol görür")+
+ if(v==="c.audit"){
+  if(LIVE_BACKEND){
+   if(AUDIT_LIVE===null&&!AUDIT_LIVE_LOADING)loadAuditLive();
+   if(AUDIT_LIVE===null)return head("Denetim Kaydı","Uygulama genelindeki tüm işlemler · yalnızca Teftiş ve İç Kontrol görür · canlı backend")+
+    `<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
+   const TYPE_LABEL={ekleme:"Ekleme",düzenleme:"Düzenleme",silme:"Silme",onay:"Onay",red:"Ret",oturum:"Oturum",diğer:"Diğer"};
+   const TYPE_TONE={ekleme:"ok",düzenleme:"wr",silme:"er",onay:"ok",red:"er",oturum:"",diğer:""};
+   return head("Denetim Kaydı","Uygulama genelindeki tüm işlemler (admin dahil) · yalnızca Teftiş ve İç Kontrol görür · canlı backend")+
+   table(["İşlem","Kullanıcı","Birim","1. Onaycı","2. Onaycı","3. Onaycı","İşlem Tipi","Tarih / Saat"],AUDIT_LIVE.map(a=>`<tr>
+    <td style="color:${a.ok?"var(--t1)":"var(--er-fg)"}">${esc(a.event)}</td>
+    <td style="color:var(--t2)">${esc(a.who_name||a.who)}</td>
+    <td class="m" style="color:var(--tm)">${esc(a.who_unit_name||"—")}</td>
+    <td style="color:var(--t2)">${a.approver1_name?esc(a.approver1_name):"—"}</td>
+    <td style="color:var(--t2)">${a.approver2_name?esc(a.approver2_name):"—"}</td>
+    <td style="color:var(--t2)">${a.approver3_name?esc(a.approver3_name):"—"}</td>
+    <td>${pill(TYPE_LABEL[a.action_type]||a.action_type,TYPE_TONE[a.action_type]||"")}</td>
+    <td class="m" style="color:var(--tm);white-space:nowrap">${(a.at||"").replace("T"," ").slice(0,16)}</td></tr>`).join("")
+    ||`<tr><td colspan="8" style="color:var(--tm)">Kayıt yok.</td></tr>`)+
+   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Son ${AUDIT_LIVE.length} işlem gösteriliyor. Onaycı kolonları yalnızca onay zinciri içeren işlemlerde (ör. silme/kapatma talepleri) doludur.</p>`;}
+  return head("Denetim kaydı","Hash zinciriyle korunur · yalnızca Teftiş ve İç Kontrol görür")+
   table(["Olay","Kişi","Zaman"],AUDIT.map(a=>`<tr><td style="color:${a.ok?"var(--t1)":"var(--er-fg)"}">${esc(a.ev)}</td>
-   <td style="color:var(--t2)">${esc(a.who)}</td><td class="m" style="color:var(--tm)">${a.at}</td></tr>`).join(""));
+   <td style="color:var(--t2)">${esc(a.who)}</td><td class="m" style="color:var(--tm)">${a.at}</td></tr>`).join(""));}
 
  if(v==="m.access"){
   if(LIVE_BACKEND&&ACCESS_LIVE===null&&!ACCESS_LIVE_LOADING)loadAccessLive();
@@ -3452,6 +3479,7 @@ app.addEventListener("click",async ev=>{
    reqsInboxLive:null,reqsMineLive:null,reqsDoneLive:null});
   USERS_LIVE=null;USERS_LIVE_LOADING=false;ACCESS_LIVE=null;ACCESS_LIVE_LOADING=false;MY_ACCESS=null;
   TRAIN_DOCS_LIVE=null;TRAIN_DOCS_LIVE_LOADING=false;PENDING_UPLOAD_FILE=null;PENDING_TRAIN_FILE=null;
+  AUDIT_LIVE=null;AUDIT_LIVE_LOADING=false;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}

@@ -23,6 +23,7 @@ function createApp() {
   app.use("/api/training", require("./routes/training"));
   app.use("/api/projects", require("./routes/projects"));
   app.use("/api/admin", require("./routes/admin"));
+  app.use("/api/audit", require("./routes/audit"));
 
   app.get("/api/healthz", (req, res) => res.json({ ok: true }));
 

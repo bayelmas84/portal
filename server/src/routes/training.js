@@ -31,7 +31,7 @@ router.get("/", requireRead("training"), async (req, res, next) => {
     const { rows } = await query(
       `SELECT ta.*, pd.doc_no, pd.title, pd.version
        FROM training_assignments ta JOIN policy_documents pd ON pd.id = ta.policy_document_id
-       WHERE ta.username = $1 AND pd.status = 'yayinda'
+       WHERE ta.username = $1 AND pd.status = 'yayinda' AND ta.cancelled_at IS NULL
        ORDER BY ta.due_at`,
       [req.user.username]
     );
@@ -205,8 +205,11 @@ router.get("/documents/:id/file", requireRead("training"), async (req, res, next
 // -------------------------- Eğitimi kapatma (emekliye ayırma) --------------------------
 // KURAL: yayındaki bir zorunlu okuma dokümanı hiçbir zaman doğrudan düzenlenemez veya
 // silinemez (admin dahil) — bu, tamamlamış kullanıcıların kaydını bozmamak içindir.
-// Tek yol: yükleyen kişi bir kapatma talebi açar; hem yöneticisi HEM DE Teftiş
-// onaylamadan doküman kapanmaz. İki onaydan biri reddederse talebin tamamı düşer.
+// Tek yol: yükleyen kişi bir kapatma talebi açar; SIRAYLA önce yöneticisi, SONRA
+// Teftiş onaylar (paralel değil — toplam 2 onay, ikisi de gerekli). Herhangi biri
+// reddederse talep biter. Onaylanınca doküman GERÇEK anlamda silinmez: durumu
+// "kapalı" olur ve tamamlanmamış (henüz bitirilmemiş) atamalar YUMUŞAK şekilde
+// iptal edilir (cancelled_at) — DB'den asla silinmez, tamamlanmış kayıtlara hiç dokunulmaz.
 router.post("/documents/:id/close-request", requireWrite("training"), async (req, res, next) => {
   try {
     const { reason } = req.body || {};
@@ -230,23 +233,17 @@ router.post("/documents/:id/close-request", requireWrite("training"), async (req
       "SELECT username FROM users WHERE role='inspection' AND active AND username != $1 ORDER BY username LIMIT 1",
       [req.user.username]
     );
-    if (!insp.rowCount) return res.status(409).json({ error: "Tanımlı bir Teftiş kullanıcısı yok." });
-    const inspectionUsername = insp.rows[0].username;
+    if (!insp.rowCount) return res.status(409).json({ error: "Tanımlı bir Teftiş kullanıcısı yok, kapatma talebi açılamıyor." });
 
     const subject = `${doc.doc_no} v${doc.version} — ${doc.title}`;
-    await withTransaction(async (client) => {
-      await client.query(
-        `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason)
-         VALUES ('training.close',$1,'Genel','policy_document',$2,$3,$4,$5)`,
-        [subject, doc.id, req.user.username, managerUsername, reason.trim()]
-      );
-      await client.query(
-        `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason)
-         VALUES ('training.close',$1,'Genel','policy_document',$2,$3,$4,$5)`,
-        [subject, doc.id, req.user.username, inspectionUsername, reason.trim()]
-      );
-    });
-    await audit(`Eğitim kapatma talebi açıldı: ${subject} (onaycılar: ${managerUsername}, ${inspectionUsername})`, req.user.username);
+    // Yalnızca 1. adım (yönetici) burada açılır; Teftiş adımı yönetici onaylayınca otomatik açılır.
+    await query(
+      `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason, step, total_steps)
+       VALUES ('training.close',$1,'Genel','policy_document',$2,$3,$4,$5,1,2)`,
+      [subject, doc.id, req.user.username, managerUsername, reason.trim()]
+    );
+    await audit(`Eğitim kapatma talebi açıldı (1/2 — yönetici onayı bekleniyor): ${subject}`, req.user.username,
+      true, { actionType: "silme", approvers: [managerUsername] });
     res.status(201).json({ ok: true });
   } catch (e) {
     next(e);
