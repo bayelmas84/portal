@@ -3,6 +3,7 @@ const express = require("express");
 const { query, withTransaction } = require("../db");
 const { requireRead, requireWrite } = require("../middleware/auth");
 const { audit } = require("../lib/audit");
+const { applyAdminAction } = require("../lib/adminActions");
 
 const router = express.Router();
 
@@ -190,6 +191,13 @@ router.post("/requests/:id/decide", requireRead("announcements"), async (req, re
         return;
       }
 
+      if (reqRow.kind === "admin.action") {
+        // Admin panelindeki her yazma işlemi buradan geçer: reddedilirse hiçbir şey
+        // uygulanmaz (talep zaten hiçbir zaman veritabanını değiştirmemişti).
+        // Onaylanırsa gerçek değişiklik burada, onay kaydından HEMEN SONRA uygulanır.
+        return;
+      }
+
       if (isTwoStepDelete) {
         if (decision !== "onayla") return; // reddedilirse hiçbir şey değişmez, kayıt "yayinda" kalır.
         if (!isFinalStep) {
@@ -229,6 +237,12 @@ router.post("/requests/:id/decide", requireRead("announcements"), async (req, re
         }
       }
     });
+
+    // admin.action onaylandıysa gerçek değişiklik burada, transaction'ın DIŞINDA uygulanır
+    // (applyAdminAction kendi bağlantısını kullanır; onay kaydı zaten yukarıda kesinleşti).
+    if (reqRow.kind === "admin.action" && decision === "onayla") {
+      await applyAdminAction(reqRow.target_type, reqRow.payload, reqRow.requested_by);
+    }
 
     const approvers = [req.user.username];
     await audit(

@@ -2,17 +2,33 @@
 const express = require("express");
 const { query } = require("../db");
 const { requireRead, requireWrite, requireAuth } = require("../middleware/auth");
-const { encryptSecret } = require("../lib/crypto");
 const { testDirectoryConnection } = require("../auth/ldap");
-const { getSmtpSettings, saveSmtpSettings, setSmtpActive, testSmtpConnection } = require("../lib/mailer");
+const { getSmtpSettings, testSmtpConnection } = require("../lib/mailer");
 const {
-  getAllAccess, setAccess, resetAccessToDefault,
-  getAllAvailability, setAvailability, DEFAULT_ACCESS,
+  getAllAccess, DEFAULT_ACCESS,
+  getAllAvailability,
 } = require("../lib/permissions");
 const { audit } = require("../lib/audit");
-const { config } = require("../config");
 
 const router = express.Router();
+
+// KURAL: Admin panelinde yapılan HER yazma işlemi, işlemi yapan adminin
+// yöneticisi tarafından onaylanmadan uygulanmaz. Bu fonksiyon doğrulamadan
+// SONRA çağrılır; gerçek veritabanı değişikliği yalnızca onaylanınca
+// (announcements.js -> decide -> applyAdminAction) gerçekleşir.
+async function requestAdminApproval(req, res, targetType, payload, subject) {
+  if (!req.user.manager_username) {
+    return res.status(409).json({ error: "Yöneticiniz tanımlı değil, bu işlem onaya gönderilemiyor." });
+  }
+  await query(
+    `INSERT INTO approval_requests (kind, subject, category, target_type, requested_by, approver, reason, payload, step, total_steps)
+     VALUES ('admin.action',$1,'Genel',$2,$3,$4,$5,$6,1,1)`,
+    [subject, targetType, req.user.username, req.user.manager_username, subject, JSON.stringify(payload)]
+  );
+  await audit(`Admin işlemi onaya gönderildi: ${subject}`, req.user.username, true,
+    { actionType: "diğer", approvers: [req.user.manager_username] });
+  res.status(202).json({ ok: true, pending: true, message: "Onaya gönderildi (onaycı: yöneticiniz)." });
+}
 
 router.get("/users", requireRead("m.users"), async (req, res, next) => {
   try {
@@ -33,13 +49,11 @@ router.post("/users", requireWrite("m.users"), async (req, res, next) => {
     }
     if (!name || !email || !role) return res.status(400).json({ error: "Ad, e-posta ve rol zorunlu." });
     if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
-    const { rows } = await query(
-      `INSERT INTO users (username,name,email,role,unit,title,manager_username)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING username,name,email,role,unit,title,manager_username,active`,
-      [username, name, email, role, unit || null, title || null, managerUsername || null]
-    );
-    await audit(`Kullanıcı oluşturuldu: ${username} (${role})`, req.user.username);
-    res.status(201).json({ item: rows[0] });
+    const existing = await query("SELECT 1 FROM users WHERE username=$1", [username]);
+    if (existing.rowCount) return res.status(409).json({ error: "Bu kullanıcı adı zaten var." });
+    await requestAdminApproval(req, res, "admin.user.create",
+      { username, name, email, role, unit, title, managerUsername },
+      `Yeni kullanıcı: ${username} (${role})`);
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Bu kullanıcı adı zaten var." });
     next(e);
@@ -53,18 +67,11 @@ router.put("/users/:username", requireWrite("m.users"), async (req, res, next) =
     if (req.params.username === req.user.username && role && role !== req.user.role) {
       return res.status(409).json({ error: "Kendi rolünüzü değiştiremezsiniz." });
     }
-    const { rows } = await query(
-      `UPDATE users SET
-         name=COALESCE($1,name), email=COALESCE($2,email), role=COALESCE($3,role),
-         unit=COALESCE($4,unit), title=COALESCE($5,title),
-         manager_username=COALESCE($6,manager_username), active=COALESCE($7,active)
-       WHERE username=$8
-       RETURNING username,name,email,role,unit,title,manager_username,active`,
-      [name, email, role, unit, title, managerUsername, active, req.params.username]
-    );
-    if (!rows.length) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
-    await audit(`Kullanıcı güncellendi: ${req.params.username}`, req.user.username);
-    res.json({ item: rows[0] });
+    const existing = await query("SELECT 1 FROM users WHERE username=$1", [req.params.username]);
+    if (!existing.rowCount) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+    await requestAdminApproval(req, res, "admin.user.update",
+      { username: req.params.username, name, email, role, unit, title, managerUsername, active },
+      `Kullanıcı güncelleme: ${req.params.username}`);
   } catch (e) { next(e); }
 });
 
@@ -92,17 +99,13 @@ router.put("/directory", requireWrite("m.dir"), async (req, res, next) => {
     if (active && !current.rows[0].bind_password_encrypted && !bindPassword) {
       return res.status(400).json({ error: "Etkinleştirmek için servis hesabı parolası gerekli." });
     }
-    const passwordEncrypted = bindPassword ? encryptSecret(bindPassword) : current.rows[0].bind_password_encrypted;
-    await query(
-      `UPDATE directory_settings SET url=$1, base_dn=$2, bind_dn=$3, bind_password_encrypted=$4,
-         user_filter=$5, tls=$6, default_role=$7, active=$8, updated_by=$9, updated_at=now() WHERE id=1`,
-      [url.trim(), baseDn.trim(), bindDn.trim(), passwordEncrypted, userFilter.trim(), !!tls, defaultRole || "staff", !!active, req.user.username]
-    );
-    await audit(`Dizin ayarları güncellendi (parola ${bindPassword ? "değişti" : "korundu"})`, req.user.username);
-    res.json({ ok: true });
+    await requestAdminApproval(req, res, "admin.directory",
+      { url, baseDn, bindDn, bindPassword, userFilter, tls, defaultRole, active },
+      "Dizin (AD) ayarları güncelleme");
   } catch (e) { next(e); }
 });
 
+// Bağlantı denemesi bir yazma işlemi değildir (yalnızca test kaydı düşer), onay gerekmez.
 router.post("/directory/test", requireWrite("m.dir"), async (req, res, next) => {
   try {
     const result = await testDirectoryConnection();
@@ -131,18 +134,21 @@ router.put("/smtp", requireWrite("m.smtp"), async (req, res, next) => {
     const p = Number(port);
     if (!Number.isInteger(p) || p < 1 || p > 65535) return res.status(400).json({ error: "Port 1-65535 arasında olmalı." });
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(fromAddr || ""))) return res.status(400).json({ error: "Geçerli bir gönderen adresi girin." });
-    await saveSmtpSettings({ host, port: p, fromAddr, username: username || "", password, tls: !!tls, updatedBy: req.user.username });
-    res.json({ ok: true });
+    await requestAdminApproval(req, res, "admin.smtp",
+      { host, port: p, fromAddr, username, password, tls },
+      "SMTP ayarları güncelleme");
   } catch (e) { next(e); }
 });
 
 router.post("/smtp/active", requireWrite("m.smtp"), async (req, res, next) => {
   try {
-    await setSmtpActive(!!req.body.active, req.user.username);
-    res.json({ ok: true });
+    await requestAdminApproval(req, res, "admin.smtp.active",
+      { active: !!req.body.active },
+      `SMTP ${req.body.active ? "etkinleştirme" : "devre dışı bırakma"}`);
   } catch (e) { next(e); }
 });
 
+// Bağlantı denemesi bir yazma işlemi değildir, onay gerekmez.
 router.post("/smtp/test", requireWrite("m.smtp"), async (req, res, next) => {
   try {
     const result = await testSmtpConnection();
@@ -165,14 +171,8 @@ router.put("/brand", requireWrite("m.brand"), async (req, res, next) => {
   try {
     const allowed = ["company", "companyShort", "product", "slogan", "loginTitle", "loginHint", "footer", "accent"];
     const entries = Object.entries(req.body || {}).filter(([k]) => allowed.includes(k));
-    for (const [k, v] of entries) {
-      await query(
-        "INSERT INTO brand_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2",
-        [k, String(v)]
-      );
-    }
-    await audit(`Marka ve metinler güncellendi: ${entries.map(([k]) => k).join(", ") || "değişiklik yok"}`, req.user.username);
-    res.json({ ok: true });
+    await requestAdminApproval(req, res, "admin.brand", req.body || {},
+      `Marka ve metinler güncelleme: ${entries.map(([k]) => k).join(", ") || "değişiklik yok"}`);
   } catch (e) { next(e); }
 });
 
@@ -191,21 +191,17 @@ router.put("/access", requireWrite("m.access"), async (req, res, next) => {
     const { role, screenKey, level } = req.body || {};
     if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
     if (!["none", "read", "write"].includes(level)) return res.status(400).json({ error: "Geçersiz seviye." });
-    // Admin'in kendi admin panel erişimini kaldırması kilitlenmeye yol açar; engellenir.
     if (role === "admin" && ["m.access", "m.avail"].includes(screenKey) && level === "none") {
       return res.status(409).json({ error: "Admin rolünün bu ekranlara erişimi kaldırılamaz (kilitlenme riski)." });
     }
-    await setAccess(role, screenKey, level);
-    await audit(`Ekran yetkisi değişti: ${role} / ${screenKey} -> ${level}`, req.user.username);
-    res.json({ ok: true });
+    await requestAdminApproval(req, res, "admin.access", { role, screenKey, level },
+      `Ekran yetkisi değişikliği: ${role} / ${screenKey} -> ${level}`);
   } catch (e) { next(e); }
 });
 
 router.post("/access/reset", requireWrite("m.access"), async (req, res, next) => {
   try {
-    await resetAccessToDefault();
-    await audit("Ekran yetkileri varsayılana döndürüldü", req.user.username);
-    res.json({ ok: true });
+    await requestAdminApproval(req, res, "admin.access.reset", {}, "Ekran yetkilerini varsayılana döndürme");
   } catch (e) { next(e); }
 });
 
@@ -222,12 +218,14 @@ router.get("/availability", requireAuth, async (req, res, next) => {
 router.put("/availability", requireWrite("m.avail"), async (req, res, next) => {
   try {
     const { screenKey, status } = req.body || {};
-    if (["admin", "m.avail", "m.access"].includes(screenKey) && status !== "acik") {
+    // Kilitlenme koruması: Admin Panel, ekran yönetimi/yetkileri VE onay kutusu asla
+    // kapatılamaz. Aksi halde admin işlemleri onaya gitmeye devam ederken kimse bu
+    // onayları görüp verecek bir ekrana erişemez hale gelir (sistem kilitlenir).
+    if (["admin", "m.avail", "m.access", "approvals", "p.in", "p.my", "p.done"].includes(screenKey) && status !== "acik") {
       return res.status(409).json({ error: "Admin Panel ve bu iki ekran kapatılamaz (kilitlenme riski)." });
     }
-    await setAvailability(screenKey, status);
-    await audit(`Ekran durumu değişti: ${screenKey} -> ${status}`, req.user.username);
-    res.json({ ok: true });
+    await requestAdminApproval(req, res, "admin.availability", { screenKey, status },
+      `Ekran durumu değişikliği: ${screenKey} -> ${status}`);
   } catch (e) { next(e); }
 });
 

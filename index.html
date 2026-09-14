@@ -578,7 +578,7 @@ const ACC_DEFAULT=JSON.parse(JSON.stringify(ACC));
 /* Ekran yönetimi — rolden bağımsız açık / bakımda / kapalı durumu */
 /* Varsayılan durum: yalnızca Proje Yönetimi, Admin Panel ve Kısayollar açık.
    Diğer modüller kapalı gelir; Admin Panel > Ekran yönetimi'nden açılır. */
-const DEFAULT_OPEN=["delivery","admin","shortcuts"];
+const DEFAULT_OPEN=["delivery","admin","approvals","shortcuts"];
 let AVAIL=(function(){const a={};
  MODULES.forEach(m=>{if(!DEFAULT_OPEN.includes(m[0]))a[m[0]]="kapali";});
  Object.keys(SCREENS).forEach(mk=>{if(!DEFAULT_OPEN.includes(mk))
@@ -779,7 +779,7 @@ async function loadUsersLive(){
  USERS_LIVE_LOADING=false;render();}
 let PENDING_TRAIN_FILE=null;
 let TRAIN_DOCS_LIVE=null,TRAIN_DOCS_LIVE_LOADING=false;
-const REQ_KIND_LABEL={"ann.publish":"Duyuru yayınlama","ann.delete":"Duyuru silme","training.close":"Eğitim kapatma"};
+const REQ_KIND_LABEL={"ann.publish":"Duyuru yayınlama","ann.delete":"Duyuru silme","training.close":"Eğitim kapatma","admin.action":"Admin işlemi"};
 const REQ_ST_MAP={bekliyor:"bekliyor",onaylandi:"onaylandı",reddedildi:"reddedildi",geri_cekildi:"geri çekildi"};
 function mapReqLive(r){
  const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
@@ -3497,8 +3497,8 @@ app.addEventListener("click",async ev=>{
    const cur=(ACCESS_LIVE[r]||{})[key]||"none";
    const nx=cur==="none"?R:cur===R?W:"none";
    try{
-    await api("PUT","/api/admin/access",{role:r,screenKey:key,level:nx});
-    ACCESS_LIVE=null;toast("Yetki güncellendi: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"yetki yok":nx));render();
+    const data=await api("PUT","/api/admin/access",{role:r,screenKey:key,level:nx});
+    toast(data.message||"Onaya gönderildi.");render();
    }catch(e){toast(e.message,1);}
    return;}
   const cur=(ACC[r]||{})[key]||"none";
@@ -3506,28 +3506,42 @@ app.addEventListener("click",async ev=>{
   if(nx==="none")delete ACC[r][key];else ACC[r][key]=nx;
   audit("Ekran yetkisi değişti: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"yetki yok":nx));render();return;}
  if(k==="avail"){const key=p[1],val=p[2];
-  if(key==="admin"||key==="m.avail"){toast("Admin Panel ve Ekran yönetimi kapatılamaz.",1);return;}
-  if(val==="acik")delete AVAIL[key];else AVAIL[key]=val;
+  if(["admin","m.avail","m.access","approvals","p.in","p.my","p.done"].includes(key)){
+   toast("Admin Panel, Ekran yönetimi/yetkileri ve Onay kutusu kapatılamaz (kilitlenme riski).",1);return;}
   if(LIVE_BACKEND&&BACKEND_MANAGED_KEYS.includes(key)){
-   try{await api("PUT","/api/admin/availability",{screenKey:key,status:val});}
-   catch(e){toast(e.message,1);return;}}
+   try{const data=await api("PUT","/api/admin/availability",{screenKey:key,status:val});
+    toast(data.message||"Onaya gönderildi.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  if(val==="acik")delete AVAIL[key];else AVAIL[key]=val;
   audit("Ekran durumu değişti: "+key+" → "+AV_LABEL[val]);
   /* kapanan ekranda duruyorsanız ana ekrana alınırsınız */
   if((S.mod===key||S.scr===key)&&val!=="acik"){S.view="home";}
   toast(key+" → "+AV_LABEL[val]);return;}
  if(k==="availReset"){
   if(LIVE_BACKEND){
-   try{await Promise.all(BACKEND_MANAGED_KEYS.map(key=>api("PUT","/api/admin/availability",{screenKey:key,status:"acik"})));}
-   catch(e){toast(e.message,1);}}
+   try{
+    await Promise.all(BACKEND_MANAGED_KEYS.map(key=>api("PUT","/api/admin/availability",{screenKey:key,status:"acik"})));
+    toast("Onaya gönderildi — yöneticiniz onaylayınca tüm ekranlar açılacak.");render();
+   }catch(e){toast(e.message,1);}
+   return;}
   AVAIL={};audit("Tüm ekranlar açıldı");toast("Tüm modül ve ekranlar açıldı.");return;}
- if(k==="availDefault"){AVAIL={};
+ if(k==="availDefault"){
+  if(LIVE_BACKEND){
+   const target={};
+   MODULES.forEach(m=>{if(!DEFAULT_OPEN.includes(m[0]))target[m[0]]="kapali";});
+   Object.keys(SCREENS).forEach(mk=>{if(!DEFAULT_OPEN.includes(mk))
+     (SCREENS[mk]||[]).forEach(x=>{target[x[0]]="kapali";});});
+   try{
+    await Promise.all(BACKEND_MANAGED_KEYS.map(key=>
+     api("PUT","/api/admin/availability",{screenKey:key,status:(key==="admin"||key==="m.avail")?"acik":(target[key]||"acik")})));
+    toast("Onaya gönderildi — yöneticiniz onaylayınca varsayılana dönülecek.");render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  AVAIL={};
   MODULES.forEach(m=>{if(!DEFAULT_OPEN.includes(m[0]))AVAIL[m[0]]="kapali";});
   Object.keys(SCREENS).forEach(mk=>{if(!DEFAULT_OPEN.includes(mk))
     (SCREENS[mk]||[]).forEach(x=>{AVAIL[x[0]]="kapali";});});
-  if(LIVE_BACKEND){
-   try{await Promise.all(BACKEND_MANAGED_KEYS.map(key=>
-    api("PUT","/api/admin/availability",{screenKey:key,status:(key==="admin"||key==="m.avail")?"acik":(AVAIL[key]||"acik")})));}
-   catch(e){toast(e.message,1);}}
   audit("Ekran durumları kurulum varsayılanına döndürüldü");
   toast("Varsayılana dönüldü: yalnızca Proje Yönetimi, Admin Panel ve Kısayollar açık.");return;}
  if(k==="dirRole"){DIR.defaultRole=p[1];render();return;}
@@ -3602,7 +3616,7 @@ app.addEventListener("click",async ev=>{
   render();return;}
  if(k==="accReset"){
   if(LIVE_BACKEND){
-   try{await api("POST","/api/admin/access/reset",{});ACCESS_LIVE=null;toast("Tüm rollerin ekran yetkileri varsayılana döndürüldü.");render();}
+   try{const data=await api("POST","/api/admin/access/reset",{});toast(data.message||"Onaya gönderildi.");render();}
    catch(e){toast(e.message,1);}
    return;}
   Object.keys(ACC_DEFAULT).forEach(r=>{
@@ -3865,28 +3879,35 @@ app.addEventListener("click",async ev=>{
   toast("Görev silindi.");return;}
 
  if(k==="brAccent"){
-  BRAND.accent=decodeURIComponent(p[1]);
-  if(LIVE_BACKEND){try{await api("PUT","/api/admin/brand",{accent:BRAND.accent});}catch(e){toast(e.message,1);}}
-  render();return;}
- if(k==="brSave"){const changed=[];const before=BRAND.company;
-  BRAND_FIELDS.forEach(([key])=>{const el=document.getElementById("br_"+key);
-   if(el&&el.value.trim()&&el.value.trim()!==BRAND[key]){BRAND[key]=el.value.trim();changed.push(key);}});
+  if(LIVE_BACKEND){
+   try{const data=await api("PUT","/api/admin/brand",{accent:decodeURIComponent(p[1])});toast(data.message||"Onaya gönderildi.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  BRAND.accent=decodeURIComponent(p[1]);render();return;}
+ if(k==="brSave"){
+  const values={};BRAND_FIELDS.forEach(([key])=>{const el=document.getElementById("br_"+key);
+   if(el&&el.value.trim())values[key]=el.value.trim();});
+  if(LIVE_BACKEND){
+   try{const data=await api("PUT","/api/admin/brand",values);toast(data.message||"Onaya gönderildi.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  const changed=[];const before=BRAND.company;
+  Object.entries(values).forEach(([key,v])=>{if(v!==BRAND[key]){BRAND[key]=v;changed.push(key);}});
   /* Şirket adı değiştiyse ve alt bilgi elle düzenlenmediyse, alt bilgi de yeni ada göre üretilir. */
   if(changed.includes("company")&&!changed.includes("footer")&&BRAND.footer.includes(before)){
    BRAND.footer=BRAND.footer.split(before).join(BRAND.company);changed.push("footer");}
-  if(LIVE_BACKEND&&changed.length){
-   const payload={};changed.forEach(k2=>{payload[k2]=BRAND[k2];});
-   try{await api("PUT","/api/admin/brand",payload);}catch(e){toast(e.message,1);return;}}
   audit("Marka ve metinler güncellendi"+(changed.length?": "+changed.join(", "):""));
   toast(changed.length?"Kaydedildi — "+changed.length+" alan güncellendi.":"Değişiklik yok.");return;}
- if(k==="brReset"){BRAND={company:"Tera Yatırım Menkul Değerler A.Ş.",companyShort:"Tera Yatırım",
+ if(k==="brReset"){
+  const defaults={company:"Tera Yatırım Menkul Değerler A.Ş.",companyShort:"Tera Yatırım",
    product:"Tera Bir",slogan:"Her şey bir arada, tek bir yerde.",
-   loginTitle:"Oturum açın",loginHint:"Kurum hesabınızla devam edin.",homeGreetSuffix:"",
-   footer:"© "+new Date().getFullYear()+" Tera Yatırım Menkul Değerler A.Ş.",
-   accent:"#B8894A",navy:"#0B1F48"};
-  if(LIVE_BACKEND){try{await api("PUT","/api/admin/brand",{company:BRAND.company,companyShort:BRAND.companyShort,
-   product:BRAND.product,slogan:BRAND.slogan,loginTitle:BRAND.loginTitle,loginHint:BRAND.loginHint,
-   footer:BRAND.footer,accent:BRAND.accent});}catch(e){toast(e.message,1);}}
+   loginTitle:"Oturum açın",loginHint:"Kurum hesabınızla devam edin.",
+   footer:"© "+new Date().getFullYear()+" Tera Yatırım Menkul Değerler A.Ş.",accent:"#B8894A"};
+  if(LIVE_BACKEND){
+   try{const data=await api("PUT","/api/admin/brand",defaults);toast(data.message||"Onaya gönderildi.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  BRAND={...defaults,homeGreetSuffix:"",navy:"#0B1F48"};
   audit("Marka ayarları varsayılana döndürüldü");toast("Varsayılana dönüldü.");return;}
  if(k==="docProj"){S.docProj=p[1];render();return;}
  if(k==="pdocView"){S.docView2={k:p[1],id:+p[2]};S.mod="delivery";S.scr="d.docview";render();return;}
@@ -4436,8 +4457,8 @@ app.addEventListener("click",async ev=>{
    const rec=(USERS_LIVE||[]).find(x=>x.u===p[2]);
    if(!rec)return;
    try{
-    await api("PUT","/api/admin/users/"+encodeURIComponent(p[2]),{active:!rec.on});
-    USERS_LIVE=null;toast((rec.n||p[2])+(rec.on?" pasife alındı.":" aktif edildi."));render();
+    const data=await api("PUT","/api/admin/users/"+encodeURIComponent(p[2]),{active:!rec.on});
+    toast(data.message||"Onaya gönderildi.");render();
    }catch(e){toast(e.message,1);}
    return;}
   const src={user:USERS,unit:UNITS,title:TITLES,short:SHORTS}[p[1]],rec=src[+p[2]];
@@ -4466,15 +4487,15 @@ app.addEventListener("click",async ev=>{
    const unitCode=(UNITS.find(x=>x.n===f.b.trim())||{}).k||null;
    const titleCode=(TITLES.find(x=>x.n===f.title2)||{}).k||null;
    try{
-    if(d.idx===undefined){
-     const username=f.a.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z\s]/g,"").trim().replace(/\s+/g,".");
-     await api("POST","/api/admin/users",{username,name:f.a.trim(),
-      email:username+"@terayatirim.com.tr",role:f.role||"staff",unit:unitCode,title:titleCode});
-    }else{
-     await api("PUT","/api/admin/users/"+encodeURIComponent(d.idx),{name:f.a.trim(),unit:unitCode,title:titleCode,
-      role:f.role||undefined,active:!!f.on});
-    }
-    USERS_LIVE=null;S.dlg=null;S.f={};toast("Kayıt kaydedildi.");render();
+    const data=await(d.idx===undefined
+     ?(async()=>{
+       const username=f.a.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z\s]/g,"").trim().replace(/\s+/g,".");
+       return api("POST","/api/admin/users",{username,name:f.a.trim(),
+        email:username+"@terayatirim.com.tr",role:f.role||"staff",unit:unitCode,title:titleCode});
+      })()
+     :api("PUT","/api/admin/users/"+encodeURIComponent(d.idx),{name:f.a.trim(),unit:unitCode,title:titleCode,
+       role:f.role||undefined,active:!!f.on}));
+    S.dlg=null;S.f={};toast(data.message||"Onaya gönderildi.");render();
    }catch(e){toast(e.message,1);}
    return;}
   if(d.kind==="user"){if(d.idx===undefined)
