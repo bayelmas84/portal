@@ -36,6 +36,7 @@ function createApp() {
   app.use("/api/admin", require("./routes/admin"));
   app.use("/api/audit", require("./routes/audit"));
   app.use("/api/notifications", require("./routes/notifications"));
+  app.use("/api/search", require("./routes/search"));
 
   app.get("/api/healthz", (req, res) => res.json({ ok: true }));
 

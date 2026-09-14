@@ -1723,7 +1723,8 @@ function screenView(){
     `<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
    const TYPE_LABEL={ekleme:"Ekleme",düzenleme:"Düzenleme",silme:"Silme",onay:"Onay",red:"Ret",oturum:"Oturum",diğer:"Diğer"};
    const TYPE_TONE={ekleme:"ok",düzenleme:"wr",silme:"er",onay:"ok",red:"er",oturum:"",diğer:""};
-   return head("Denetim Kaydı","Uygulama genelindeki tüm işlemler (admin dahil) · yalnızca Teftiş ve İç Kontrol görür · canlı backend")+
+   return head("Denetim Kaydı","Uygulama genelindeki tüm işlemler (admin dahil) · yalnızca Teftiş ve İç Kontrol görür · canlı backend",
+     `<button class="b" data-a="auditExport">CSV indir</button>`)+
    table(["İşlem","Kullanıcı","Birim","1. Onaycı","2. Onaycı","3. Onaycı","İşlem Tipi","Tarih / Saat"],AUDIT_LIVE.map(a=>`<tr>
     <td style="color:${a.ok?"var(--t1)":"var(--er-fg)"}">${esc(a.event)}</td>
     <td style="color:var(--t2)">${esc(a.who_name||a.who)}</td>
@@ -3312,6 +3313,19 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b ${ok2?"g":"off"}" data-a="${ok2?"bisave":"nf"}">Kaydet</button></div>`);}
+ if(d.type==="search"){
+  const groups={};(S.searchResults||[]).forEach(r=>{(groups[r.group]=groups[r.group]||[]).push(r);});
+  return wrap(`<div style="font-size:15px">Ara</div>
+   <input id="fSearchQ" value="${esc(f.q||"")}" placeholder="Duyuru, doküman veya proje ara…" style="margin-top:10px">
+   <div style="max-height:320px;overflow:auto;margin-top:10px">
+    ${Object.keys(groups).length?Object.entries(groups).map(([g,items])=>`
+     <div class="lbl" style="margin-top:10px">${esc(g)}</div>
+     ${items.map(r=>`<div class="card" style="margin-bottom:6px;padding:9px 12px">
+      <div style="font-size:12.5px">${esc(r.label)}</div>
+      <div class="m" style="color:var(--tm)">${esc(r.meta||"")}</div></div>`).join("")}`).join("")
+     :`<p class="m" style="color:var(--tm);margin-top:10px">${(f.q||"").trim().length>=2?"Sonuç bulunamadı.":"En az 2 karakter girin."}</p>`}
+   </div>
+   <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="rule"){
   return wrap(`<div style="font-size:15px">Onay kuralı: ${esc(d.category)}</div>
    <div class="lbl" style="margin-top:12px">Onaycı</div>
@@ -3474,6 +3488,7 @@ function refreshDlg(){const v=validate();if(!v)return;
 function railView(){const pending=inbox().length;
  return `<nav class="nv" aria-label="Modüller">
   <button class="rail ${S.view==="home"?"on":""}" data-a="home" title="Ana ekran" aria-label="Ana ekran">${ic("home",18)}</button>
+  ${LIVE_BACKEND?`<button class="rail" data-a="searchOpen" title="Ara" aria-label="Ara">${ic("search",18)}</button>`:""}
   <div style="width:26px;height:1px;background:rgba(255,255,255,.14);margin:3px 0"></div>
   ${MODULES.filter(m=>can(m[0])).map(m=>`<button class="rail ${S.view==="app"&&S.mod===m[0]?"on":""}" data-a="mod:${m[0]}" title="${m[1]}" aria-label="${m[1]}">
    ${ic(m[2],18)}${m[0]==="approvals"&&pending?`<span class="badge">${pending}</span>`:""}</button>`).join("")}
@@ -3563,6 +3578,16 @@ function afterRender(){
  if(mtProjFilterSel)mtProjFilterSel.onchange=e=>{S.mtProj=e.target.value;S.meetingsLive=null;render();};
  const pendFilterSel=document.getElementById("fPendFilter");
  if(pendFilterSel)pendFilterSel.onchange=e=>{S.pendingFilter=e.target.value;render();};
+ const searchQEl=document.getElementById("fSearchQ");
+ if(searchQEl){searchQEl.focus();
+  const val=searchQEl.value;searchQEl.selectionStart=searchQEl.selectionEnd=val.length;
+  searchQEl.oninput=e=>{S.f.q=e.target.value;clearTimeout(window.__searchDebounce);
+   window.__searchDebounce=setTimeout(async()=>{
+    const q=(S.f.q||"").trim();
+    if(q.length<2){S.searchResults=[];render();return;}
+    try{const data=await api("GET","/api/search?q="+encodeURIComponent(q));S.searchResults=data.items;render();}
+    catch(err){/* sessizce yut */}
+   },300);};}
  const mtProjSel=document.getElementById("fMtProjSel");
  if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
   S.f.items=S.f.projKey&&S.f.projKey!=="OTHER"
@@ -4695,6 +4720,14 @@ app.addEventListener("click",async ev=>{
  if(k==="tplDelOk"){
   try{const data=await api("DELETE","/api/notifications/"+p[1]);S.dlg=null;toast(data.message||"Onaya gönderildi.");render();}
   catch(e){toast(e.message,1);}
+  return;}
+ if(k==="auditExport"){window.open(API_BASE+"/api/audit/export.csv","_blank");return;}
+ if(k==="searchOpen"){S.f={q:""};S.dlg={type:"search"};S.searchResults=[];render();return;}
+ if(k==="searchGo"){
+  const q=(S.f.q||"").trim();
+  if(q.length<2){S.searchResults=[];render();return;}
+  try{const data=await api("GET","/api/search?q="+encodeURIComponent(q));S.searchResults=data.items;render();}
+  catch(e){/* sessizce yut, arama kritik degil */}
   return;}
  if(k==="ruleEdit"){S.f={role:""};S.dlg={type:"rule",category:decodeURIComponent(p[1])};render();return;}
  if(k==="ruleSave"){
