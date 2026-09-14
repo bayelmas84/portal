@@ -836,7 +836,7 @@ const prefersDark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: d
 let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.list",
  dlg:null,f:{},ann:null,req:null,dec:null,pop:null,proj:0,onlyMine:false,filter:"",drill:null,dirF:null,execFilter:null,execUnit:null,drag:null,docFull:false,
  read:null,readSrc:null,docView:null,page:0,dwell:[],timer:null,quiz:null,answers:{},result:null,toast:null,gate:true,
- meetingsLive:null,meetingsLiveLoading:null};
+ meetingsLive:null,meetingsLiveLoading:null,annLive:null,annLiveLoading:null};
 
 /* --------------------------- gerçek backend istemcisi ---------------------------
    API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
@@ -866,6 +866,18 @@ async function loadMeetingsLive(projFilter){
    items:m.items.map(it=>({id:String(it.id),text:it.text,status:it.status,carriedFrom:!!it.carried_from_meeting_id}))}));
  }catch(e){toast("Toplantı notları yüklenemedi: "+e.message,1);S.meetingsLive=[];}
  S.meetingsLiveLoading=null;render();}
+const ANN_STATUS_MAP={yayinda:"yayında",onayda:"onayda",geri_cekildi:"geri çekildi"};
+async function loadAnnouncementsLive(){
+ S.annLiveLoading=true;
+ try{
+  const data=await api("GET","/api/announcements");
+  S.annLive=data.items.map(a=>({
+   id:+a.id,t:a.title,body:a.body,cat:a.category,crit:a.criticality,
+   until:(a.valid_until||"").slice(0,10),pop:!!a.popup,st:ANN_STATUS_MAP[a.status]||a.status,
+   by:(function(){const u=USERS.find(x=>x.u===a.created_by);return u?u.n:a.created_by;})(),
+   at:(a.created_at||"").replace("T"," ").slice(0,16),readByMe:!!a.read_by_me}));
+ }catch(e){toast("Duyurular yüklenemedi: "+e.message,1);S.annLive=[];}
+ S.annLiveLoading=false;render();}
 async function api(method,path,body,isForm){
  const opts={method,credentials:"include",headers:{}};
  if(method!=="GET"&&CSRF_TOKEN)opts.headers["X-CSRF-Token"]=CSRF_TOKEN;
@@ -911,7 +923,9 @@ const myTrain=()=>(TRAIN[S.me.u]||TRAIN["*"]).filter(t=>{
  const d=DOCS.find(x=>x.no===t.no);return !d||d.st==="yayında";});
 const myDone=()=>DONE[S.me.u]||[];
 const overdue=()=>myTrain().filter(d=>d.over);
-const isAnnRead=id=>(annRead[S.me.u]||[]).includes(id);
+const isAnnRead=id=>{
+ if(LIVE_BACKEND){const a=(S.annLive||[]).find(x=>x.id===id);return a?a.readByMe:false;}
+ return (annRead[S.me.u]||[]).includes(id);};
 const seenPop=id=>(popSeen[S.me.u]||[]).includes(id);
 const markAnn=id=>{annRead[S.me.u]=[...new Set([...(annRead[S.me.u]||[]),id])];popSeen[S.me.u]=[...new Set([...(popSeen[S.me.u]||[]),id])];};
 const dKey=d=>d.no+"@"+d.v;
@@ -1122,9 +1136,10 @@ function reqView(){
 
 /* ------------------------------ duyuru detayı ----------------------------- */
 function annView(){
- const a=ANN.find(x=>x.id===S.ann);if(!a){S.ann=null;return screenView();}
- const delAny=pendingOn(a.id,"del");        /* akış kontrolü */
- const del=visiblePendingOn(a.id,"del");   /* gösterim: yalnızca ilgili taraflar */
+ const annSrc=LIVE_BACKEND?(S.annLive||[]):ANN;
+ const a=annSrc.find(x=>x.id===S.ann);if(!a){S.ann=null;return screenView();}
+ const delAny=LIVE_BACKEND?false:pendingOn(a.id,"del");        /* akış kontrolü */
+ const del=LIVE_BACKEND?false:visiblePendingOn(a.id,"del");   /* gösterim: yalnızca ilgili taraflar */
  return `${head(esc(a.t),null,`<button class="b" data-a="annClose">Kapat</button>`)}
  <div style="display:flex;gap:7px;margin:-6px 0 13px;flex-wrap:wrap">${catPill(a.cat)}${pill(a.crit)}
   ${a.st!=="yayında"?pill(a.st,"wr"):""}${del?pill("silme onayında","wr"):""}
@@ -1134,11 +1149,11 @@ function annView(){
  <div style="display:flex;gap:9px;margin-top:14px;align-items:center;flex-wrap:wrap;max-width:660px">
   ${a.st==="yayında"?(isAnnRead(a.id)?pill("okundu","ok"):`<button class="b g" data-a="annRead:${a.id}">Okudum</button>`):""}
   <span style="flex:1"></span>
-  ${cw("a.edit")&&a.st==="yayında"?`<button class="b" data-a="annEdit:${a.id}">Düzenle</button>`:""}
-  ${annPending(a)&&canEditPending(a)?`<button class="b" data-a="annEdit:${a.id}">Düzenle</button>
+  ${!LIVE_BACKEND&&cw("a.edit")&&a.st==="yayında"?`<button class="b" data-a="annEdit:${a.id}">Düzenle</button>`:""}
+  ${!LIVE_BACKEND&&annPending(a)&&canEditPending(a)?`<button class="b" data-a="annEdit:${a.id}">Düzenle</button>
    <button class="b d" data-a="annCancel:${a.id}">Talebi iptal et</button>`:""}
-  ${annPending(a)&&!canEditPending(a)&&isInsp()?pill("onayı Teftiş verir","wr"):""}
-  ${cw("a.del")&&a.st==="yayında"&&!delAny&&(a.by===S.me.n||isInsp())
+  ${!LIVE_BACKEND&&annPending(a)&&!canEditPending(a)&&isInsp()?pill("onayı Teftiş verir","wr"):""}
+  ${!LIVE_BACKEND&&cw("a.del")&&a.st==="yayında"&&!delAny&&(a.by===S.me.n||isInsp())
     ?`<button class="b d" data-a="delAsk:${a.id}">Duyuruyu sil</button>`:""}
   ${del?`<span class="m" style="color:var(--wr-fg)">silme talebi onay bekliyor</span>`:""}</div>`;}
 
@@ -1396,27 +1411,30 @@ function screenView(){
 
  /* ---- duyurular ---- */
  if(v==="a.list"){
-  const live=ANN.filter(a=>a.st==="yayında");
+  if(LIVE_BACKEND&&S.annLive===null&&!S.annLiveLoading)loadAnnouncementsLive();
+  const annSource=LIVE_BACKEND?(S.annLive||[]):ANN;
+  const live=annSource.filter(a=>a.st==="yayında");
   const unread=live.filter(a=>!isAnnRead(a.id)),read=live.filter(a=>isAnnRead(a.id));
-  const waiting=ANN.filter(a=>annPending(a)&&seesPending(a));
+  const waiting=LIVE_BACKEND?[]:ANN.filter(a=>annPending(a)&&seesPending(a));
   const row=a=>`<div class="card" style="margin-bottom:10px;max-width:720px">
    <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
     ${a.pop?`${ic("bell-ringing",16,"color:var(--gold)")}`:""}
     <span style="font-size:13px;flex:1">${esc(a.t)}</span>${catPill(a.cat)}${pill(a.crit)}
-    ${a.st!=="yayında"?pill(a.st,"wr"):""}${visiblePendingOn(a.id,"del")?pill("silme onayında","wr"):""}
+    ${a.st!=="yayında"?pill(a.st,"wr"):""}${!LIVE_BACKEND&&visiblePendingOn(a.id,"del")?pill("silme onayında","wr"):""}
     ${isAnnRead(a.id)?pill("okundu","ok"):""}</div>
    <div style="font-size:12px;color:var(--t2);margin-top:7px;line-height:1.6">${esc(a.body.split("\n\n")[0].slice(0,120))}…</div>
    <div style="display:flex;gap:9px;align-items:center;margin-top:10px">
     <span class="m" style="color:var(--tm);flex:1">${esc(a.by)} · geçerlilik ${a.until}</span>
     <button class="b s p" data-a="openAnn:${a.id}">Duyuruya git</button></div></div>`;
-  return head("Duyurular","Düzenleme ve silme duyurunun içinden yapılır",
+  return head("Duyurular","Düzenleme ve silme duyurunun içinden yapılır"+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
    cw("a.new")?`<button class="b p" data-a="annNew">Duyuru gir</button>`:"")+
+  (LIVE_BACKEND&&S.annLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
   (waiting.length?`<div class="lbl">Onay bekleyenler (${waiting.length})</div>
    <p style="font-size:11.5px;color:var(--tm);margin:-4px 0 9px">Yalnızca girene ve Teftiş'e görünür.</p>${waiting.map(row).join("")}`:"")+
   `<div class="lbl" style="margin-top:${waiting.length?"14px":"0"}">Okunmamış (${unread.length})</div>
    ${unread.map(row).join("")||`<p style="font-size:12px;color:var(--tm)">Okunmamış duyuru yok.</p>`}
    <div class="lbl" style="margin-top:14px">Okunanlar (${read.length})</div>
-   ${read.map(row).join("")||`<p style="font-size:12px;color:var(--tm)">Yok.</p>`}`;}
+   ${read.map(row).join("")||`<p style="font-size:12px;color:var(--tm)">Yok.</p>`}`);}
 
  /* ---- eğitimler ---- */
  if(v==="t.un"){const list=myTrain();
@@ -3385,7 +3403,14 @@ app.addEventListener("click",async ev=>{
  /* duyuru */
  if(k==="openAnn"){S.ann=+p[1];S.req=null;S.mod="announce";S.scr="a.list";render();return;}
  if(k==="annClose"){S.ann=null;render();return;}
- if(k==="annRead"){markAnn(+p[1]);toast("Duyuru okundu olarak işaretlendi.");return;}
+ if(k==="annRead"){
+  if(LIVE_BACKEND){
+   try{await api("POST","/api/announcements/"+p[1]+"/read");
+    const a=(S.annLive||[]).find(x=>x.id===+p[1]);if(a)a.readByMe=true;
+    toast("Duyuru okundu olarak işaretlendi.");render();}
+   catch(e){toast("İşaretlenemedi: "+e.message,1);}
+   return;}
+  markAnn(+p[1]);toast("Duyuru okundu olarak işaretlendi.");return;}
  if(k==="annNew"){S.f={cat:"Genel",crit:"",pop:0};S.dlg={type:"ann"};render();return;}
  if(k==="annEdit"){const a=ANN.find(x=>x.id===+p[1]);
   if(a.st==="yayında"&&!cw("a.edit")){toast("Yayınlanmış duyuruyu yalnızca Teftiş değiştirebilir.",1);return;}
@@ -3397,7 +3422,16 @@ app.addEventListener("click",async ev=>{
  if(k==="setOn"){S.f.on=S.f.on?0:1;render();return;}
  if(k==="setRole"){S.f.role=p[1];render();return;}
  if(k==="setTitle"){S.f.title2=dec(p[1]);render();return;}
- if(k==="annSend"){const id=nextAnn++,ap=approverFor(S.f.cat);
+ if(k==="annSend"){
+  if(LIVE_BACKEND){
+   try{
+    await api("POST","/api/announcements",{title:S.f.title.trim(),body:S.f.body.trim(),
+     category:S.f.cat,criticality:S.f.crit,validUntil:S.f.until||null,popup:!!S.f.pop});
+    S.dlg=null;S.f={};S.annLive=null;
+    toast("Duyuru onaya gönderildi; onaylanana kadar yayına çıkmaz.");render();
+   }catch(e){toast("Gönderilemedi: "+e.message,1);}
+   return;}
+  const id=nextAnn++,ap=approverFor(S.f.cat);
   ANN.unshift({id,t:S.f.title.trim(),body:S.f.body.trim(),by:S.me.n,cat:S.f.cat,crit:S.f.crit,
    until:S.f.until,pop:S.f.pop?1:0,st:"onayda",at:now()});
   REQS.unshift({id:nextReq++,kind:"pub",type:"Duyuru yayınlama",subj:S.f.title.trim(),cat:S.f.cat,by:S.me.n,appr:ap,
@@ -3405,7 +3439,9 @@ app.addEventListener("click",async ev=>{
   notify("ann.submit","Onayınıza düşen duyuru: "+S.f.title.trim(),{req:S.me.n,appr:ap});
   audit("Duyuru onaya gönderildi ("+S.f.cat+"): "+S.f.title.trim());
   S.dlg=null;S.f={};toast("Duyuru "+ap+" onayına gönderildi; onaylanana kadar yayına çıkmaz.");return;}
- if(k==="annSave"){const a=ANN.find(x=>x.id===S.dlg.id);
+ if(k==="annSave"){
+  if(LIVE_BACKEND){toast("Yayınlanmış duyuruyu düzenleme bu sürümde henüz desteklenmiyor.",1);return;}
+  const a=ANN.find(x=>x.id===S.dlg.id);
   Object.assign(a,{t:S.f.title.trim(),body:S.f.body.trim(),cat:S.f.cat,crit:S.f.crit,until:S.f.until,pop:S.f.pop?1:0});
   if(a.st!=="yayında"){const r=REQS.find(x=>x.target===a.id&&x.st==="bekliyor");
    if(r){r.subj=a.t;r.cat=a.cat;r.at=now();r.reason="Talep sahibi tarafından güncellendi. "+
