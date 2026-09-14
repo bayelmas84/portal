@@ -345,7 +345,8 @@ const SCREENS={
    ["d.gantt","Gantt Chart","ti-gantt"]],
  documents:[["k.docs","Dokümanlar","ti-book"],["k.queue","Teftiş kuyruğu","ti-stamp"],["k.mail","Gönderilen bildirimler","ti-messages"]],
  announce:[["a.list","Duyurular","ti-speakerphone"]],
- training:[["t.un","Okunmamış","ti-file-alert"],["t.done","Tamamlananlar","ti-file-check"]],
+ training:[["t.un","Okunmamış","ti-file-alert"],["t.done","Tamamlananlar","ti-file-check"],
+   ["t.author","Doküman ve sınav yönetimi","ti-writing"],["t.readlive","Doküman",null]],
  reports:[["r.list","Rapor kataloğu","ti-list-search"],["r.view","Örnek rapor","ti-chart-bar"],
    ["r.dev","Rapor geliştirme","ti-adjustments"],["r.usage","Kullanım raporu","ti-chart-histogram"]],
  approvals:[["p.in","Onayımda bekleyenler","ti-inbox"],["p.my","Onay beklediklerim","ti-clock"],["p.done","Onayladıklarım","ti-checks"]],
@@ -366,7 +367,7 @@ const ACC={
   "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.gate":R,"d.charts":R,"d.exec":R,
   "d.team":R,"d.docs":R,"d.docview":R,"d.appr":R,"d.cr":R,"k.docs":R,
   /* a.del verilmez: silme talebini duyuruyu giren kişi açar, Teftiş karara bağlar. */
-  "a.list":W,"a.new":W,"t.un":R,"t.done":R,"r.list":R,"r.view":R,
+  "a.list":W,"a.new":W,"t.un":R,"t.done":R,"t.author":W,"r.list":R,"r.view":R,
   "p.in":W,"p.my":W,"p.done":W,"m.ann":W,"m.users":W,"m.units":W,"m.titles":W,"m.roles":W,"m.access":W,"m.notif":W,"m.dir":W,"m.smtp":W,"m.brand":W,"m.avail":W,"m.short":W,
   "d.sprint":R,"k.mail":R},
  /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (okuma, yazma, ekleme, silme),
@@ -387,7 +388,7 @@ const ACC={
   documents:W,announce:W,training:R,reports:R,approvals:W,compliance:W,
   "k.docs":W,"k.new":W,"k.queue":W,"k.mail":W,
   "a.list":W,"a.new":W,"a.edit":W,"a.del":W,
-  "t.un":W,"t.done":W,
+  "t.un":W,"t.done":W,"t.author":W,
   "r.list":R,"r.view":R,"r.dev":R,"r.usage":R,
   "p.in":W,"p.my":W,"p.done":W,
   "c.read":W,"c.rem":W,"c.audit":W},
@@ -773,6 +774,18 @@ async function loadUsersLive(){
    on:u.active?1:0}));
  }catch(e){toast("Kullanıcılar yüklenemedi: "+e.message,1);USERS_LIVE=[];}
  USERS_LIVE_LOADING=false;render();}
+let PENDING_TRAIN_FILE=null;
+let TRAIN_DOCS_LIVE=null,TRAIN_DOCS_LIVE_LOADING=false;
+async function loadTrainDocsLive(){
+ TRAIN_DOCS_LIVE_LOADING=true;
+ try{const data=await api("GET","/api/training/documents");TRAIN_DOCS_LIVE=data.items;}
+ catch(e){toast("Doküman listesi yüklenemedi: "+e.message,1);TRAIN_DOCS_LIVE=[];}
+ TRAIN_DOCS_LIVE_LOADING=false;render();}
+async function loadTrainLive(){
+ S.trainLiveLoading=true;
+ try{const data=await api("GET","/api/training");S.trainLive=data.items.map(x=>({...x,id:+x.id,policy_document_id:+x.policy_document_id}));}
+ catch(e){toast("Eğitimler yüklenemedi: "+e.message,1);S.trainLive=[];}
+ S.trainLiveLoading=false;render();}
 let ACCESS_LIVE=null,ACCESS_LIVE_LOADING=false;
 async function loadAccessLive(){
  ACCESS_LIVE_LOADING=true;
@@ -889,7 +902,8 @@ let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.l
  ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null,
  teamLive:null,teamLiveProj:null,teamLiveLoading:null,
  crLive:null,crLiveProj:null,crLiveLoading:null,
- docsLive:null,docsLiveLoading:false};
+ docsLive:null,docsLiveLoading:false,
+ trainLive:null,trainLiveLoading:false,trainViewId:null,trainQuizLive:null,trainAnswers:{},trainResult:null};
 
 /* --------------------------- gerçek backend istemcisi ---------------------------
    API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
@@ -1583,7 +1597,20 @@ function screenView(){
    ${read.map(row).join("")||`<p style="font-size:12px;color:var(--tm)">Yok.</p>`}`);}
 
  /* ---- eğitimler ---- */
- if(v==="t.un"){const list=myTrain();
+ if(v==="t.un"){
+  if(LIVE_BACKEND){
+   if(S.trainLive===null&&!S.trainLiveLoading)loadTrainLive();
+   const list=(S.trainLive||[]).filter(x=>!x.completed_at);
+   return head("Okunmamış dokümanlar","Gerçek PDF · sonunda kavrama sınavı · canlı backend")+
+    (S.trainLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
+    (list.length?table(["Numara","Doküman","Sürüm","Sınav sonucu","Son tarih",""],list.map(d=>`<tr>
+     <td class="m" style="color:var(--ta)">${esc(d.doc_no)}</td><td>${esc(d.title)}</td>
+     <td class="m">${esc(d.version)}</td>
+     <td class="m">${d.attempts?("son deneme: "+(d.quiz_score||0)+"/100"):"—"}</td>
+     <td>${pill((d.due_at||"").slice(0,10),d.overdue?"er":"wr")}</td>
+     <td style="text-align:right"><button class="b s p" data-a="trainOpen:${d.id}">Oku</button></td></tr>`).join(""))
+    :`<div class="card ok"><span style="font-size:12px">Bekleyen zorunlu okumanız yok.</span></div>`));}
+  const list=myTrain();
   return head("Okunmamış dokümanlar","Her sayfada en az 30 saniye · sonunda kavrama sınavı")+readOnly("t.un")+
   (list.length?table(["Numara","Doküman","Sayfa","Asgari süre","Sınav","Son tarih",""],list.map((d,i)=>`<tr>
    <td class="m" style="color:var(--ta)">${d.no}</td><td>${esc(d.t)}</td>
@@ -1592,11 +1619,78 @@ function screenView(){
    <td style="text-align:right">${cw("t.un")?`<button class="b s p" data-a="read:train:${i}">Oku</button>`:""}</td></tr>`).join(""))
   :`<div class="card ok"><span style="font-size:12px">Bekleyen zorunlu okumanız yok.</span></div>`);}
 
- if(v==="t.done")return head("Tamamlananlar","Okuma tarihi ve sınav puanı")+
+ if(v==="t.done"){
+  if(LIVE_BACKEND){
+   const list=(S.trainLive||[]).filter(x=>x.completed_at);
+   return head("Tamamlananlar","Okuma tarihi ve sınav puanı · canlı backend")+
+    (list.length?table(["Numara","Doküman","Tarih","Puan"],list.map(d=>`<tr>
+     <td class="m" style="color:var(--ta)">${esc(d.doc_no)}</td><td>${esc(d.title)}</td>
+     <td class="m" style="color:var(--t2)">${(d.completed_at||"").replace("T"," ").slice(0,16)}</td>
+     <td>${pill(d.quiz_score+"/100","ok")}</td></tr>`).join(""))
+    :`<p style="font-size:12px;color:var(--tm)">Henüz tamamlanan okuma yok.</p>`);}
+  return head("Tamamlananlar","Okuma tarihi ve sınav puanı")+
   (myDone().length?table(["Numara","Doküman","Tarih","Puan"],myDone().map(d=>`<tr>
    <td class="m" style="color:var(--ta)">${d.no}</td><td>${esc(d.t)}</td>
    <td class="m" style="color:var(--t2)">${d.at}</td><td>${pill(d.score+"/100","ok")}</td></tr>`).join(""))
-  :`<p style="font-size:12px;color:var(--tm)">Henüz tamamlanan okuma yok.</p>`);
+  :`<p style="font-size:12px;color:var(--tm)">Henüz tamamlanan okuma yok.</p>`);}
+
+ if(v==="t.author"){
+  if(!cw("training"))return `<div class="card er" style="max-width:520px">Bu ekrana erişim yetkiniz yok.</div>`;
+  if(LIVE_BACKEND&&TRAIN_DOCS_LIVE===null&&!TRAIN_DOCS_LIVE_LOADING)loadTrainDocsLive();
+  return head("Doküman ve sınav yönetimi","Zorunlu okuma yayınlayın; yayınlanınca tüm aktif kullanıcılara otomatik atanır"+(LIVE_BACKEND?" · canlı backend":" · yalnızca canlı backend'de çalışır"),
+   LIVE_BACKEND?`<button class="b p" data-a="trainAuthorAdd">Yeni doküman ekle</button>`:"")+
+  (!LIVE_BACKEND?`<div class="card wr"><span style="font-size:12.5px">Bu özellik yalnızca gerçek backend'e bağlıyken çalışır (demo modunda kullanılamaz).</span></div>`:
+   TRAIN_DOCS_LIVE===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
+   table(["No","Başlık","Sürüm","Kategori","Soru","Atanan","Tamamlayan","Yayın"],TRAIN_DOCS_LIVE.map(d=>`<tr>
+    <td class="m" style="color:var(--ta)">${esc(d.doc_no)}</td><td>${esc(d.title)}</td>
+    <td class="m">${esc(d.version)}</td><td>${pill(d.category)}</td>
+    <td class="m" style="text-align:center">${d.question_count}</td>
+    <td class="m" style="text-align:center">${d.assignment_count}</td>
+    <td class="m" style="text-align:center">${d.completed_count}</td>
+    <td class="m" style="color:var(--tm)">${(d.created_at||"").slice(0,10)}</td></tr>`).join("")
+    ||`<tr><td colspan="8" style="color:var(--tm)">Henüz yayınlanmış doküman yok.</td></tr>`));}
+
+ /* ------------------------- Gerçek doküman okuma + sınav (canlı backend) ------------------------- */
+ if(v==="t.readlive"){
+  const a=(S.trainLive||[]).find(x=>x.id===S.trainViewId);
+  if(!a)return head("Doküman","Kayıt bulunamadı.",`<button class="b" data-a="scr:t.un">Listeye dön</button>`);
+  if(a.completed_at)
+   return head(a.title,a.doc_no+" · v"+a.version,`<button class="b" data-a="scr:t.un">Listeye dön</button>`)+
+    `<div class="card ok"><span style="font-size:12.5px">Bu okuma tamamlandı — puan: ${a.quiz_score}/100</span></div>`;
+  if(S.trainResult){const r=S.trainResult;
+   return `<div style="max-width:560px">
+    <div class="card ${r.pass?"ok":"er"}"><div style="font-size:15px">
+     ${r.pass?`Sınavı ${r.score}/100 ile geçtiniz.`:`Puanınız ${r.score}/100 — geçme puanı ${PASS}.`}</div>
+     <p style="font-size:12.5px;margin:9px 0 0;line-height:1.65">${r.pass
+      ?`${a.doc_no} okuması tamamlandı ve kayda geçti.`
+      :"Sınava tekrar girebilirsiniz; yanlış yanıtladığınız sorular işaretlendi (doğru yanıtlar gösterilmez)."}</p></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+     ${r.pass?`<button class="b p" data-a="trainQuizDone">Tamam</button>`
+      :`<button class="b p" data-a="trainQuizRetry:${a.id}">Sınavı yeniden dene</button>
+        <button class="b" data-a="scr:t.un">Listeye dön</button>`}</div></div>`;}
+  if(S.trainQuizLive){
+   const qs=S.trainQuizLive;
+   const answered=qs.every(q=>S.trainAnswers[q.id]!==undefined);
+   return `<div style="max-width:640px">
+    <div class="lbl">SINAV — ${esc(a.doc_no)}</div>
+    ${qs.map((q,i)=>`<div class="card" style="margin-bottom:11px">
+      <div style="font-size:13px;margin-bottom:9px">${i+1}. ${esc(q.question_text)}</div>
+      ${q.options.map((op,oi)=>`<label style="display:flex;gap:8px;align-items:center;padding:6px 0;cursor:pointer">
+        <input type="radio" name="tq_${q.id}" data-a="trainAns:${q.id}:${oi}" ${S.trainAnswers[q.id]===oi?"checked":""}>
+        <span style="font-size:12.5px">${esc(op)}</span></label>`).join("")}</div>`).join("")}
+    <button class="b ${answered?"g":"off"}" data-a="${answered?"trainQuizSubmit":"needFields"}">Sınavı gönder</button></div>`;}
+  return `<div style="display:flex;flex-direction:column;min-height:400px">
+   <div style="display:flex;align-items:center;gap:10px;padding:13px 15px;border:1px solid var(--bd);
+    border-radius:12px 12px 0 0;background:var(--s1);flex-wrap:wrap">
+    ${ic("file-text",16,"color:var(--ta)")}<span class="m" style="color:var(--ta)">${esc(a.doc_no)}</span>
+    <span style="font-size:13px">${esc(a.title)}</span><span class="m" style="color:var(--t2)">v${esc(a.version)}</span></div>
+   <div style="flex:1;background:var(--s1);padding:20px;border-left:1px solid var(--bd);border-right:1px solid var(--bd);text-align:center">
+    <p style="font-size:12.5px;color:var(--t2);margin-bottom:14px">Sınava geçmeden önce dokümanı okuyun.</p>
+    <a href="/api/training/documents/${a.policy_document_id}/file" target="_blank" rel="noopener" class="b p">Gerçek PDF'i aç</a></div>
+   <div style="padding:13px 15px;border:1px solid var(--bd);border-radius:0 0 12px 12px;background:var(--s1);
+    display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+    <span style="flex:1"></span><button class="b" data-a="scr:t.un">Kapat</button>
+    <button class="b g" data-a="trainStartQuiz:${a.id}">Sınava başla</button></div></div>`;}
 
  /* ------------------------------ Meeting Notes ------------------------------ */
  if(v==="d.meeting"){
@@ -2747,6 +2841,36 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
     <button class="b" data-a="dlgClose">Cancel</button>
     <button id="okBtn" class="b ${okD?"g":"off"}" data-a="${okD?(isNew?"pdocSave":"pdocRename"):"nf"}">${isNew?"Upload":"Save"}</button></div>`);}
+ if(d.type==="traindoc"){
+  const qs=f.questions||[];
+  const okT=(f.docNo||"").trim()&&(f.title||"").trim()&&(f.version||"").trim()&&(f.category||"").trim()
+   &&PENDING_TRAIN_FILE&&qs.length>0&&qs.every(q=>(q.text||"").trim()&&q.options.filter(o=>(o||"").trim()).length>=2);
+  return wrap(`<div style="font-size:15px">Yeni zorunlu okuma dokümanı</div>
+   <p class="m" style="color:var(--tm);margin:6px 0 0">Yayınlandığında tüm aktif kullanıcılara otomatik atanır.</p>
+   <div class="grid" style="grid-template-columns:1fr 1fr;gap:9px;margin-top:11px">
+    <div><div class="lbl">DOKÜMAN NO</div><input id="tdDocNo" value="${esc(f.docNo||"")}"></div>
+    <div><div class="lbl">SÜRÜM</div><input id="tdVersion" value="${esc(f.version||"1.0")}"></div></div>
+   <div class="lbl" style="margin-top:11px">BAŞLIK</div><input id="tdTitle" value="${esc(f.title||"")}">
+   <div class="grid" style="grid-template-columns:1fr 1fr;gap:9px;margin-top:11px">
+    <div><div class="lbl">KATEGORİ</div><input id="tdCategory" value="${esc(f.category||"Genel")}"></div>
+    <div><div class="lbl">SON TARİHE KADAR GÜN</div><input id="tdDueDays" type="number" min="1" value="${f.dueDays||14}"></div></div>
+   <div class="lbl" style="margin-top:11px">PDF DOSYA</div>
+   <input type="file" id="fTrainPdf" accept="application/pdf" style="padding:7px">
+   ${PENDING_TRAIN_FILE?`<div class="card ok" style="margin-top:8px;font-size:12px">${esc(PENDING_TRAIN_FILE.name)}</div>`:""}
+   <div class="lbl" style="margin-top:14px">SINAV SORULARI (${qs.length})</div>
+   ${qs.map((q,qi)=>`<div class="card" style="margin-bottom:9px">
+     <div style="display:flex;gap:8px;align-items:center">
+      <input id="tdQText_${qi}" placeholder="Soru metni" value="${esc(q.text||"")}" style="flex:1">
+      <button class="b s d" data-a="tdRemoveQ:${qi}">Sil</button></div>
+     ${[0,1,2,3].map(oi=>`<div style="display:flex;gap:7px;align-items:center;margin-top:6px">
+       <button class="b s ${q.correctIndex===oi?"g":""}" style="min-width:32px" data-a="tdSetCorrect:${qi}:${oi}"
+        title="Doğru cevap">${q.correctIndex===oi?"✓":oi+1}</button>
+       <input id="tdQOpt_${qi}_${oi}" placeholder="Şık ${oi+1}${oi<2?" (zorunlu)":" (boş bırakılabilir)"}" value="${esc(q.options[oi]||"")}" style="flex:1"></div>`).join("")}
+    </div>`).join("")}
+   <button class="b s" data-a="tdAddQ">+ Soru ekle</button>
+   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button id="okBtn" class="b ${okT?"g":"off"}" data-a="${okT?"tdocSave":"needFields"}">Yayınla</button></div>`);}
  if(d.type==="crdetail"){const pr=PROJ.find(x=>x.k===S.crView.k);
   const c=LIVE_BACKEND?(S.crLive||[]).find(x=>x.id===S.crView.i):crsOf(S.crView.k)[S.crView.i];
   if(!c)return "";
@@ -2885,6 +3009,18 @@ function validate(){
  if(d.type==="doc")return [d.idx!==undefined?!!f.file:((f.no||"").trim().length>3&&(f.title||"").trim().length>4&&f.cat&&f.file),
   d.idx!==undefined?"docVersion":"docCreate",""];
  if(d.type==="rec")return [(f.a||"").trim().length>1&&(f.b||"").trim().length>1,"recSave",""];
+ if(d.type==="traindoc"){
+  const qs=f.questions||[];
+  const miss=[];
+  if(!(f.docNo||"").trim())miss.push("doküman no");
+  if(!(f.title||"").trim())miss.push("başlık");
+  if(!(f.version||"").trim())miss.push("sürüm");
+  if(!(f.category||"").trim())miss.push("kategori");
+  if(!PENDING_TRAIN_FILE)miss.push("PDF dosyası");
+  if(!qs.length)miss.push("en az bir soru");
+  else if(!qs.every(q=>(q.text||"").trim()&&q.options.filter(o=>(o||"").trim()).length>=2))
+   miss.push("her sorunun metni ve en az 2 dolu şıkkı olmalı");
+  return [miss.length===0,"tdocSave",miss.length?"eksik: "+miss.join(", "):""];}
  return null;}
 function refreshDlg(){const v=validate();if(!v)return;
  const b=document.getElementById("okBtn");
@@ -2960,8 +3096,21 @@ function afterRender(){
   ["fA","a"],["fB","b"],["fC","c"],["fR","r"],["frej","rej"],
   ["fMtDate","date"],["fMtTime","time"],["fMtTitle","title"],["fMtNewItem","newItem"],["fMtNotes","notes"],
   ["fMtOtherSubject","otherSubject"],
-  ["fGName","name"],["fGStart","start"],["fGEnd","end"]].forEach(([id,key])=>{
+  ["fGName","name"],["fGStart","start"],["fGEnd","end"],
+  ["tdDocNo","docNo"],["tdVersion","version"],["tdTitle","title"],["tdCategory","category"],["tdDueDays","dueDays"]].forEach(([id,key])=>{
   const el=document.getElementById(id);if(el)el.oninput=e=>{S.f[key]=e.target.value;refreshDlg();};});
+ /* Sınav soruları: her soru metni ve her şık için dinamik alan bağlama. */
+ (S.f.questions||[]).forEach((q,qi)=>{
+  const qt=document.getElementById("tdQText_"+qi);
+  if(qt)qt.oninput=e=>{q.text=e.target.value;refreshDlg();};
+  [0,1,2,3].forEach(oi=>{
+   const oel=document.getElementById("tdQOpt_"+qi+"_"+oi);
+   if(oel)oel.oninput=e=>{q.options[oi]=e.target.value;refreshDlg();};});});
+ const ftp=document.getElementById("fTrainPdf");
+ if(ftp)ftp.onchange=e=>{const file=e.target.files&&e.target.files[0];if(!file)return;
+  if(file.type!=="application/pdf"&&!/\.pdf$/i.test(file.name)){
+   toast("Only PDF files are accepted — "+file.name+" rejected.",1);e.target.value="";return;}
+  PENDING_TRAIN_FILE=file;refreshDlg();};
  /* Proje / katılımcı dropdown'ları: seçim değişince gündem maddeleri (devreden kayıtlar) veya
     "Diğer" alanı yeniden hesaplanacağı için tam render() gerekir. */
  /* Meeting Notes listesindeki proje filtresi: yeni toplantı notu ekranındaki proje
@@ -3077,8 +3226,10 @@ app.addEventListener("click",async ev=>{
   Object.assign(S,{view:"login",me:null,u:"",ann:null,req:null,dec:null,pop:null,dlg:null,read:null,docView:null,quiz:null,result:null,
    meetingsLive:null,meetingsLiveLoading:null,mtView:null,annLive:null,annLiveLoading:false,
    ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null,teamLive:null,teamLiveProj:null,teamLiveLoading:null,
-   crLive:null,crLiveProj:null,crLiveLoading:null,docsLive:null,docsLiveLoading:false});
+   crLive:null,crLiveProj:null,crLiveLoading:null,docsLive:null,docsLiveLoading:false,
+   trainLive:null,trainLiveLoading:false,trainViewId:null,trainQuizLive:null,trainAnswers:{},trainResult:null});
   USERS_LIVE=null;USERS_LIVE_LOADING=false;ACCESS_LIVE=null;ACCESS_LIVE_LOADING=false;MY_ACCESS=null;
+  TRAIN_DOCS_LIVE=null;TRAIN_DOCS_LIVE_LOADING=false;PENDING_UPLOAD_FILE=null;PENDING_TRAIN_FILE=null;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
@@ -3703,6 +3854,61 @@ app.addEventListener("click",async ev=>{
  if(k==="quizReread"){const i=S.quiz;S.quiz=null;S.result=null;S.readSrc="train";S.read=i;S.page=0;
   S.dwell=new Array(myTrain()[i].pages.length).fill(0);render();return;}
  if(k==="quizExit"){S.quiz=null;S.result=null;S.scr="t.un";render();return;}
+
+ /* --------------------- canlı backend: gerçek okuma + sınav --------------------- */
+ if(k==="trainOpen"){S.trainViewId=+p[1];S.trainQuizLive=null;S.trainAnswers={};S.trainResult=null;
+  S.mod="training";S.scr="t.readlive";render();return;}
+ if(k==="trainStartQuiz"){
+  try{
+   const data=await api("GET","/api/training/"+p[1]+"/questions");
+   if(!data.items.length){toast("Bu doküman için henüz sınav sorusu tanımlanmamış.",1);return;}
+   S.trainQuizLive=data.items;S.trainAnswers={};render();
+  }catch(e){toast(e.message,1);}
+  return;}
+ if(k==="trainAns"){S.trainAnswers[p[1]]=+p[2];render();return;}
+ if(k==="trainQuizSubmit"){
+  try{
+   const data=await api("POST","/api/training/"+S.trainViewId+"/quiz",{answers:S.trainAnswers});
+   S.trainResult=data;S.trainQuizLive=null;
+   /* Ekran "Kayıt bulunamadı" göstermesin diye listeyi hemen null yapmıyoruz;
+      ilgili kaydı yerel olarak güncelleyip arka planda gerçek veriyle senkronize ediyoruz. */
+   const item=(S.trainLive||[]).find(x=>x.id===S.trainViewId);
+   if(item){item.attempts=(item.attempts||0)+1;item.quiz_score=data.score;
+    if(data.pass)item.completed_at=new Date().toISOString();}
+   render();
+   loadTrainLive();
+  }catch(e){toast(e.message,1);}
+  return;}
+ if(k==="trainQuizRetry"){S.trainResult=null;S.trainAnswers={};render();return;}
+ if(k==="trainQuizDone"){S.trainResult=null;S.trainQuizLive=null;S.trainViewId=null;S.scr="t.done";render();return;}
+
+ /* --------------------- canlı backend: doküman/sınav yazarlığı (Teftiş) --------------------- */
+ if(k==="trainAuthorAdd"){
+  PENDING_TRAIN_FILE=null;
+  S.f={category:"Genel",dueDays:14,questions:[{text:"",options:["","","",""],correctIndex:0,weight:1}]};
+  S.dlg={type:"traindoc"};render();return;}
+ if(k==="tdAddQ"){S.f.questions=S.f.questions||[];
+  S.f.questions.push({text:"",options:["","","",""],correctIndex:0,weight:1});render();return;}
+ if(k==="tdRemoveQ"){S.f.questions.splice(+p[1],1);render();return;}
+ if(k==="tdSetCorrect"){S.f.questions[+p[1]].correctIndex=+p[2];render();return;}
+ if(k==="tdocSave"){
+  const f=S.f;
+  const fd=new FormData();
+  fd.append("docNo",f.docNo.trim());fd.append("title",f.title.trim());fd.append("version",f.version.trim());
+  fd.append("category",f.category.trim());fd.append("dueDays",String(f.dueDays||14));
+  fd.append("file",PENDING_TRAIN_FILE);
+  const questions=f.questions.map(q=>{
+   const opts=q.options.map(o=>(o||"").trim());
+   while(opts.length>2&&!opts[opts.length-1])opts.pop(); // yalnızca sondaki boş şıkları kırp
+   return {text:q.text.trim(),options:opts,correctIndex:q.correctIndex,weight:q.weight||1};})
+   .filter(q=>q.text&&q.options.length>=2&&q.options.every(o=>o)&&q.correctIndex<q.options.length);
+  fd.append("questions",JSON.stringify(questions));
+  try{
+   const data=await api("POST","/api/training/documents",fd,true);
+   TRAIN_DOCS_LIVE=null;S.dlg=null;S.f={};PENDING_TRAIN_FILE=null;
+   toast("Yayınlandı — "+data.assigned+" kişiye atandı.");render();
+  }catch(e){toast(e.message,1);}
+  return;}
 
  /* duyuru */
  if(k==="openAnn"){S.ann=+p[1];S.req=null;S.mod="announce";S.scr="a.list";render();return;}
