@@ -3313,6 +3313,24 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b ${ok2?"g":"off"}" data-a="${ok2?"bisave":"nf"}">Kaydet</button></div>`);}
+ if(d.type==="bell"){
+  const pendItems=canUse("p.in")?inbox():[];
+  const annItems=canUse("a.list")?ANN.filter(a=>a.st==="yayında"&&!isAnnRead(a.id)):[];
+  const trainItems=canUse("t.un")?myTrain():[];
+  const section=(title,items,renderRow)=>items.length?`<div class="lbl" style="margin-top:12px">${title} (${items.length})</div>
+    ${items.slice(0,5).map(renderRow).join("")}`:"";
+  const empty=!pendItems.length&&!annItems.length&&!trainItems.length;
+  return wrap(`<div style="font-size:15px">Bildirimler</div>
+   <div style="max-height:360px;overflow:auto">
+    ${section("Onayımda bekleyen",pendItems,r=>`<div class="card" style="margin:6px 0;padding:9px 12px;cursor:pointer" data-a="bellJump:approvals:p.in">
+      <div style="font-size:12.5px">${esc(r.subj)}</div><div class="m" style="color:var(--tm)">${esc(r.by)}</div></div>`)}
+    ${section("Okunmamış duyuru",annItems,a=>`<div class="card" style="margin:6px 0;padding:9px 12px;cursor:pointer" data-a="bellJump:announce:a.list">
+      <div style="font-size:12.5px">${esc(a.t)}</div></div>`)}
+    ${section("Bekleyen eğitim/okuma",trainItems,t2=>`<div class="card" style="margin:6px 0;padding:9px 12px;cursor:pointer" data-a="bellJump:training:t.un">
+      <div style="font-size:12.5px">${esc(t2.t)}</div></div>`)}
+    ${empty?`<p class="m" style="color:var(--tm);margin-top:10px">Bekleyen bildiriminiz yok.</p>`:""}
+   </div>
+   <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="search"){
   const groups={};(S.searchResults||[]).forEach(r=>{(groups[r.group]=groups[r.group]||[]).push(r);});
   return wrap(`<div style="font-size:15px">Ara</div>
@@ -3486,8 +3504,12 @@ function refreshDlg(){const v=validate();if(!v)return;
 
 /* --------------------------------- kabuk ---------------------------------- */
 function railView(){const pending=inbox().length;
+ const unreadAnn=canUse("a.list")?ANN.filter(a=>a.st==="yayında"&&!isAnnRead(a.id)).length:0;
+ const unreadTrain=canUse("t.un")?myTrain().length:0;
+ const bellTotal=pending+unreadAnn+unreadTrain;
  return `<nav class="nv" aria-label="Modüller">
   <button class="rail ${S.view==="home"?"on":""}" data-a="home" title="Ana ekran" aria-label="Ana ekran">${ic("home",18)}</button>
+  <button class="rail" data-a="bellOpen" title="Bildirimler" aria-label="Bildirimler">${ic("bell-ringing",18)}${bellTotal?`<span class="badge">${bellTotal}</span>`:""}</button>
   ${LIVE_BACKEND?`<button class="rail" data-a="searchOpen" title="Ara" aria-label="Ara">${ic("search",18)}</button>`:""}
   <div style="width:26px;height:1px;background:rgba(255,255,255,.14);margin:3px 0"></div>
   ${MODULES.filter(m=>can(m[0])).map(m=>`<button class="rail ${S.view==="app"&&S.mod===m[0]?"on":""}" data-a="mod:${m[0]}" title="${m[1]}" aria-label="${m[1]}">
@@ -3725,6 +3747,10 @@ app.addEventListener("click",async ev=>{
  if(k==="profile"){S.dlg={type:"profile"};render();return;}
  if(k==="avatar"){if(p[1]==="foto"){avatars[S.me.u]="🙂";toast("Profil fotoğrafı güncellendi.");}
   else{delete avatars[S.me.u];toast("Profil fotoğrafı kaldırıldı.");}return;}
+ if(k==="bellJump"){
+  if(!canUse(p[2])||!isOpen(p[1])){toast("Bu bölüm şu anda kullanım dışı.",1);return;}
+  clearInterval(S.timer);S.view="app";S.mod=p[1];S.scr=p[2];
+  Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null});render();return;}
  if(k==="jump"){if(!canUse(p[2])||!isOpen(p[1])){toast("Bu bölüm şu anda kullanım dışı.",1);return;}
   clearInterval(S.timer);S.view="app";S.mod=p[1];S.scr=p[2];
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null});render();return;}
@@ -4722,6 +4748,7 @@ app.addEventListener("click",async ev=>{
   catch(e){toast(e.message,1);}
   return;}
  if(k==="auditExport"){window.open(API_BASE+"/api/audit/export.csv","_blank");return;}
+ if(k==="bellOpen"){S.dlg={type:"bell"};render();return;}
  if(k==="searchOpen"){S.f={q:""};S.dlg={type:"search"};S.searchResults=[];render();return;}
  if(k==="searchGo"){
   const q=(S.f.q||"").trim();
