@@ -7,6 +7,14 @@ const { pool } = require("../server/src/db");
 
 const app = createApp();
 
+// Test paketi 9+ login çağrısı yapar; login_max_attempts artık admin panelinden
+// (DB üzerinden) yönetildiği için testler kendi ortamında bu limiti yükseltir
+// — üretim davranışını (DB'den okuma) değiştirmeden, yalnızca test verisini uyarlar.
+// test.before() ile ilk teste kadar tamamlanması garanti edilir.
+test.before(async () => {
+  await pool.query("UPDATE app_settings SET value='500' WHERE key='login_max_attempts'").catch(() => {});
+});
+
 async function login(username) {
   const res = await request(app).post("/api/auth/login").send({ username });
   const cookie = res.headers["set-cookie"][0];

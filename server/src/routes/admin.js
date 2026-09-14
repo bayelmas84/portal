@@ -73,6 +73,7 @@ router.put("/approval-rules/:category", requireWrite("m.approvalrules"), async (
 const SETTINGS_KEYS = [
   "reading_seconds_per_page", "quiz_pass_score", "training_default_due_days",
   "sprint_default_days", "story_point_scale",
+  "criticality_options_yasal", "criticality_options_genel", "login_max_attempts",
 ];
 router.get("/settings", requireAuth, async (req, res, next) => {
   try {
@@ -87,8 +88,13 @@ router.put("/settings", requireWrite("m.settings"), async (req, res, next) => {
   try {
     const entries = Object.entries(req.body || {}).filter(([k]) => SETTINGS_KEYS.includes(k));
     if (!entries.length) return res.status(400).json({ error: "Geçerli bir ayar gönderilmedi." });
-    for (const [, v] of entries) {
-      if (!/^[0-9,]+$/.test(String(v))) return res.status(400).json({ error: "Değerler yalnızca sayı (ve virgülle ayrılmış liste) olabilir." });
+    const TEXT_LIST_KEYS = ["criticality_options_yasal", "criticality_options_genel"];
+    for (const [k, v] of entries) {
+      if (TEXT_LIST_KEYS.includes(k)) {
+        if (!/^[^,]+(,[^,]+)*$/.test(String(v))) return res.status(400).json({ error: `"${k}" virgülle ayrılmış, boş olmayan bir liste olmalı.` });
+      } else if (!/^[0-9,]+$/.test(String(v))) {
+        return res.status(400).json({ error: "Değerler yalnızca sayı (ve virgülle ayrılmış liste) olabilir." });
+      }
     }
     await requestAdminApproval(req, res, "admin.settings", Object.fromEntries(entries),
       `Uygulama ayarları güncelleme: ${entries.map(([k]) => k).join(", ")}`);

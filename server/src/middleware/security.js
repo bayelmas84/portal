@@ -1,6 +1,7 @@
 "use strict";
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const { query } = require("../db");
 const { config } = require("../config");
 
 const securityHeaders = helmet({
@@ -19,9 +20,25 @@ const securityHeaders = helmet({
   crossOriginResourcePolicy: { policy: "same-origin" },
 });
 
+// login_max_attempts admin panelinden (onaylı) değiştirilebilir; DB'ye her
+// istekte gitmemek için kısa süreli (30sn) bellek içi önbellek kullanılır.
+let cachedMaxAttempts = null;
+let cacheExpiresAt = 0;
+async function getLoginMaxAttempts() {
+  if (cachedMaxAttempts !== null && Date.now() < cacheExpiresAt) return cachedMaxAttempts;
+  try {
+    const { rows } = await query("SELECT value FROM app_settings WHERE key='login_max_attempts'");
+    cachedMaxAttempts = rows[0] ? Number(rows[0].value) : config.loginMaxAttempts;
+  } catch (e) {
+    cachedMaxAttempts = config.loginMaxAttempts; // tablo henüz yoksa (eski migration) .env'e düş
+  }
+  cacheExpiresAt = Date.now() + 30000;
+  return cachedMaxAttempts;
+}
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: config.loginMaxAttempts,
+  max: getLoginMaxAttempts,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Çok fazla başarısız giriş denemesi. Lütfen daha sonra tekrar deneyin." },

@@ -37,6 +37,14 @@ router.post("/", requireWrite("announcements"), async (req, res, next) => {
     if (!title || title.trim().length < 5) return res.status(400).json({ error: "Başlık en az 5 karakter olmalı." });
     if (!body || !body.trim()) return res.status(400).json({ error: "Metin zorunlu." });
     if (!["Yasal", "Genel"].includes(category)) return res.status(400).json({ error: "Geçersiz kategori." });
+    const critSetting = await query(
+      "SELECT value FROM app_settings WHERE key=$1",
+      [category === "Yasal" ? "criticality_options_yasal" : "criticality_options_genel"]
+    );
+    const allowedCrits = critSetting.rowCount ? critSetting.rows[0].value.split(",") : (category === "Yasal" ? ["Kritik", "Yüksek"] : ["Yüksek", "Orta", "Düşük"]);
+    if (criticality && !allowedCrits.includes(criticality)) {
+      return res.status(400).json({ error: `Geçersiz kritiklik. Bu kategoride izin verilenler: ${allowedCrits.join(", ")}` });
+    }
 
     // Onay kuralı matrisi (m.approvalrules ekranından yönetilir); tanımlı
     // değilse eski sabit davranışa (Yasal->Teftiş, Genel->yönetici) düşülür.

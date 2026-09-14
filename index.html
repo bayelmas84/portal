@@ -578,7 +578,7 @@ const childrenOf=(p,k)=>(p.items||[]).filter(i=>i.parent===k);
 const PRIC={Highest:"#A32D2D",High:"#BA7517",Medium:"#0178BA",Low:"#717B95"};
 const FLOW={backlog:"Backlog",todo:"To Do",prog:"In Progress",review:"In Review",test:"In Testing",done:"Done"};
 const NEXT={backlog:["todo"],todo:["prog"],prog:["review","todo"],review:["test","prog"],test:["done","prog"],done:["prog"]};
-const CRITS={Yasal:["Kritik","Yüksek"],Genel:["Yüksek","Orta","Düşük"]};
+let CRITS={Yasal:["Kritik","Yüksek"],Genel:["Yüksek","Orta","Düşük"]};
 
 const ACC_DEFAULT=JSON.parse(JSON.stringify(ACC));
 /* Ekran yönetimi — rolden bağımsız açık / bakımda / kapalı durumu */
@@ -834,6 +834,8 @@ async function loadAppSettingsLive(){
   APP_SETTINGS_LIVE=data.item;
   if(data.item.reading_seconds_per_page)SPP=Number(data.item.reading_seconds_per_page);
   if(data.item.quiz_pass_score)PASS=Number(data.item.quiz_pass_score);
+  if(data.item.criticality_options_yasal)CRITS.Yasal=data.item.criticality_options_yasal.split(",");
+  if(data.item.criticality_options_genel)CRITS.Genel=data.item.criticality_options_genel.split(",");
  }catch(e){APP_SETTINGS_LIVE={};}
  APP_SETTINGS_LIVE_LOADING=false;render();}
 async function loadMailTplLive(){
@@ -2570,7 +2572,10 @@ function screenView(){
    ["quiz_pass_score","Sınav geçme notu (%)"],
    ["training_default_due_days","Eğitim varsayılan süre (gün)"],
    ["sprint_default_days","Sprint varsayılan süre (gün)"],
-   ["story_point_scale","Story point ölçeği (virgülle)"]];
+   ["story_point_scale","Story point ölçeği (virgülle)"],
+   ["criticality_options_yasal","Yasal kategori kritiklik seçenekleri (virgülle)"],
+   ["criticality_options_genel","Genel kategori kritiklik seçenekleri (virgülle)"],
+   ["login_max_attempts","Giriş deneme limiti (15 dk içinde)"]];
   return head("Genel Ayarlar","Değişiklikler yöneticinizin onayına gider · canlı backend")+
    `<div class="card" style="max-width:520px">
     ${FIELDS.map(([k,label])=>`<div class="lbl" style="margin-top:12px">${label}</div>
@@ -4877,7 +4882,7 @@ app.addEventListener("click",async ev=>{
   catch(e){toast(e.message,1);}
   return;}
  if(k==="settingsSave"){
-  const keys=["reading_seconds_per_page","quiz_pass_score","training_default_due_days","sprint_default_days","story_point_scale"];
+  const keys=["reading_seconds_per_page","quiz_pass_score","training_default_due_days","sprint_default_days","story_point_scale","criticality_options_yasal","criticality_options_genel","login_max_attempts"];
   const payload={};
   keys.forEach(key=>{const el=document.getElementById("fSet_"+key);if(el)payload[key]=el.value.trim();});
   try{const data=await api("PUT","/api/admin/settings",payload);toast(data.message||"Onaya gönderildi.");render();}
