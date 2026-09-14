@@ -66,6 +66,48 @@ router.post("/", requireWrite("announcements"), async (req, res, next) => {
   }
 });
 
+// Yayındaki bir duyuru için silme talebi: yalnızca giren kişi veya Teftiş açabilir,
+// zaten bekleyen bir silme talebi varsa ikinci bir tane açılmaz.
+router.post("/:id/delete-request", requireWrite("announcements"), async (req, res, next) => {
+  try {
+    const { reason } = req.body || {};
+    if (!reason || reason.trim().length < 10) return res.status(400).json({ error: "Gerekçe en az 10 karakter olmalı." });
+    const { rows } = await query("SELECT * FROM announcements WHERE id=$1", [req.params.id]);
+    const ann = rows[0];
+    if (!ann) return res.status(404).json({ error: "Duyuru bulunamadı." });
+    if (ann.status !== "yayinda") return res.status(409).json({ error: "Yalnızca yayındaki duyurular için silme talebi açılabilir." });
+    const isOwner = ann.created_by === req.user.username;
+    const isInspector = req.user.role === "inspection";
+    if (!isOwner && !isInspector) return res.status(403).json({ error: "Bu duyuruyu silme talebi açma yetkiniz yok." });
+
+    const pending = await query(
+      "SELECT 1 FROM approval_requests WHERE kind='ann.delete' AND target_id=$1 AND status='bekliyor'",
+      [ann.id]
+    );
+    if (pending.rowCount) return res.status(409).json({ error: "Bu duyuru için zaten bekleyen bir silme talebi var." });
+
+    let approver;
+    if (ann.category === "Yasal") {
+      const insp = await query("SELECT username FROM users WHERE role='inspection' AND active AND username != $1 ORDER BY username LIMIT 1", [req.user.username]);
+      if (!insp.rowCount) return res.status(409).json({ error: "Tanımlı başka bir Teftiş kullanıcısı yok." });
+      approver = insp.rows[0].username;
+    } else {
+      if (!req.user.manager_username) return res.status(409).json({ error: "Yöneticiniz tanımlı değil, onaya gönderilemiyor." });
+      approver = req.user.manager_username;
+    }
+
+    await query(
+      `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason)
+       VALUES ('ann.delete',$1,$2,'announcement',$3,$4,$5,$6)`,
+      [ann.title, ann.category, ann.id, req.user.username, approver, reason.trim()]
+    );
+    await audit(`Duyuru silme talebi açıldı: ${ann.title} (onaycı: ${approver})`, req.user.username);
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.post("/:id/read", requireRead("announcements"), async (req, res, next) => {
   try {
     await query(
@@ -139,6 +181,11 @@ router.post("/requests/:id/decide", requireRead("announcements"), async (req, re
       if (reqRow.kind === "ann.publish") {
         const newStatus = decision === "onayla" ? "yayinda" : "geri_cekildi";
         await client.query("UPDATE announcements SET status=$1 WHERE id=$2", [newStatus, reqRow.target_id]);
+      } else if (reqRow.kind === "ann.delete") {
+        if (decision === "onayla") {
+          await client.query("DELETE FROM announcements WHERE id=$1", [reqRow.target_id]);
+        }
+        // reddedilirse duyuru "yayinda" durumunda kalmaya devam eder, ekstra işlem gerekmez.
       }
     });
     await audit(`Talep ${decision === "onayla" ? "onaylandı" : "reddedildi"}: #${reqRow.id} ${reqRow.subject}`, req.user.username);
