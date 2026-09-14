@@ -11,7 +11,7 @@
     "start": "node server/src/index.js",
     "migrate": "node server/src/migrate.js",
     "seed": "node server/src/seed.js",
-    "test": "node --test --test-force-exit --test-concurrency=1 \"tests/*.test.js\""
+    "test": "LOGIN_MAX_ATTEMPTS=100 node --test --test-force-exit --test-concurrency=1 \"tests/*.test.js\""
   },
   "dependencies": {
     "argon2": "^0.41.1",
@@ -22,7 +22,7 @@
     "helmet": "^8.0.0",
     "ldapts": "^7.3.1",
     "multer": "^2.4.0",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^10.0.10",
     "pg": "^8.13.1"
   },
   "devDependencies": {
