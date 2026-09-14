@@ -1240,9 +1240,16 @@ function loginView(){
    <img class="hero" src="${HERO}" width="${HERO_W}" height="${HERO_H}"
      alt="Tera Yatırım — Her şey bir arada, tek bir yerde" decoding="sync" fetchpriority="high">
    <div class="login-panel">
-    <h2>${esc(BRAND.loginTitle)}</h2>
-    <p class="login-hint">${esc(BRAND.loginHint)}</p>
+    <h2>${S.needsTwoFactor?"Doğrulama kodu":esc(BRAND.loginTitle)}</h2>
+    <p class="login-hint">${S.needsTwoFactor?"Authenticator uygulamanızdaki 6 haneli kodu girin.":esc(BRAND.loginHint)}</p>
 
+    ${S.needsTwoFactor?`
+    <label class="field"><span>Kod</span>
+     <span class="input-wrap"><input id="lcode" value="${esc(S.f&&S.f.code||"")}" placeholder="000000" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></span></label>
+    ${S.err?`<div class="login-error" role="alert">${esc(S.err)}</div>`:""}
+    <button class="b g login-submit" data-a="verify2fa">Doğrula</button>
+    <button class="b s" style="margin-top:8px" data-a="cancel2fa">Vazgeç</button>
+    `:`
     <label class="field"><span>Kullanıcı adı</span>
      <span class="input-wrap"><span class="prefix">TERA\\</span>
       <input id="lu" value="${esc(S.u)}" placeholder="ad.soyad" autocomplete="username"
@@ -1259,6 +1266,7 @@ function loginView(){
     <details class="demo"><summary>Prototip hesapları</summary>
      <div class="demo-list">${USERS.filter(u=>u.on).map(u=>
       `<button class="b s" data-a="fill:${USERS.indexOf(u)}">${esc(u.n)}</button>`).join("")}</div></details>
+    `}
    </div>
   </div>
   <div class="login-legal m">${esc(BRAND.footer)}
@@ -3691,12 +3699,28 @@ app.addEventListener("click",async ev=>{
  if(k==="theme"){S.dark=!S.dark;render();return;}
  if(k==="togglePw"){S.showPw=!S.showPw;render();return;}
  if(k==="fill"){S.u=USERS[+p[1]].u;S.err="";render();return;}
+ if(k==="cancel2fa"){S.needsTwoFactor=false;S.pendingUname=null;S.err="";render();return;}
+ if(k==="verify2fa"){
+  const code=(document.getElementById("lcode")||{}).value||"";
+  try{
+   const data=await api("POST","/api/auth/2fa/verify",{code});
+   CSRF_TOKEN=data.csrfToken;
+   let u=USERS.find(x=>x.u===data.user.username);
+   if(!u){u={u:data.user.username,n:data.user.name,r:data.user.role,unit:data.user.unit,
+    title:data.user.title,mgr:null,c:data.user.color,on:1};USERS.push(u);}
+   if(data.user.managerUsername){
+    const mu=USERS.find(x=>x.u===data.user.managerUsername);
+    u.mgr=mu?mu.n:data.user.managerUsername;}
+   S.me=u;S.err="";S.needsTwoFactor=false;S.view="home";S.mod="announce";S.scr="a.list";
+   S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();loadAppSettingsLive();loadApprovalRulesLive();render();return;
+  }catch(e){S.err=e.message||"Kod hatalı.";render();return;}}
  if(k==="signin"){
   await checkLiveBackend();
   const uname=(S.u||"").trim().toLowerCase();
   if(LIVE_BACKEND){
    try{
     const data=await api("POST","/api/auth/login",{username:uname});
+    if(data.needsTwoFactor){S.needsTwoFactor=true;S.pendingUname=uname;S.err="";S.f={};render();return;}
     CSRF_TOKEN=data.csrfToken;
     let u=USERS.find(x=>x.u===data.user.username);
     if(!u){u={u:data.user.username,n:data.user.name,r:data.user.role,unit:data.user.unit,

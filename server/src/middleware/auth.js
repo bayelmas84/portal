@@ -12,12 +12,19 @@ async function attachUser(req, res, next) {
       req.user = null;
       return next();
     }
+    req.session = session;
+    // 2FA bekleyen bir oturum HİÇBİR korumalı uca erişemez — yalnızca
+    // /api/auth/2fa/verify ucu bu ara durumdaki oturumu (req.session üzerinden,
+    // req.user'a bakmadan) tanır.
+    if (session.pending_2fa) {
+      req.user = null;
+      return next();
+    }
     const { rows } = await query(
       "SELECT username, name, email, role, unit, title, manager_username, color FROM users WHERE username=$1 AND active",
       [session.username]
     );
     req.user = rows[0] || null;
-    req.session = session;
     next();
   } catch (e) {
     next(e);
@@ -63,6 +70,7 @@ function requireWrite(screenKey) {
 function requireCsrf(req, res, next) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
   if (req.path === "/api/auth/login") return next();
+  if (req.path === "/api/auth/2fa/verify") return next(); // henüz csrfToken alınmadı
   const header = req.get("X-CSRF-Token");
   if (!req.session || !header || header !== req.session.csrf_secret) {
     return res.status(403).json({ error: "CSRF doğrulaması başarısız." });
