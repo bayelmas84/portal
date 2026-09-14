@@ -776,6 +776,27 @@ async function loadUsersLive(){
  USERS_LIVE_LOADING=false;render();}
 let PENDING_TRAIN_FILE=null;
 let TRAIN_DOCS_LIVE=null,TRAIN_DOCS_LIVE_LOADING=false;
+const REQ_KIND_LABEL={"ann.publish":"Duyuru yayınlama","ann.delete":"Duyuru silme"};
+const REQ_ST_MAP={bekliyor:"bekliyor",onaylandi:"onaylandı",reddedildi:"reddedildi",geri_cekildi:"geri çekildi"};
+function mapReqLive(r){
+ const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
+ return {id:+r.id,kind:r.kind==="ann.publish"?"pub":r.kind==="ann.delete"?"del":r.kind,
+  type:REQ_KIND_LABEL[r.kind]||r.kind,subj:r.subject,cat:r.category,
+  by:nameOf(r.requested_by),appr:nameOf(r.approver),st:REQ_ST_MAP[r.status]||r.status,
+  at:(r.created_at||"").replace("T"," ").slice(0,16),reason:r.reason,target:+r.target_id,
+  dec:r.decided_at?nameOf(r.approver):null,decAt:r.decided_at?(r.decided_at||"").replace("T"," ").slice(0,16):null,
+  decReason:r.decision_reason};}
+async function loadReqsLive(which){
+ const path={inbox:"/api/announcements/requests/inbox",mine:"/api/announcements/requests/mine",done:"/api/announcements/requests/done"}[which];
+ try{
+  const data=await api("GET",path);
+  const mapped=data.items.map(mapReqLive);
+  if(which==="inbox")S.reqsInboxLive=mapped;
+  else if(which==="mine")S.reqsMineLive=mapped;
+  else S.reqsDoneLive=mapped;
+ }catch(e){toast("Talepler yüklenemedi: "+e.message,1);
+  if(which==="inbox")S.reqsInboxLive=[];else if(which==="mine")S.reqsMineLive=[];else S.reqsDoneLive=[];}
+ render();}
 async function loadTrainDocsLive(){
  TRAIN_DOCS_LIVE_LOADING=true;
  try{const data=await api("GET","/api/training/documents");TRAIN_DOCS_LIVE=data.items;}
@@ -903,7 +924,8 @@ let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.l
  teamLive:null,teamLiveProj:null,teamLiveLoading:null,
  crLive:null,crLiveProj:null,crLiveLoading:null,
  docsLive:null,docsLiveLoading:false,
- trainLive:null,trainLiveLoading:false,trainViewId:null,trainQuizLive:null,trainAnswers:{},trainResult:null};
+ trainLive:null,trainLiveLoading:false,trainViewId:null,trainQuizLive:null,trainAnswers:{},trainResult:null,
+ reqsInboxLive:null,reqsMineLive:null,reqsDoneLive:null};
 
 /* --------------------------- gerçek backend istemcisi ---------------------------
    API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
@@ -1243,9 +1265,12 @@ function quizView(){
 
 /* ------------------------------ talep detayı ------------------------------ */
 function reqView(){
- const r=REQS.find(x=>x.id===S.req);if(!r){S.req=null;return screenView();}
- const isAppr=r.appr===S.me.n&&r.st==="bekliyor",isMine=r.by===S.me.n&&r.st==="bekliyor";
- const a=r.kind==="pub"||r.kind==="del"?ANN.find(x=>x.id===r.target):null;
+ const src=LIVE_BACKEND?[...(S.reqsInboxLive||[]),...(S.reqsMineLive||[]),...(S.reqsDoneLive||[])]:REQS;
+ const r=src.find(x=>x.id===S.req);if(!r){S.req=null;return screenView();}
+ const myName=S.me.n;
+ const isAppr=r.appr===myName&&r.st==="bekliyor",isMine=r.by===myName&&r.st==="bekliyor";
+ const annSrc=LIVE_BACKEND?(S.annLive||[]):ANN;
+ const a=r.kind==="pub"||r.kind==="del"?annSrc.find(x=>x.id===r.target):null;
  const rows=[["Konu",esc(r.subj)],["Kategori",r.cat==="Yasal"?"Yasal — Teftiş onayı":"Genel — yönetici onayı"],
   ["Talep eden",esc(r.by)],["Onaya düşen",esc(r.appr)],["Tarih",r.at],["Gerekçe",esc(r.reason)]];
  if(r.dec)rows.push(["Karar",esc(r.dec)+" · "+r.decAt]);
@@ -1268,7 +1293,7 @@ function reqView(){
     <button class="b" data-a="decCancel">Vazgeç</button><button class="b p" data-a="doApprove:${r.id}">Evet, onayla</button></div></div>`
   :`<div style="display:flex;gap:8px;margin-top:14px"><button class="b d" data-a="dec:rej">Reddet</button>
     <button class="b p" data-a="dec:app">Onayla</button></div>`):""}
- ${isMine?`<div style="margin-top:14px"><button class="b d" data-a="withdraw:${r.id}">Geri çek</button></div>`:""}`;}
+ ${!LIVE_BACKEND&&isMine?`<div style="margin-top:14px"><button class="b d" data-a="withdraw:${r.id}">Geri çek</button></div>`:""}`;}
 
 /* ------------------------------ duyuru detayı ----------------------------- */
 function annView(){
@@ -2154,31 +2179,41 @@ function screenView(){
      <span class="m" style="color:var(--tm)">${days[i]}</span></div>`).join("")}</div></div>`;}
 
  /* ---- onaylar ---- */
- if(v==="p.in"){const l=inbox();
-  return head("Onayımda bekleyenler","Onay ve ret talebin detayında verilir")+
+ if(v==="p.in"){
+  if(LIVE_BACKEND&&S.reqsInboxLive===null)loadReqsLive("inbox");
+  const l=LIVE_BACKEND?(S.reqsInboxLive||[]):inbox();
+  return head("Onayımda bekleyenler","Onay ve ret talebin detayında verilir"+(LIVE_BACKEND?" · canlı backend":""))+
+  (LIVE_BACKEND&&S.reqsInboxLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
   (l.length?table(["Talep","Konu","Kategori","Talep eden","Tarih",""],l.map(r=>`<tr>
    <td>${r.type}<div class="m" style="color:var(--tm)">#${r.id}</div></td><td>${esc(r.subj)}</td>
    <td>${catPill(r.cat)}</td><td style="color:var(--t2)">${esc(r.by)}</td><td class="m" style="color:var(--tm)">${r.at}</td>
    <td style="text-align:right"><button class="b s p" data-a="openReq:${r.id}">Detay</button></td></tr>`).join(""))
-  :`<div class="card ok"><span style="font-size:12px">Onayınızı bekleyen talep yok.</span></div>`);}
+  :`<div class="card ok"><span style="font-size:12px">Onayınızı bekleyen talep yok.</span></div>`));}
 
- if(v==="p.my"){const l=mineReqs(),hist=REQS.filter(r=>r.by===S.me.n&&r.st!=="bekliyor");
-  return head("Onay beklediklerim","Düzeltme yoktur; talebi geri çekip yeniden girin")+
+ if(v==="p.my"){
+  if(LIVE_BACKEND&&S.reqsMineLive===null)loadReqsLive("mine");
+  const l=LIVE_BACKEND?(S.reqsMineLive||[]):mineReqs();
+  const hist=LIVE_BACKEND?[]:REQS.filter(r=>r.by===S.me.n&&r.st!=="bekliyor");
+  return head("Onay beklediklerim","Düzeltme yoktur; talebi geri çekip yeniden girin"+(LIVE_BACKEND?" · canlı backend":""))+
+  (LIVE_BACKEND&&S.reqsMineLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
   (l.length?table(["Talep","Konu","Onaya düşen","Tarih",""],l.map(r=>`<tr><td>${r.type}</td><td>${esc(r.subj)}</td>
    <td style="color:var(--t2)">${esc(r.appr)}</td><td class="m" style="color:var(--tm)">${r.at}</td>
    <td style="text-align:right;white-space:nowrap"><button class="b s" data-a="openReq:${r.id}">Detay</button>
-    <button class="b s d" data-a="withdraw:${r.id}">Geri çek</button></td></tr>`).join(""))
-  :`<p style="font-size:12px;color:var(--tm)">Bekleyen talebiniz yok.</p>`)+
+    ${LIVE_BACKEND?"":`<button class="b s d" data-a="withdraw:${r.id}">Geri çek</button>`}</td></tr>`).join(""))
+  :`<p style="font-size:12px;color:var(--tm)">Bekleyen talebiniz yok.</p>`))+
   (hist.length?`<div class="lbl" style="margin-top:15px">Sonuçlanan taleplerim</div>
    ${table(["Talep","Konu","Durum",""],hist.map(r=>`<tr><td>${r.type}</td><td>${esc(r.subj)}</td><td>${stPill(r.st)}</td>
     <td style="text-align:right"><button class="b s" data-a="openReq:${r.id}">Detay</button></td></tr>`).join(""))}`:"");}
 
- if(v==="p.done"){const l=REQS.filter(r=>r.dec===S.me.n);
-  return head("Onayladıklarım","Karar verdiğiniz talepler · salt görüntüleme")+
+ if(v==="p.done"){
+  if(LIVE_BACKEND&&S.reqsDoneLive===null)loadReqsLive("done");
+  const l=LIVE_BACKEND?(S.reqsDoneLive||[]):REQS.filter(r=>r.dec===S.me.n);
+  return head("Onayladıklarım","Karar verdiğiniz talepler · salt görüntüleme"+(LIVE_BACKEND?" · canlı backend":""))+
+  (LIVE_BACKEND&&S.reqsDoneLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
   (l.length?table(["Talep","Konu","Talep eden","Karar","Tarih",""],l.map(r=>`<tr><td>${r.type}</td><td>${esc(r.subj)}</td>
    <td style="color:var(--t2)">${esc(r.by)}</td><td>${stPill(r.st)}</td><td class="m" style="color:var(--tm)">${r.decAt||""}</td>
    <td style="text-align:right"><button class="b s" data-a="openReq:${r.id}">Detay</button></td></tr>`).join(""))
-  :`<p style="font-size:12px;color:var(--tm)">Henüz karar verdiğiniz talep yok.</p>`);}
+  :`<p style="font-size:12px;color:var(--tm)">Henüz karar verdiğiniz talep yok.</p>`));}
 
  /* ---- kısayollar ---- */
  if(v==="s.all")return head("Tüm kısayollar","Git düğmesi uygulamayı yeni sekmede açar")+
@@ -3227,7 +3262,8 @@ app.addEventListener("click",async ev=>{
    meetingsLive:null,meetingsLiveLoading:null,mtView:null,annLive:null,annLiveLoading:false,
    ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null,teamLive:null,teamLiveProj:null,teamLiveLoading:null,
    crLive:null,crLiveProj:null,crLiveLoading:null,docsLive:null,docsLiveLoading:false,
-   trainLive:null,trainLiveLoading:false,trainViewId:null,trainQuizLive:null,trainAnswers:{},trainResult:null});
+   trainLive:null,trainLiveLoading:false,trainViewId:null,trainQuizLive:null,trainAnswers:{},trainResult:null,
+   reqsInboxLive:null,reqsMineLive:null,reqsDoneLive:null});
   USERS_LIVE=null;USERS_LIVE_LOADING=false;ACCESS_LIVE=null;ACCESS_LIVE_LOADING=false;MY_ACCESS=null;
   TRAIN_DOCS_LIVE=null;TRAIN_DOCS_LIVE_LOADING=false;PENDING_UPLOAD_FILE=null;PENDING_TRAIN_FILE=null;
   render();return;}
@@ -3998,7 +4034,15 @@ app.addEventListener("click",async ev=>{
  if(k==="reqClose"){S.req=null;S.dec=null;render();return;}
  if(k==="dec"){S.dec=p[1];S.f={};render();return;}
  if(k==="decCancel"){S.dec=null;S.f={};render();return;}
- if(k==="doApprove"){const r=REQS.find(x=>x.id===+p[1]);
+ if(k==="doApprove"){
+  if(LIVE_BACKEND){
+   try{
+    await api("POST","/api/announcements/requests/"+p[1]+"/decide",{decision:"onayla"});
+    S.reqsInboxLive=null;S.reqsDoneLive=null;S.annLive=null;S.dec=null;S.req=null;S.scr="p.in";
+    toast("Talep onaylandı ve uygulandı.");render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  const r=REQS.find(x=>x.id===+p[1]);
   r.st="onaylandı";r.dec=S.me.n;r.decAt=now();
   if(r.kind==="del"){const i=ANN.findIndex(a=>a.id===r.target);if(i>=0)ANN.splice(i,1);}
   if(r.kind==="pub"){const a=ANN.find(x=>x.id===r.target);if(a)a.st="yayında";}
@@ -4013,8 +4057,16 @@ app.addEventListener("click",async ev=>{
   else audit(r.type+" onaylandı: "+r.subj);
   S.dec=null;S.req=null;S.scr="p.in";
   toast(r.kind==="pub"?"Duyuru onaylandı ve yayına alındı.":"Talep onaylandı ve uygulandı.");return;}
- if(k==="doReject"){const r=REQS.find(x=>x.id===+p[1]);
+ if(k==="doReject"){
   if((S.f.rej||"").trim().length<10){toast("Ret gerekçesi en az 10 karakter olmalı.",1);return;}
+  if(LIVE_BACKEND){
+   try{
+    await api("POST","/api/announcements/requests/"+p[1]+"/decide",{decision:"reddet",reason:S.f.rej.trim()});
+    S.reqsInboxLive=null;S.reqsDoneLive=null;S.annLive=null;S.dec=null;S.f={};S.req=null;
+    toast("Talep gerekçeyle reddedildi.",1);render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  const r=REQS.find(x=>x.id===+p[1]);
   r.st="reddedildi";r.dec=S.me.n;r.decAt=now();r.decReason=S.f.rej.trim();
   if(r.kind==="pub"){const a=ANN.find(x=>x.id===r.target);if(a)a.st="reddedildi";}
   if(r.kind==="reppub"){const x=BIREP.find(y=>y.code===r.target);if(x){x.st="gelistirme";x.rej=S.f.rj.trim();}}
@@ -4022,7 +4074,9 @@ app.addEventListener("click",async ev=>{
   const to=notify("ann.reject",r.type+" talebiniz reddedildi — gerekçe: "+r.decReason,{req:r.by,appr:S.me.n});
   audit(r.type+" reddedildi: "+r.subj+" · bildirim: "+(to.join(", ")||"gönderilmedi"),0);
   S.dec=null;S.f={};S.req=null;toast("Talep gerekçeyle reddedildi.",1);return;}
- if(k==="withdraw"){S.dlg={type:"withdraw",id:+p[1]};render();return;}
+ if(k==="withdraw"){
+  if(LIVE_BACKEND){toast("Talep geri çekme bu sürümde henüz desteklenmiyor.",1);return;}
+  S.dlg={type:"withdraw",id:+p[1]};render();return;}
  if(k==="doWithdraw"){const r=REQS.find(x=>x.id===+p[1]);r.st="geri çekildi";r.decAt=now();
   if(r.kind==="pub"){const i=ANN.findIndex(a=>a.id===r.target);if(i>=0)ANN.splice(i,1);}
   if(r.kind==="docdel"){const d=DOCS.find(x=>x.no===r.target);if(d)delete d.pendingDel;}

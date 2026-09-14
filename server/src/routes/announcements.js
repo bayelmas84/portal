@@ -92,6 +92,32 @@ router.get("/requests/inbox", requireRead("announcements"), async (req, res, nex
   }
 });
 
+// Onay kutusu: benim açtığım ve hâlâ bekleyen talepler
+router.get("/requests/mine", requireRead("announcements"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT * FROM approval_requests WHERE requested_by=$1 AND status='bekliyor' ORDER BY created_at DESC`,
+      [req.user.username]
+    );
+    res.json({ items: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Onay kutusu: karara bağladığım talepler (onayladığım veya reddettiğim)
+router.get("/requests/done", requireRead("announcements"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT * FROM approval_requests WHERE approver=$1 AND status IN ('onaylandi','reddedildi') ORDER BY decided_at DESC`,
+      [req.user.username]
+    );
+    res.json({ items: rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.post("/requests/:id/decide", requireRead("announcements"), async (req, res, next) => {
   try {
     const { decision, reason } = req.body || {}; // 'onayla' | 'reddet'
