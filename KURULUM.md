@@ -1,11 +1,10 @@
 # Tera Portal — Kurulum Kılavuzu
 
-Bu belge kurulumu yapacak kişi için yazılmıştır. Uygulama **tek bir statik dosyadan**
-(`index.html`) ibarettir — veritabanı, çalışma zamanı (Node/PHP/…) veya derleme
-adımı gerekmez. Kurulum, bu dosyayı bir web sunucusunun sunduğu şekilde yerleştirmekten
-ibarettir.
+Bu belge kurulumu yapacak kişi için yazılmıştır. Sırayla uygulayın; her adımın
+sonunda bir **doğrulama** komutu vardır.
 
-Sırayla uygulayın; her adımın sonunda bir **doğrulama** komutu vardır.
+Sunucuya `root`/`sudo` yetkisiyle bağlanmış olmalısınız. Örnek alan adı/AD adresi
+gibi değerleri kendi ortamınızdakiyle değiştirin.
 
 ---
 
@@ -13,160 +12,218 @@ Sırayla uygulayın; her adımın sonunda bir **doğrulama** komutu vardır.
 
 | Bileşen | Görevi |
 |---|---|
-| Bir web sunucusu (Nginx önerilir) | `index.html` dosyasını HTTPS üzerinden sunar |
-| TLS sertifikası | Tarayıcı ile sunucu arası şifreleme |
-| DNS kaydı | `portal.terayatirim.com.tr` (veya seçtiğiniz alan adı) |
+| Node.js 20 uygulaması (`server/`) | API, `127.0.0.1:8080` dinler |
+| PostgreSQL 14+ | Tüm veriler |
+| Nginx | TLS sonlandırma, statik dosya + API ters vekili (reverse proxy) |
+| Active Directory (LDAPS) | Kimlik doğrulama — parola portalda saklanmaz |
+| SMTP | Bildirim e-postaları (Admin Panel > SMTP Ayarları'ndan girilir) |
 
-Uygulama tarayıcıda çalışır; sunucu tarafında hiçbir işlem, veritabanı veya API
-yoktur. Sunucunun tek görevi dosyayı istemciye iletmektir.
+`index.html` (arayüz) statik olarak Nginx'ten sunulur; `/api/*` istekleri Node
+uygulamasına yönlendirilir.
+
+**Önemli — mevcut durum:** `index.html` şu an bu API'ye bağlı değildir; kendi
+başına, bellek içi sahte veriyle çalışan bir tasarım/iş kuralı prototipidir.
+Gerçek API (`server/`) çalışır ve test edilmiştir, ancak arayüzün bu API'yi
+çağıracak şekilde yeniden yazılması **ayrı, tamamlanmamış bir iştir**. Bu belge
+yalnızca backend'in kurulumunu anlatır.
+
+---
 
 ## 1. Sunucu gereksinimleri
 
-- **İşletim sistemi:** Ubuntu 22.04 / RHEL 9 (veya herhangi bir Linux/Windows sunucu)
-- **Donanım:** 1 vCPU, 512 MB RAM, 5 GB disk yeterlidir (dosya ~3 MB, trafik statik)
-  — sadece eşzamanlı kullanıcı sayısı çok yüksekse (binlerce) Nginx önbelleği ve
-  bant genişliği ölçeklendirilir, CPU/RAM ihtiyacı artmaz
-- **Ağ:** 443 (HTTPS) ve kurulum sırasında 80 (yalnızca sertifika doğrulaması için)
-  dışarıya açık olmalı
-- **Yazılım:** Nginx (veya Apache/Caddy), bir TLS sertifikası (Let's Encrypt veya
-  kurumsal CA)
-- **DNS:** `portal.terayatirim.com.tr` (örnek) için A/AAAA kaydı, sunucunun genel IP'sine
-
-Alternatif barındırma (sunucu yönetmek istemiyorsanız): GitHub Pages, Netlify,
-Vercel veya bir bulut nesne deposu (S3/Cloud Storage + CDN) — hepsi tek bir statik
-dosyayı doğrudan kabul eder, bölüm 2-4 bu durumda gerekmez, doğrudan bölüm 5'e geçin.
-
-Ağ erişimini şimdi doğrulayın (kendi bilgisayarınızdan):
+- Ubuntu 22.04 / RHEL 9, en az 2 vCPU, 4 GB RAM, 20 GB disk
+- DNS kaydı + TLS sertifikası (Let's Encrypt veya kurumsal CA)
+- AD servis hesabı (okuma yetkili) ve LDAPS (636) erişimi
+- SMTP sunucu adresi
+- PostgreSQL için yönetici erişimi
 
 ```bash
-nslookup portal.terayatirim.com.tr   # sunucunun IP'sini göstermeli
+nc -zv dc01.tera.local 636      # LDAPS açık olmalı (gerçek AD kullanılacaksa)
 ```
 
----
-
-## 2. Sistem paketleri
+## 2. Sistem paketleri ve kullanıcı
 
 ```bash
 sudo apt update
-sudo apt install -y nginx certbot python3-certbot-nginx
+sudo apt install -y curl ca-certificates postgresql postgresql-contrib nginx certbot python3-certbot-nginx unzip
+
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+sudo useradd --system --home /opt/tera-portal --shell /usr/sbin/nologin teraportal
 ```
 
 **Doğrulama**
-
 ```bash
-nginx -v
-certbot --version
+node -v && psql --version && nginx -v && id teraportal
 ```
 
----
-
-## 3. Dosyanın yerleştirilmesi
+## 3. Dosyaların yerleştirilmesi
 
 ```bash
-sudo mkdir -p /var/www/tera-portal
-sudo cp index.html /var/www/tera-portal/index.html
-sudo chown -R www-data:www-data /var/www/tera-portal
-sudo chmod 644 /var/www/tera-portal/index.html
+sudo mkdir -p /opt/tera-portal /var/lib/tera-portal/uploads /var/log/tera-portal
+sudo unzip tera-portal.zip -d /opt/tera-portal
+cd /opt/tera-portal
+sudo npm ci --omit=dev
+sudo chown -R teraportal:teraportal /opt/tera-portal /var/lib/tera-portal /var/log/tera-portal
 ```
 
 **Doğrulama**
-
 ```bash
-ls -la /var/www/tera-portal/index.html
+ls /opt/tera-portal/server/src/index.js && echo "dosyalar yerinde"
 ```
 
----
+## 4. Veritabanı
 
-## 4. Nginx yapılandırması
+```bash
+sudo -u postgres psql <<'SQL'
+CREATE USER tera_portal WITH PASSWORD 'BURAYA_GUCLU_PAROLA';
+CREATE DATABASE tera_portal OWNER tera_portal ENCODING 'UTF8';
+SQL
+```
 
-`/etc/nginx/sites-available/tera-portal` dosyasını oluşturun:
+```bash
+cd /opt/tera-portal
+sudo -u teraportal cp .env.example .env
+sudo -u teraportal nano .env   # DB_PASSWORD, LDAP_*, APP_ENCRYPTION_KEY doldurun
+sudo -u teraportal npm run migrate
+sudo -u teraportal npm run seed    # yalnızca ilk kurulumda — başlangıç kullanıcıları/rolleri
+```
+
+Şifreleme anahtarı üretmek için:
+```bash
+openssl rand -base64 32   # APP_ENCRYPTION_KEY için
+```
+
+**Doğrulama**
+```bash
+sudo -u postgres psql -d tera_portal -c '\dt'   # tablolar listelenmeli
+sudo -u postgres psql -d tera_portal -c 'select count(*) from users;'   # 12 dönmeli (seed sonrası)
+```
+
+## 5. Üretim ortamı ayarları (.env)
+
+`.env` içinde en az şunlar doldurulmalı:
+
+```
+NODE_ENV=production
+AUTH_MODE=ldap
+APP_ENCRYPTION_KEY=<openssl rand -base64 32>
+DB_PASSWORD=<adım 4'te verdiğiniz parola>
+LDAP_URL=ldaps://dc01.tera.local:636
+LDAP_BASE_DN=DC=tera,DC=local
+LDAP_BIND_DN=CN=svc-portal,OU=ServisHesaplari,DC=tera,DC=local
+```
+
+`AUTH_MODE=mock` yalnızca geliştirme/testtedir — üretimde `ldap` olmadan
+uygulama başlarken uyarı basar (bkz. `server/src/config.js`). SMTP ve AD servis
+hesabı parolası `.env`'e değil, uygulama açıldıktan sonra **Admin Panel**
+ekranlarından girilir; veritabanında şifreli saklanır.
+
+## 6. systemd servisi
+
+`/etc/systemd/system/tera-portal.service`:
+
+```ini
+[Unit]
+Description=Tera Portal API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=teraportal
+WorkingDirectory=/opt/tera-portal
+EnvironmentFile=/opt/tera-portal/.env
+ExecStart=/usr/bin/node server/src/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tera-portal /var/log/tera-portal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now tera-portal
+```
+
+**Doğrulama**
+```bash
+sudo systemctl status tera-portal
+curl -s http://127.0.0.1:8080/api/healthz    # {"ok":true} dönmeli
+```
+
+## 7. Nginx (statik dosya + API ters vekili)
+
+`/etc/nginx/sites-available/tera-portal`:
 
 ```nginx
 server {
     listen 80;
     server_name portal.terayatirim.com.tr;
-    root /var/www/tera-portal;
+    root /opt/tera-portal;
     index index.html;
 
-    location / {
-        try_files $uri $uri/ /index.html;
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Tek sayfalık uygulama: önbellek kısa tutulur ki güncelleme yayınca
-    # kullanıcılar eski sürümde takılı kalmasın.
-    add_header Cache-Control "no-cache, must-revalidate";
+    location / {
+        try_files $uri /index.html;
+    }
 
-    # Uygulama gömülü <script> ve satır içi stil kullanır (tek dosyalık
-    # tasarımın gereği); bu nedenle CSP burada 'unsafe-inline' ile
-    # tanımlanmıştır. Daha sıkı bir CSP isteniyorsa uygulamanın script/style
-    # bloklarının ayrı dosyalara bölünmesi ve nonce/hash kullanılması gerekir
-    # — bu, ayrı bir geliştirme işidir.
     add_header X-Content-Type-Options "nosniff";
     add_header X-Frame-Options "DENY";
     add_header Referrer-Policy "strict-origin-when-cross-origin";
-    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'";
 }
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/tera-portal /etc/nginx/sites-enabled/tera-portal
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-**Doğrulama**
-
-```bash
-sudo nginx -t                 # "syntax is ok" / "test is successful" görmelisiniz
-curl -I http://portal.terayatirim.com.tr | head -5   # 200 OK dönmeli
-```
-
----
-
-## 5. TLS sertifikası
-
-```bash
+sudo ln -s /etc/nginx/sites-available/tera-portal /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d portal.terayatirim.com.tr
 ```
 
-Certbot, Nginx ayarını otomatik olarak HTTPS'e yönlendirecek şekilde günceller ve
-90 günde bir otomatik yenileme için bir zamanlanmış görev kurar.
-
 **Doğrulama**
-
 ```bash
-curl -I https://portal.terayatirim.com.tr | head -5   # 200 OK, HTTPS üzerinden
-sudo certbot renew --dry-run                          # otomatik yenileme çalışıyor mu
+curl -I https://portal.terayatirim.com.tr/api/healthz   # 200 OK
 ```
 
----
+## 8. Teslim kontrol listesi
 
-## 6. Son kontrol listesi
+- [ ] `npm test` sunucuda (veya CI'da) 8/8 geçiyor
+- [ ] `AUTH_MODE=ldap` ve gerçek bir AD hesabıyla giriş denendi
+- [ ] Admin Panel > SMTP Ayarları'ndan gerçek sunucu bilgisi girilip "Bağlantıyı sına" başarılı
+- [ ] `systemctl status tera-portal` "active (running)"
+- [ ] **Arayüz (`index.html`) henüz bu API'ye bağlı değil** — bu, ayrıca yapılması
+      gereken bir geliştirme adımıdır (bkz. giriş bölümündeki not)
+- [ ] Bağımsız sızma testi, gerçek AD/SMTP saha testi, yük testi, yedekten dönüş
+      provası yapılmadı — bunlar canlıya çıkmadan önce kurumun kendisinin
+      yapması/yaptırması gereken, kod yazarak kapatılamayan işlerdir
 
-- [ ] `https://portal.terayatirim.com.tr` tarayıcıda açılıyor, giriş ekranı görünüyor
-- [ ] Masaüstü, tablet ve telefon genişliklerinde arayüz bozulmuyor (tarayıcıda
-      geliştirici araçlarından cihaz simülasyonu ile kontrol edin)
-- [ ] `http://` isteği `https://`'ye yönleniyor (certbot bunu otomatik yapar)
-- [ ] Sayfa yenilendiğinde girilen veri kaybolur — bu beklenen davranıştır,
-      bkz. `README.md` "Sınırlar" bölümü
-- [ ] Yeni bir sürüm yayınlarken sadece `index.html` dosyasını değiştirip
-      üzerine kopyalamanız yeterlidir (adım 3'ü tekrarlayın); sunucu veya
-      Nginx yeniden başlatmaya gerek yoktur
-
-## 7. Güncelleme
+## 9. Güncelleme
 
 ```bash
-sudo cp yeni-index.html /var/www/tera-portal/index.html
+cd /opt/tera-portal
+sudo -u teraportal git pull   # veya yeni paketi açın
+sudo -u teraportal npm ci --omit=dev
+sudo -u teraportal npm run migrate   # yeni göç varsa
+sudo systemctl restart tera-portal
 ```
 
-Başka hiçbir adım gerekmez — servis kesintisi olmaz.
-
-## 8. Sorun giderme
+## 10. Sorun giderme
 
 | Belirti | Olası neden |
 |---|---|
-| 502/504 hatası | Nginx `root` yolu yanlış veya dosya izinleri eksik (bölüm 3'ü doğrulayın) |
-| Sertifika alınamıyor | 80 portu dışarıya kapalı veya DNS henüz yayılmamış |
-| Tarayıcıda beyaz/boş ekran | Tarayıcı konsolunda (F12) hata var mı bakın; genelde eski bir tarayıcının
-  desteklemediği bir JS özelliğinden kaynaklanır — güncel Chrome/Edge/Firefox/Safari önerilir |
-| Değişiklik yayınlandı ama görünmüyor | Tarayıcı önbelleği; sert yenileme (Ctrl+Shift+R) deneyin |
+| `APP_ENCRYPTION_KEY tanımlı değil` hatasıyla başlamıyor | `.env`'de üretim modunda bu alan zorunlu, adım 5'i tamamlayın |
+| Girişte "Dizin sunucusuna ulaşılamadı" | LDAPS 636 portu kapalı veya `LDAP_URL` yanlış |
+| SMTP "Bağlantıyı sına" başarısız | Admin Panel'den girilen sunucu adresi/port yanlış veya ağdan erişilemiyor |
+| 403 "CSRF doğrulaması başarısız" | İstekte `X-CSRF-Token` başlığı eksik/yanlış — giriş yanıtındaki `csrfToken` her istekte gönderilmeli |
+| 429 "Çok fazla başarısız giriş denemesi" | `LOGIN_MAX_ATTEMPTS` aşıldı, 15 dakika sonra tekrar deneyin |
