@@ -21,11 +21,19 @@ gibi değerleri kendi ortamınızdakiyle değiştirin.
 `index.html` (arayüz) statik olarak Nginx'ten sunulur; `/api/*` istekleri Node
 uygulamasına yönlendirilir.
 
-**Önemli — mevcut durum:** `index.html` şu an bu API'ye bağlı değildir; kendi
-başına, bellek içi sahte veriyle çalışan bir tasarım/iş kuralı prototipidir.
-Gerçek API (`server/`) çalışır ve test edilmiştir, ancak arayüzün bu API'yi
-çağıracak şekilde yeniden yazılması **ayrı, tamamlanmamış bir iştir**. Bu belge
-yalnızca backend'in kurulumunu anlatır.
+**Güncel durum:** Arayüz artık gerçek API'ye tam olarak bağlıdır (giriş, 2FA,
+onay akışları, admin paneli, denetim kaydı, arama, bildirimler — hepsi canlı
+backend üzerinden çalışır). Arayüz yalnızca `index.html` dosyasının Claude
+önizleyicisi gibi bir sandbox'ta AÇILMADIĞI, gerçek bir tarayıcıda backend'siz
+açıldığı durumlarda otomatik olarak "demo modu"na (bellek içi sahte veri) düşer
+— bu, geliştirme/tanıtım kolaylığı içindir, üretimde kullanılmaz.
+
+**Bu belgede henüz yer almayan, üretim öncesi MUTLAKA yapılması gereken adımlar:**
+- 2FA rol politikası: admin ve Teftiş rollerinde 2FA zorunludur (kod tarafında
+  hazır); ilk üretim girişlerinde bu rollerdeki her kullanıcı otomatik olarak
+  kurulum ekranına yönlendirilir — IT ekibinin bunu önceden duyurması önerilir.
+- `NETWORK_ALLOWED_CIDRS` (bkz. adım 6) **mutlaka** kurumsal ağ aralığınızla
+  doldurulmalıdır; boş bırakılırsa herkese açık kalır.
 
 ---
 
@@ -113,6 +121,8 @@ DB_PASSWORD=<adım 4'te verdiğiniz parola>
 LDAP_URL=ldaps://dc01.tera.local:636
 LDAP_BASE_DN=DC=tera,DC=local
 LDAP_BIND_DN=CN=svc-portal,OU=ServisHesaplari,DC=tera,DC=local
+NETWORK_ALLOWED_CIDRS=10.20.0.0/16   # kurumsal ağ/VPN aralığınız — BOŞ BIRAKMAYIN
+LOGIN_MAX_ATTEMPTS=8                 # sonradan Admin Panel > Genel Ayarlar'dan da değiştirilebilir
 ```
 
 `AUTH_MODE=mock` yalnızca geliştirme/testtedir — üretimde `ldap` olmadan
@@ -199,14 +209,34 @@ curl -I https://portal.terayatirim.com.tr/api/healthz   # 200 OK
 ## 8. Teslim kontrol listesi
 
 - [ ] `npm test` sunucuda (veya CI'da) 8/8 geçiyor
+- [ ] `npm audit` sıfır zafiyet gösteriyor (bu depo teslim anında öyleydi;
+      düzenli olarak — örn. ayda bir — tekrar kontrol edin, yeni CVE'ler çıkabilir)
 - [ ] `AUTH_MODE=ldap` ve gerçek bir AD hesabıyla giriş denendi
 - [ ] Admin Panel > SMTP Ayarları'ndan gerçek sunucu bilgisi girilip "Bağlantıyı sına" başarılı
+- [ ] `NETWORK_ALLOWED_CIDRS` gerçek kurumsal ağ/VPN aralığınızla dolduruldu ve
+      kurumsal ağ DIŞINDAN bir denemeyle (örn. mobil veri) erişimin reddedildiği
+      doğrulandı
+- [ ] Admin ve Teftiş rolündeki gerçek kullanıcılar bilgilendirildi: ilk
+      girişlerinde 2FA kurulum ekranına yönlendirilecekler (e-posta koduyla,
+      authenticator app gerekmez)
 - [ ] `systemctl status tera-portal` "active (running)"
-- [ ] **Arayüz (`index.html`) henüz bu API'ye bağlı değil** — bu, ayrıca yapılması
-      gereken bir geliştirme adımıdır (bkz. giriş bölümündeki not)
-- [ ] Bağımsız sızma testi, gerçek AD/SMTP saha testi, yük testi, yedekten dönüş
-      provası yapılmadı — bunlar canlıya çıkmadan önce kurumun kendisinin
-      yapması/yaptırması gereken, kod yazarak kapatılamayan işlerdir
+- [ ] Arayüz (`index.html`) gerçek API'ye bağlıdır ve bu depoda test edilmiştir
+      (giriş, 2FA, onay akışları, admin paneli, arama, bildirimler) — ancak bu
+      testler geliştirme ortamında (mock AD/SMTP) yapılmıştır; SİZİN gerçek AD
+      ve SMTP sunucunuza karşı ilk canlı denemeyi mutlaka siz yapmalısınız
+- [ ] **Bağımsız (üçüncü taraf) sızma testi** hâlâ yapılmadı — bu depoda
+      manuel olarak denenen ve düzeltilen açıklar (SQLi, XSS, CSRF, IDOR, dosya
+      sahteciliği, rate-limit atlatma, LDAP/oturum zaman aşımı vb.) gerçek bir
+      güvenlik firmasının sistematik taramasının (OWASP ZAP/Burp Suite gibi
+      araçlarla) yerini TUTMAZ. Kurumun kendi güvenlik politikası gereği
+      canlıya çıkmadan önce bunu yaptırması önerilir.
+- [ ] Yedekten geri dönüş (restore) provası yapılmadı — `pg_dump`/`pg_restore`
+      ile düzenli yedek alma ve geri yükleme testinin kurulması IT ekibinin işidir
+- [ ] Yük testi bu ortamda simüle edilmiş verilerle yapıldı (50 eşzamanlı
+      kullanıcı, gerçek DB sorgusu, %100 başarı, ort. 94ms gecikme — bu sırada
+      genel API rate limiter'da kritik bir hata bulunup düzeltildi). Gerçek
+      kullanıcı sayınızla (özellikle NAT arkasından) canlıda bir kez daha
+      izlenmesi önerilir
 
 ## 9. Güncelleme
 
