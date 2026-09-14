@@ -85,4 +85,17 @@ router.get("/me", async (req, res) => {
   res.json({ user: req.user, csrfToken: req.session.csrf_secret });
 });
 
+// Kendi rolünüzün ekran yetki haritası: arayüzün hangi düğmeleri göstereceğine
+// karar verebilmesi için gerekir (m.access ile ilgisi yok, m.access yetkisi
+// gerektirmez — herkes yalnızca KENDİ rolünün haritasını görür).
+router.get("/my-access", async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: "Oturum açık değil." });
+    const { rows } = await query("SELECT screen_key, level FROM role_access WHERE role=$1", [req.user.role]);
+    const map = {};
+    rows.forEach((r) => { map[r.screen_key] = r.level; });
+    res.json({ role: req.user.role, access: map });
+  } catch (e) { next(e); }
+});
+
 module.exports = router;

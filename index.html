@@ -773,6 +773,18 @@ async function loadUsersLive(){
    on:u.active?1:0}));
  }catch(e){toast("Kullanıcılar yüklenemedi: "+e.message,1);USERS_LIVE=[];}
  USERS_LIVE_LOADING=false;render();}
+let ACCESS_LIVE=null,ACCESS_LIVE_LOADING=false;
+async function loadAccessLive(){
+ ACCESS_LIVE_LOADING=true;
+ try{const data=await api("GET","/api/admin/access");ACCESS_LIVE=data.items;}
+ catch(e){toast("Yetki matrisi yüklenemedi: "+e.message,1);ACCESS_LIVE={};}
+ ACCESS_LIVE_LOADING=false;render();}
+/* Bir ekran anahtarının insan-okunur adı: önce modül adları arasında, sonra
+   modüllerin ekran listelerinde aranır. */
+function screenLabel(key){
+ const mo=MODULES.find(m=>m[0]===key);if(mo)return mo[1];
+ for(const k of Object.keys(SCREENS)){const s=(SCREENS[k]||[]).find(x=>x[0]===key);if(s)return s[1];}
+ return key;}
 async function loadBrandLive(){
  try{
   const data=await api("GET","/api/admin/brand");
@@ -989,7 +1001,22 @@ const TEAM_READ=["delivery","d.projects","d.board","d.backlog","d.sprint","d.gat
    proje panolarına erişim vermez — onlar dokümanlar üzerinden çalışır. */
 const inAnyTeam=()=>!!S.me&&PROJ.some(p=>teamOf(p.k).some(m=>
   m.n===S.me.n&&!MANDATORY_ROLES.includes(m.r)));
+let MY_ACCESS=null;
+/* Backend'in GERÇEKTEN denetlediği ekran anahtarları (requireRead/requireWrite
+   çağrılarından derlenmiştir). Bu listede olmayan anahtarlar (kanban, backlog,
+   raporlar gibi salt demo ekranlar) yerel ACC varsayılanlarını kullanmaya devam eder. */
+const BACKEND_MANAGED_KEYS=["announcements","training","d.team","d.docs","d.docview","d.cr",
+ "d.gantt","d.meeting","d.meetingview","m.users","m.dir","m.smtp","m.brand","m.avail","m.access"];
+async function loadMyAccessLive(){
+ try{const data=await api("GET","/api/auth/my-access");MY_ACCESS=data.access;}
+ catch(e){MY_ACCESS={};}
+ render();}
 function lvl(k){
+ if(LIVE_BACKEND&&MY_ACCESS&&BACKEND_MANAGED_KEYS.includes(k)){
+  const base=MY_ACCESS[k]||"none";
+  if(base!=="none")return base;
+  if(TEAM_READ.includes(k)&&inAnyTeam())return R;
+  return "none";}
  const base=(ACC[S.me.r]||{})[k]||"none";
  if(base!=="none")return base;
  /* Ekip üyeliği yalnızca okuma verir; hiçbir koşulda yazmaya dönüşmez. */
@@ -1469,7 +1496,31 @@ function screenView(){
   table(["Olay","Kişi","Zaman"],AUDIT.map(a=>`<tr><td style="color:${a.ok?"var(--t1)":"var(--er-fg)"}">${esc(a.ev)}</td>
    <td style="color:var(--t2)">${esc(a.who)}</td><td class="m" style="color:var(--tm)">${a.at}</td></tr>`).join(""));
 
- if(v==="m.access"){const roles=Object.keys(ROLE);let rows="";
+ if(v==="m.access"){
+  if(LIVE_BACKEND&&ACCESS_LIVE===null&&!ACCESS_LIVE_LOADING)loadAccessLive();
+  const roles=Object.keys(ROLE);let rows="";
+  if(LIVE_BACKEND){
+   if(ACCESS_LIVE===null){
+    return head("Ekran yetkileri","Hücreye tıklayarak — · R · W arasında geçiş yapın · canlı backend")+
+     `<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;}
+   const keySet=new Set();roles.forEach(r=>Object.keys(ACCESS_LIVE[r]||{}).forEach(k=>keySet.add(k)));
+   const keys=[...keySet].sort();
+   keys.forEach(key=>{
+    rows+=`<tr><td style="min-width:150px">${esc(screenLabel(key))}<div class="m" style="color:var(--tm)">${key}</div></td>`+
+     roles.map(r=>{const val=(ACCESS_LIVE[r]||{})[key]||"none";
+      const cls=val===W?"ok":val===R?"":"",txt=val===W?"W":val===R?"R":"—";
+      const own=r===S.me.r;
+      return `<td style="text-align:center"><span class="pl ${cls}" title="${own?"kendi rolünüz — kilitli":""}"
+       style="cursor:${cw("m.access")&&!own?"pointer":"not-allowed"};${own?"outline:1px dashed var(--bds)":""}"
+       ${cw("m.access")&&!own?`data-a="cycle:${r}:${key}"`:""}>${txt}</span></td>`;}).join("")+`</tr>`;});
+   return head("Ekran yetkileri","Hücreye tıklayarak — · R · W arasında geçiş yapın · canlı backend — yalnızca gerçek API'nin uyguladığı ekranlar listelenir",
+     cw("m.access")?`<button class="b" data-a="accReset">Varsayılana döndür</button>`:"")+
+    `<div class="card wr" style="margin-bottom:12px;font-size:12px;line-height:1.6">
+      Kendi rolünüz (<b>${ROLE[S.me.r]}</b>) kilitlidir. Bu liste yalnızca backend'in gerçekten
+      denetlediği ekranları içerir — kanban/backlog/rapor gibi tamamen demo ekranlar burada
+      görünmez, çünkü onlar için gerçek bir yetki kontrolü yoktur.</div>`+
+    table(["Ekran"].concat(roles.map(r=>ROLE[r].split(" ")[0]+(r===S.me.r?" (siz)":""))),rows)+
+    `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">R yalnızca görüntüleme, W ekleme ve değiştirme yetkisidir. Her değişiklik denetim kaydına yazılır.</p>`;}
   MODULES.forEach(mo=>{
    rows+=`<tr><td colspan="${roles.length+1}" style="background:var(--s1);font-size:9.5px;color:var(--tm);letter-spacing:.08em">${mo[1].toUpperCase()}</td></tr>`;
    [[mo[0],"(modül)"]].concat((SCREENS[mo[0]]||[]).map(x=>[x[0],x[1]])).forEach(([key,label])=>{
@@ -3002,7 +3053,7 @@ app.addEventListener("click",async ev=>{
      u.mgr=mu?mu.n:data.user.managerUsername;}
     S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
     S.meetingsLive=null;S.meetingsLiveLoading=null;
-    S.pop=null;loadBrandLive();render();return;
+    S.pop=null;loadBrandLive();loadMyAccessLive();render();return;
    }catch(e){S.err=e.message||"Kullanıcı adı veya parola hatalı.";render();return;}
   }
   const u=USERS.find(x=>x.u===uname);
@@ -3021,7 +3072,7 @@ app.addEventListener("click",async ev=>{
    meetingsLive:null,meetingsLiveLoading:null,mtView:null,annLive:null,annLiveLoading:false,
    ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null,teamLive:null,teamLiveProj:null,teamLiveLoading:null,
    crLive:null,crLiveProj:null,crLiveLoading:null,docsLive:null,docsLiveLoading:false});
-  USERS_LIVE=null;USERS_LIVE_LOADING=false;
+  USERS_LIVE=null;USERS_LIVE_LOADING=false;ACCESS_LIVE=null;ACCESS_LIVE_LOADING=false;MY_ACCESS=null;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
@@ -3033,8 +3084,17 @@ app.addEventListener("click",async ev=>{
  if(k==="jump"){if(!canUse(p[2])||!isOpen(p[1])){toast("Bu bölüm şu anda kullanım dışı.",1);return;}
   clearInterval(S.timer);S.view="app";S.mod=p[1];S.scr=p[2];
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null});render();return;}
- if(k==="cycle"){const r=p[1],key=p[2],cur=(ACC[r]||{})[key]||"none";
+ if(k==="cycle"){const r=p[1],key=p[2];
   if(r===S.me.r){toast("Kendi rolünüzün yetkilerini değiştiremezsiniz — görevler ayrılığı gereği başka bir yönetici yapmalı.",1);return;}
+  if(LIVE_BACKEND){
+   const cur=(ACCESS_LIVE[r]||{})[key]||"none";
+   const nx=cur==="none"?R:cur===R?W:"none";
+   try{
+    await api("PUT","/api/admin/access",{role:r,screenKey:key,level:nx});
+    ACCESS_LIVE=null;toast("Yetki güncellendi: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"yetki yok":nx));render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  const cur=(ACC[r]||{})[key]||"none";
   const nx=cur==="none"?R:cur===R?W:"none";ACC[r]=ACC[r]||{};
   if(nx==="none")delete ACC[r][key];else ACC[r][key]=nx;
   audit("Ekran yetkisi değişti: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"yetki yok":nx));render();return;}
@@ -3122,7 +3182,12 @@ app.addEventListener("click",async ev=>{
   def.to[p[2]]=def.to[p[2]]?0:1;
   audit("Bildirim tanımı değişti: "+def.n+" · "+(NOTIF_COLS.find(c=>c[0]===p[2])||["",""])[1]+" → "+(def.to[p[2]]?"açık":"kapalı"));
   render();return;}
- if(k==="accReset"){Object.keys(ACC_DEFAULT).forEach(r=>{
+ if(k==="accReset"){
+  if(LIVE_BACKEND){
+   try{await api("POST","/api/admin/access/reset",{});ACCESS_LIVE=null;toast("Tüm rollerin ekran yetkileri varsayılana döndürüldü.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  Object.keys(ACC_DEFAULT).forEach(r=>{
    Object.keys(ACC[r]||{}).forEach(x=>{delete ACC[r][x];});
    Object.assign(ACC[r]=ACC[r]||{},ACC_DEFAULT[r]);});
   audit("Ekran yetkileri varsayılana döndürüldü");toast("Tüm rollerin ekran yetkileri varsayılana döndürüldü.");return;}
