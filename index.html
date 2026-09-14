@@ -802,10 +802,15 @@ const HEALTH_COLOR={"İzleniyor":"#0B1F48","Risk altında":"#BA7517","Gecikmede"
 function mapProjectLive(p){
  const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
  const existing=PROJ.find(x=>x.k===p.k);
+ const start=p.start_date?p.start_date.slice(0,10):null,target=p.target_date?p.target_date.slice(0,10):null;
+ let timePct=null;
+ if(start&&target){const s=new Date(start),t=new Date(target),now=new Date();
+  timePct=t>s?Math.max(0,Math.min(100,Math.round((now-s)/(t-s)*100))):null;}
  return {k:p.k,n:p.name,m:p.method,lead:p.lead_username?nameOf(p.lead_username):null,
   health:p.health,hc:HEALTH_COLOR[p.health]||"#0B1F48",
-  unitName:p.unit_name,start:p.start_date?p.start_date.slice(0,10):null,target:p.target_date?p.target_date.slice(0,10):null,
-  timePct:null,burndown:null,velocityHist:[],
+  unitName:p.unit_name,start,target,
+  timePct,burndown:null,velocityHist:existing?existing.velocityHist:[],
+  sprintHistoryLoaded:existing?existing.sprintHistoryLoaded:false,
   sprint:p.method==="Scrum"?{n:p.sprint_name,goal:p.sprint_goal,endsAt:p.sprint_ends_at,number:p.sprint_number}:null,
   gate:p.gate_name?{n:p.gate_name,need:p.gate_required,
    sign:(p.gate_signoffs||[]).map(s=>({n:s.name||s.username,r:s.title||"",at:(s.at||"").replace("T"," ").slice(0,16)})),
@@ -833,6 +838,14 @@ async function loadIssuesLive(k){
  render();}
 async function loadAllIssuesLive(){
  await Promise.all(PROJ.map(p=>loadIssuesLive(p.k)));}
+async function loadSprintHistoryLive(k){
+ const proj=PROJ.find(x=>x.k===k);if(!proj)return;
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(k)+"/sprint-history");
+  proj.velocityHist=data.items.map(h=>({n:h.sprint_name,c:h.committed_points,d:h.done_points}));
+  proj.sprintHistoryLoaded=true;
+ }catch(e){proj.sprintHistoryLoaded=true;}
+ render();}
 async function loadTrainDocsLive(){
  TRAIN_DOCS_LIVE_LOADING=true;
  try{const data=await api("GET","/api/training/documents");TRAIN_DOCS_LIVE=data.items;}
@@ -1607,10 +1620,12 @@ function screenView(){
     ${cw("d.board")?`<div style="margin-top:13px;display:flex;justify-content:flex-end">
      <button class="b ${canClose?"d":"off"}" data-a="${canClose?"sprintCloseAsk":"sprintNotYet"}">Sprint'i kapat</button></div>
      ${!canClose?`<p class="m" style="color:var(--tm);margin-top:6px;text-align:right">Sprint yalnızca bitiş gününde kapatılabilir.</p>`:""}`:""}</div>
-    <div style="margin-top:14px">${table(["Kayıt","Başlık","Durum","SP","Atanan"],inSprintItems.map(i=>`<tr>
+    <div style="margin-top:14px">${table(["Kayıt","Başlık","Durum","SP","Atanan",""],inSprintItems.map(i=>`<tr>
      <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td><td>${pill(FLOW[i.st])}</td>
-     <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td></tr>`).join("")||
-     `<tr><td colspan="5" style="color:var(--tm)">Bu sprintte henüz madde yok.</td></tr>`)}</div>`;}
+     <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td>
+     <td style="text-align:right">${cw("d.board")?`<button class="b s d" data-a="sprintRemove:${p.k}:${i.key}">Sprintten çıkar</button>`:""}</td></tr>`).join("")||
+     `<tr><td colspan="6" style="color:var(--tm)">Bu sprintte henüz madde yok.</td></tr>`)}</div>
+    ${cw("d.board")?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">Yeni madde eklemek için Backlog ekranından "Sprinte al" düğmesini kullanın — sprint aktifken de çalışır.</p>`:""}`;}
   if(!p.sprint)return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">Bu proje sprint kullanmıyor (${p.m}).</p>`;
   const sp=p.sprint,pct=Math.round(sp.done/sp.committed*100);
   return head("Sprint",p.n,`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
@@ -2150,8 +2165,13 @@ function screenView(){
    </td></tr>`;}).join("")||`<tr><td colspan="8" style="color:var(--tm)">No change requests.</td></tr>`))+
   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">A change request needs the raiser's manager AND a
    project-team member (Business Owner or Product Owner) to approve — both are required. The requester cannot approve their own request.</p>`;}
- if(v==="d.charts"){const p=P(),mt=metrics(p);
-  return head("Project charts",p.k+" — "+p.n,
+ if(v==="d.charts"){const p=P();
+  if(LIVE_BACKEND){
+   if(!p.itemsLoaded)loadIssuesLive(p.k);
+   if(!p.sprintHistoryLoaded)loadSprintHistoryLive(p.k);
+   if(!p.itemsLoaded)return head("Project charts",p.k+" — "+p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;}
+  const mt=metrics(p);
+  return head("Project charts",p.k+" — "+p.n+(LIVE_BACKEND?" · canlı backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:13px">
    ${[["Progress",mt.pct+"%","open"],["Story points",mt.donePts+" / "+mt.pts,"open"],
@@ -2663,6 +2683,9 @@ function drillPanel(p){
 
 function burndownChart(p){
  const data=p.burndown;
+ if(LIVE_BACKEND&&p.m==="Scrum")return `<div class="card"><span style="font-size:12px;color:var(--tm)">
+   Günlük burndown, geçmişe dönük günlük veri toplama gerektirir; bu prototipte henüz uygulanmadı.
+   Sprint özeti için Sprint ekranını, sprint bazlı velocity için sağdaki grafiği kullanın.</span></div>`;
  if(!data)return `<div class="card"><span style="font-size:12px;color:var(--tm)">No active sprint — burndown is available for Scrum projects only (${p.m}).</span></div>`;
  const W=520,H=180,pad=30,committed=data[0],days=data.length-1;
  const x=i=>pad+i*(W-pad*2)/days, y=v=>H-pad-(v/committed)*(H-pad*2);
@@ -3017,14 +3040,20 @@ function dialogView(){
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b ${okT?"g":"off"}" data-a="${okT?"tdocSave":"needFields"}">Yayınla</button></div>`);}
  if(d.type==="sprintClose"){
-  const p=P(),openCount=d.openCount||0;
-  const carryChosen=f.carryOver!==undefined,openChosen=f.openNew!==undefined;
-  const ok=(openCount===0||carryChosen)&&openChosen;
+  const p=P(),openItems=d.openItems||[];
+  const keepKeys=f.keepKeys||new Set();
+  const openChosen=f.openNew!==undefined;
+  const ok=openChosen;
   return wrap(`<div style="font-size:15px">Sprint'i kapat — ${esc(p.sprint.n)}</div>
-   ${openCount>0?`<div class="lbl" style="margin-top:13px">${openCount} açık madde var. Ne yapılsın?</div>
-    <div style="display:flex;gap:7px;flex-wrap:wrap">
-     <button class="b s ${f.carryOver===true?"p":""}" data-a="spCarry:1">Yeni sprinte aktar</button>
-     <button class="b s ${f.carryOver===false?"p":""}" data-a="spCarry:0">Backlog'a al</button></div>`
+   ${openItems.length?`<div class="lbl" style="margin-top:13px">${openItems.length} açık madde var. İşaretli olanlar yeni sprinte aktarılır, işareti kaldırılanlar backlog'a alınır.</div>
+    <div style="display:flex;gap:6px;margin-bottom:7px">
+     <button class="b s" data-a="spKeepAll">Tümünü işaretle</button>
+     <button class="b s" data-a="spKeepNone">Tümünü kaldır</button></div>
+    ${openItems.map(i=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 0;cursor:pointer">
+      <input type="checkbox" data-a="spKeepToggle:${esc(i.key)}" ${keepKeys.has(i.key)?"checked":""}>
+      <span class="m" style="color:var(--ta)">${esc(i.key)}</span>
+      <span style="font-size:12.5px;flex:1">${esc(i.t)}</span>
+      <span class="m" style="color:var(--tm)">${i.pts} SP</span></label>`).join("")}`
     :`<p class="m" style="color:var(--tm);margin-top:11px">Açık madde yok.</p>`}
    <div class="lbl" style="margin-top:15px">Hemen yeni bir sprint açılsın mı?</div>
    <div style="display:flex;gap:7px;flex-wrap:wrap">
@@ -3999,6 +4028,15 @@ app.addEventListener("click",async ev=>{
    catch(e){it.st="backlog";it.inSprint=false;toast(e.message,1);render();}
    return;}
   toast(p[2]+" sprinte alındı.");return;}
+ if(k==="sprintRemove"){
+  const pr=PROJ.find(x=>x.k===p[1]),it=pr.items.find(x=>x.key===p[2]);
+  const prevSt=it.st,prevInSprint=it.inSprint;
+  it.inSprint=false;if(it.st!=="done")it.st="backlog";render();
+  try{
+   await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/sprint/items",{issueKey:p[2],inSprint:false});
+   toast(p[2]+" sprintten çıkarıldı"+(prevSt!=="done"?", backlog'a alındı.":"."));
+  }catch(e){it.inSprint=prevInSprint;it.st=prevSt;toast(e.message,1);render();}
+  return;}
  if(k==="crit"){
   if(LIVE_BACKEND){
    const pr=P();
@@ -4166,9 +4204,13 @@ app.addEventListener("click",async ev=>{
  if(k==="sprintCloseAsk"){
   const pr=P();
   if(!pr.itemsLoaded){toast("Konular henüz yüklenmedi, birazdan tekrar deneyin.",1);return;}
-  const openCount=(pr.items||[]).filter(i=>i.inSprint&&i.st!=="done").length;
-  S.f={};S.dlg={type:"sprintClose",openCount};render();return;}
- if(k==="spCarry"){S.f.carryOver=p[1]==="1";render();return;}
+  const openItems=(pr.items||[]).filter(i=>i.inSprint&&i.st!=="done")
+   .map(i=>({key:i.key,t:i.t,pts:i.pts}));
+  S.f={keepKeys:new Set(openItems.map(i=>i.key))};S.dlg={type:"sprintClose",openItems};render();return;}
+ if(k==="spKeepToggle"){const key=p[1];
+  if(S.f.keepKeys.has(key))S.f.keepKeys.delete(key);else S.f.keepKeys.add(key);render();return;}
+ if(k==="spKeepAll"){S.dlg.openItems.forEach(i=>S.f.keepKeys.add(i.key));render();return;}
+ if(k==="spKeepNone"){S.f.keepKeys.clear();render();return;}
  if(k==="spOpenNew"){S.f.openNew=p[1]==="1";render();return;}
  if(k==="sprintCloseSend"){
   const pr=P(),f=S.f;
@@ -4176,7 +4218,8 @@ app.addEventListener("click",async ev=>{
   const newEnds=(document.getElementById("fSpEnds2")||{}).value||"";
   try{
    await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/sprint/close",{
-    carryOver:!!f.carryOver,openNew:!!f.openNew,newSprintGoal:newGoal.trim()||null,newSprintEndsAt:newEnds||null});
+    keepInSprintKeys:Array.from(f.keepKeys||[]),openNew:!!f.openNew,
+    newSprintGoal:newGoal.trim()||null,newSprintEndsAt:newEnds||null});
    S.dlg=null;S.f={};toast(f.openNew?"Sprint kapatıldı, yeni sprint açıldı.":"Sprint kapatıldı.");
    await loadProjectsLive();await loadIssuesLive(pr.k);render();
   }catch(e){toast(e.message,1);}

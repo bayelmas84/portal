@@ -188,8 +188,14 @@ router.put("/:k/sprint", requireWrite("d.board"), async (req, res, next) => {
 router.post("/:k/sprint/items", requireWrite("d.board"), async (req, res, next) => {
   try {
     const { issueKey, inSprint } = req.body || {};
+    // Sprinte alınan bir backlog maddesi "todo"ya geçer; sprintten çıkarılan bir madde
+    // (tamamlanmamışsa) backlog'a döner. Zaten "done" olan bir maddenin durumu bozulmaz.
     await query(
-      "UPDATE project_issues SET in_sprint=$1, status = CASE WHEN $1 AND status='backlog' THEN 'todo' ELSE status END WHERE project_k=$2 AND issue_key=$3",
+      `UPDATE project_issues SET in_sprint=$1,
+         status = CASE WHEN $1 AND status='backlog' THEN 'todo'
+                       WHEN NOT $1 AND status != 'done' THEN 'backlog'
+                       ELSE status END
+       WHERE project_k=$2 AND issue_key=$3`,
       [!!inSprint, req.params.k, issueKey]
     );
     res.json({ ok: true });
@@ -216,30 +222,51 @@ function isSprintClosable(project) {
 
 router.post("/:k/sprint/close", requireWrite("d.board"), async (req, res, next) => {
   try {
-    const { carryOver, openNew, newSprintGoal, newSprintEndsAt } = req.body || {};
+    const { keepInSprintKeys, openNew, newSprintGoal, newSprintEndsAt } = req.body || {};
+    if (!Array.isArray(keepInSprintKeys)) return res.status(400).json({ error: "keepInSprintKeys bir dizi olmalı." });
     const proj = await query("SELECT * FROM projects WHERE k=$1", [req.params.k]);
     if (!proj.rowCount) return res.status(404).json({ error: "Proje bulunamadı." });
     const check = isSprintClosable(proj.rows[0]);
     if (!check.ok) return res.status(409).json({ error: check.reason });
 
     const nextNumber = (proj.rows[0].sprint_number || 0) + 1;
-    await withTransaction(async (client) => {
-      if (carryOver) {
-        // Açık (tamamlanmamış) maddeler sprint bayrağıyla birlikte kalır; yeni sprint
-        // başladığında zaten "in_sprint" oldukları için otomatik olarak onun parçası olurlar.
-        // openNew=false ise de in_sprint=true kalırlar (bir sonraki sprint başlatılana kadar bekler).
-      } else {
+    const keepSet = new Set(keepInSprintKeys);
+
+    const result = await withTransaction(async (client) => {
+      // Kapanan sprintteki TÜM maddeler (rapor için önce ölçülür).
+      const items = await client.query(
+        "SELECT issue_key, status, story_points FROM project_issues WHERE project_k=$1 AND in_sprint=true",
+        [req.params.k]
+      );
+      const committedPoints = items.rows.reduce((a, i) => a + i.story_points, 0);
+      const doneRows = items.rows.filter((i) => i.status === "done");
+      const donePoints = doneRows.reduce((a, i) => a + i.story_points, 0);
+      const openRows = items.rows.filter((i) => i.status !== "done");
+      const carriedOverCount = openRows.filter((i) => keepSet.has(i.issue_key)).length;
+
+      // Tamamlanmamış ve işaretlenmemiş (backlog'a gönderilecek) maddeler.
+      const toBacklog = openRows.filter((i) => !keepSet.has(i.issue_key)).map((i) => i.issue_key);
+      if (toBacklog.length) {
         await client.query(
-          `UPDATE project_issues SET in_sprint=false, status='backlog'
-           WHERE project_k=$1 AND in_sprint=true AND status != 'done'`,
-          [req.params.k]
+          `UPDATE project_issues SET in_sprint=false, status='backlog' WHERE project_k=$1 AND issue_key = ANY($2::text[])`,
+          [req.params.k, toBacklog]
         );
       }
-      // Tamamlanmış maddeler her durumda sprintten çıkar (geçmiş sprintin parçası olarak kalır, panoda görünmeye devam etmez).
+      // İşaretlenen açık maddeler in_sprint=true kalır (yeni sprintin otomatik parçası olurlar).
+      // Tamamlanmış maddeler her durumda sprintten çıkar.
       await client.query(
         `UPDATE project_issues SET in_sprint=false WHERE project_k=$1 AND in_sprint=true AND status='done'`,
         [req.params.k]
       );
+
+      await client.query(
+        `INSERT INTO sprint_history (project_k, sprint_number, sprint_name, sprint_goal, committed_points,
+           done_points, item_count, done_count, carried_over_count, closed_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [req.params.k, proj.rows[0].sprint_number, proj.rows[0].sprint_name, proj.rows[0].sprint_goal,
+         committedPoints, donePoints, items.rowCount, doneRows.length, carriedOverCount, req.user.username]
+      );
+
       if (openNew) {
         await client.query(
           `UPDATE projects SET sprint_number=$1, sprint_name=$2, sprint_goal=$3, sprint_ends_at=$4 WHERE k=$5`,
@@ -251,12 +278,23 @@ router.post("/:k/sprint/close", requireWrite("d.board"), async (req, res, next) 
           [req.params.k]
         );
       }
+      return { carriedOverCount, toBacklogCount: toBacklog.length };
     });
     await audit(
-      `Sprint kapatıldı: ${req.params.k} (${carryOver ? "açık maddeler aktarıldı" : "açık maddeler backlog'a alındı"}${openNew ? `, yeni sprint açıldı: Sprint ${nextNumber}` : ", yeni sprint açılmadı"})`,
+      `Sprint kapatıldı: ${req.params.k} (${result.carriedOverCount} madde yeni sprinte aktarıldı, ${result.toBacklogCount} madde backlog'a alındı${openNew ? `, yeni sprint açıldı: Sprint ${nextNumber}` : ", yeni sprint açılmadı"})`,
       req.user.username
     );
     res.json({ ok: true, sprintNumber: openNew ? nextNumber : null });
+  } catch (e) { next(e); }
+});
+
+// Kapanmış sprintlerin özeti (velocity raporu için).
+router.get("/:k/sprint-history", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "SELECT * FROM sprint_history WHERE project_k=$1 ORDER BY sprint_number", [req.params.k]
+    );
+    res.json({ items: rows });
   } catch (e) { next(e); }
 });
 
