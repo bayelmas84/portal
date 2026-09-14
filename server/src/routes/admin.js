@@ -52,6 +52,22 @@ router.get("/units", requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ------------------------------ Organizasyon şeması --------------------------
+// Herkese açıktır (yalnızca oturum açık olmalı): ad/ünvan/birim/yönetici
+// hiyerarşik bilgisi hassas değildir, tüm personelin organizasyon şemasını
+// görebilmesi amaçlanmıştır.
+router.get("/org-chart", requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT u.username, u.name, u.title, u.role, u.manager_username, u.active,
+        un.name AS unit_name
+       FROM users u LEFT JOIN units un ON un.code = u.unit
+       WHERE u.active ORDER BY u.name`
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
 router.post("/units", requireWrite("m.units"), async (req, res, next) => {
   try {
     const { code, name, managerUsername } = req.body || {};

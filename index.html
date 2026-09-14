@@ -805,6 +805,12 @@ async function loadReqsLive(which){
 let PROJECTS_LIVE_LOADED=false,PROJECTS_LIVE_LOADING=false;
 let AUDIT_LIVE=null,AUDIT_LIVE_LOADING=false;
 let UNITS_LIVE=null,UNITS_LIVE_LOADING=false;
+let ORG_CHART_LIVE=null,ORG_CHART_LIVE_LOADING=false;
+async function loadOrgChartLive(){
+ ORG_CHART_LIVE_LOADING=true;
+ try{const data=await api("GET","/api/admin/org-chart");ORG_CHART_LIVE=data.items;}
+ catch(e){toast("Organizasyon şeması yüklenemedi: "+e.message,1);ORG_CHART_LIVE=[];}
+ ORG_CHART_LIVE_LOADING=false;render();}
 async function loadUnitsLive(){
  UNITS_LIVE_LOADING=true;
  try{const data=await api("GET","/api/admin/units");UNITS_LIVE=data.items;}
@@ -2838,7 +2844,12 @@ function homeView(){
     .map(x=>`<div style="background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:12px;
      padding:11px 15px;min-width:130px;cursor:${x[2]?"pointer":"default"}" ${x[2]?`data-a="${x[2]}"`:""}>
      <div style="font-size:9.5px;color:#8FA0BE;letter-spacing:.08em;text-transform:uppercase">${x[0]}</div>
-     <div class="m" style="font-size:19px;color:#EBC98A;margin-top:2px">${x[1]}${x[2]?` <span style="font-size:10px;color:#8FA0BE">Git →</span>`:""}</div></div>`).join("")}</div></div>
+     <div class="m" style="font-size:19px;color:#EBC98A;margin-top:2px">${x[1]}${x[2]?` <span style="font-size:10px;color:#8FA0BE">Git →</span>`:""}</div></div>`).join("")}
+   <div style="background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:12px;
+     padding:11px 15px;min-width:130px;cursor:pointer" data-a="orgChart">
+     <div style="font-size:9.5px;color:#8FA0BE;letter-spacing:.08em;text-transform:uppercase">Organizasyon</div>
+     <div class="m" style="font-size:14px;color:#EBC98A;margin-top:2px">Şemayı gör <span style="font-size:10px;color:#8FA0BE">→</span></div></div>
+   </div></div>
  <div style="padding:20px 24px">
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-bottom:20px">
    ${canUse("a.list")?`<div><div class="lbl">Okunmamış duyurular (${live.length})</div>
@@ -2871,6 +2882,45 @@ function homeView(){
    ${SHORTS.filter(x=>x.on).map(x=>`<div class="card" style="padding:10px 13px;display:flex;gap:9px;align-items:center;min-width:150px;cursor:pointer" data-go="${x.url}">
     <span style="width:28px;height:28px;border-radius:9px;background:${x.c};color:#fff;display:flex;align-items:center;justify-content:center">${ic(x.icon,15)}</span>
     <span style="font-size:12.5px;flex:1">${esc(x.n)}</span>${ic("external-link",13,"color:var(--tm)")}</div>`).join("")}</div>`:""}</div>`;}
+
+/* ---------------------------- organizasyon şeması --------------------------- */
+function orgChartView(){
+ const head2=`<div style="padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px">
+   <span style="font-size:15px;flex:1">Organizasyon Şeması</span>
+   <button class="b" data-a="home">Ana ekrana dön</button></div>`;
+ if(!LIVE_BACKEND){
+  return head2+`<div style="padding:20px"><div class="card wr"><span style="font-size:12.5px">
+   Organizasyon şeması yalnızca gerçek backend'e bağlıyken kullanılabilir (demo modunda kullanılamaz).</span></div></div>`;}
+ if(ORG_CHART_LIVE===null)return head2+`<div style="padding:20px"><div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div></div>`;
+
+ const people=ORG_CHART_LIVE;
+ const byManager={};people.forEach(p=>{const key=p.manager_username||"__root__";(byManager[key]=byManager[key]||[]).push(p);});
+ const roots=people.filter(p=>!p.manager_username||!people.some(x=>x.username===p.manager_username));
+ const seen=new Set();
+ const nodeBox=p=>`<div style="display:inline-flex;flex-direction:column;align-items:center;padding:10px 14px;
+   border:1px solid var(--bd);border-radius:12px;background:var(--s1);min-width:150px;text-align:center">
+  <span style="width:34px;height:34px;border-radius:50%;background:var(--navy);color:#fff;font-size:12px;
+   display:flex;align-items:center;justify-content:center;margin-bottom:6px">${initials(p.name)}</span>
+  <span style="font-size:12.5px;font-weight:600">${esc(p.name)}</span>
+  <span class="m" style="color:var(--tm);margin-top:2px">${esc(p.title||"")}</span>
+  <span class="m" style="color:var(--ta);margin-top:1px">${esc(p.unit_name||"")}</span></div>`;
+ function branch(p,depth){
+  if(seen.has(p.username)||depth>8)return "";
+  seen.add(p.username);
+  const kids=(byManager[p.username]||[]).filter(k=>k.username!==p.username);
+  return `<div style="display:flex;flex-direction:column;align-items:center">
+    ${nodeBox(p)}
+    ${kids.length?`<div style="width:2px;height:18px;background:var(--bd)"></div>
+     <div style="display:flex;gap:22px;align-items:flex-start">
+      ${kids.map(k=>`<div style="display:flex;flex-direction:column;align-items:center">
+        ${branch(k,depth+1)}</div>`).join("")}
+     </div>`:""}
+   </div>`;}
+ const treeHtml=roots.map(r=>branch(r,0)).join(`<div style="width:30px"></div>`);
+ return head2+`<div style="padding:24px;overflow:auto">
+   <div style="display:flex;gap:30px;justify-content:center;min-width:max-content">${treeHtml}</div>
+   <p style="font-size:11.5px;color:var(--tm);margin-top:20px;text-align:center">Yalnızca aktif çalışanlar gösterilir. Toplam ${people.length} kişi.</p>
+  </div>`;}
 
 /* --------------------------------- diyalog -------------------------------- */
 function dialogView(){
@@ -3327,6 +3377,8 @@ function render(){
   app.innerHTML=`<div class="body">${screenView()}</div>`+toastView();afterRender();return;}
  if(S.view==="home"){app.innerHTML=`<div class="shell">${railView()}<div class="main">${homeView()}</div></div>`
    +(S.pop!==null?popupView():"")+dialogView()+toastView();afterRender();return;}
+ if(S.view==="orgChart"){app.innerHTML=`<div class="shell">${railView()}<div class="main">${orgChartView()}</div></div>`
+   +dialogView()+toastView();afterRender();return;}
  if(S.view==="login"){app.innerHTML=loginView();
   const i=document.getElementById("lu");if(i){i.oninput=e=>{S.u=e.target.value;};i.focus();}
   return;}
@@ -3516,11 +3568,15 @@ app.addEventListener("click",async ev=>{
   AUDIT_LIVE=null;AUDIT_LIVE_LOADING=false;
   S.pendingTab=null;S.pendingFilter=null;
   UNITS_LIVE=null;UNITS_LIVE_LOADING=false;
+  ORG_CHART_LIVE=null;ORG_CHART_LIVE_LOADING=false;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
  if(k==="home"){clearInterval(S.timer);S.view="home";
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null});render();return;}
+ if(k==="orgChart"){
+  if(LIVE_BACKEND&&ORG_CHART_LIVE===null&&!ORG_CHART_LIVE_LOADING)loadOrgChartLive();
+  S.view="orgChart";render();return;}
  if(k==="profile"){S.dlg={type:"profile"};render();return;}
  if(k==="avatar"){if(p[1]==="foto"){avatars[S.me.u]="🙂";toast("Profil fotoğrafı güncellendi.");}
   else{delete avatars[S.me.u];toast("Profil fotoğrafı kaldırıldı.");}return;}
