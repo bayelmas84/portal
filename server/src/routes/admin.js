@@ -106,6 +106,9 @@ router.post("/users", requireWrite("m.users"), async (req, res, next) => {
     }
     if (!name || !email || !role) return res.status(400).json({ error: "Ad, e-posta ve rol zorunlu." });
     if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
+    // KURAL: "belmas" rolü yalnızca AD'den gelen sistem hesabına aittir, kimseye
+    // sonradan atanamaz (yeni bir kullanıcı bu rolle oluşturulamaz).
+    if (role === "belmas") return res.status(403).json({ error: "belmas rolü başka bir kullanıcıya atanamaz." });
     const existing = await query("SELECT 1 FROM users WHERE username=$1", [username]);
     if (existing.rowCount) return res.status(409).json({ error: "Bu kullanıcı adı zaten var." });
     await requestAdminApproval(req, res, "admin.user.create",
@@ -119,8 +122,14 @@ router.post("/users", requireWrite("m.users"), async (req, res, next) => {
 
 router.put("/users/:username", requireWrite("m.users"), async (req, res, next) => {
   try {
+    // KURAL: "belmas" (AD'den gelen sistem/platform hesabı) kimse tarafından
+    // değiştirilemez — admin dahil. Ne rolü, ne birimi, ne aktiflik durumu.
+    if (req.params.username === "belmas") {
+      return res.status(403).json({ error: "belmas sistem hesabı hiçbir şekilde değiştirilemez." });
+    }
     const { name, email, role, unit, title, managerUsername, active } = req.body || {};
     if (role && !VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
+    if (role === "belmas") return res.status(403).json({ error: "belmas rolü başka bir kullanıcıya atanamaz." });
     if (req.params.username === req.user.username && role && role !== req.user.role) {
       return res.status(409).json({ error: "Kendi rolünüzü değiştiremezsiniz." });
     }
@@ -249,6 +258,9 @@ router.put("/access", requireWrite("m.access"), async (req, res, next) => {
     const { role, screenKey, level } = req.body || {};
     if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
     if (!["none", "read", "write"].includes(level)) return res.status(400).json({ error: "Geçersiz seviye." });
+    // KURAL: "belmas" rolünün yetki matrisi kimse tarafından değiştirilemez —
+    // her zaman DEFAULT_ACCESS'teki sabit haliyle kalır (admin dahil).
+    if (role === "belmas") return res.status(403).json({ error: "belmas rolünün yetkileri değiştirilemez." });
     if (role === "admin" && ["m.access", "m.avail"].includes(screenKey) && level === "none") {
       return res.status(409).json({ error: "Admin rolünün bu ekranlara erişimi kaldırılamaz (kilitlenme riski)." });
     }

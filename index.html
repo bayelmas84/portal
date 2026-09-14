@@ -438,7 +438,8 @@ const ACC={
 ["inspection","infosec","control"].forEach(r=>{ACC[r]["d.meeting"]=R;ACC[r]["d.meetingview"]=R;});
 ["pm","pmdir"].forEach(r=>{ACC[r]["d.meeting"]=W;ACC[r]["d.meetingview"]=W;ACC[r]["d.meetingnew"]=W;ACC[r]["d.gantt"]=W;});
 const ROLE={pmdir:"Proje Yönetim Direktörü",admin:"Admin",inspection:"Teftiş",infosec:"Bilgi Güvenliği",control:"İç Kontrol",
- gmy:"Genel Müdür Yardımcısı",opsdir:"Operasyon Direktörü",pm:"Proje Yöneticisi",dev:"Geliştirici",staff:"Personel",ceo:"Genel Müdür"};
+ gmy:"Genel Müdür Yardımcısı",opsdir:"Operasyon Direktörü",pm:"Proje Yöneticisi",dev:"Geliştirici",staff:"Personel",ceo:"Genel Müdür",
+ belmas:"Sistem Hesabı (belmas)"};
 
 let USERS=[
  {u:"ahmet.tera",n:"Ahmet Tera",r:"ceo",c:"#0B1F48",unit:"Portföy Yönetimi",
@@ -1724,8 +1725,8 @@ function screenView(){
     rows+=`<tr><td style="min-width:150px">${esc(screenLabel(key))}<div class="m" style="color:var(--tm)">${key}</div></td>`+
      roles.map(r=>{const val=(ACCESS_LIVE[r]||{})[key]||"none";
       const cls=val===W?"ok":val===R?"":"",txt=val===W?"W":val===R?"R":"—";
-      const own=r===S.me.r;
-      return `<td style="text-align:center"><span class="pl ${cls}" title="${own?"kendi rolünüz — kilitli":""}"
+      const own=r===S.me.r||r==="belmas";
+      return `<td style="text-align:center"><span class="pl ${cls}" title="${own?(r==="belmas"?"belmas rolü kimse tarafından değiştirilemez":"kendi rolünüz — kilitli"):""}"
        style="cursor:${cw("m.access")&&!own?"pointer":"not-allowed"};${own?"outline:1px dashed var(--bds)":""}"
        ${cw("m.access")&&!own?`data-a="cycle:${r}:${key}"`:""}>${txt}</span></td>`;}).join("")+`</tr>`;});
    return head("Ekran yetkileri","Hücreye tıklayarak — · R · W arasında geçiş yapın · canlı backend — yalnızca gerçek API'nin uyguladığı ekranlar listelenir",
@@ -2428,7 +2429,7 @@ function screenView(){
    <td>${esc(u.n)}<div class="m" style="color:var(--tm)">${u.u}</div></td>
    <td style="color:var(--t2)">${esc(u.unit)}</td><td>${esc(u.title)}</td><td>${pill(ROLE[u.r])}</td>
    <td style="color:var(--t2)">${esc(u.mgr||"—")}</td><td>${onPill(u.on)}</td>
-   <td style="text-align:right;white-space:nowrap">${cw("m.users")?
+   <td style="text-align:right;white-space:nowrap">${u.u==="belmas"?`<span class="m" style="color:var(--tm)">değiştirilemez</span>`:cw("m.users")?
     `<button class="b s" data-a="toggle:user:${LIVE_BACKEND?u.u:i}">${u.on?"Pasife al":"Aktif et"}</button>
      <button class="b s" data-a="recEdit:user:${LIVE_BACKEND?u.u:i}">Düzenle</button>
      ${LIVE_BACKEND?"":`<button class="b s d" data-a="recDel:user:${i}">Sil</button>`}`:""}</td></tr>`).join("")));}
@@ -3242,7 +3243,7 @@ function dialogView(){
      <div style="display:flex;gap:6px;flex-wrap:wrap">${USERS.filter(u=>u.on).map(u=>
        `<button class="b s ${f.mgr===u.u?"p":""}" data-a="setUnitMgr:${u.u}">${esc(u.n)}</button>`).join("")}</div>`:""}`}
    ${d.kind==="user"?`<div class="lbl" style="margin-top:12px">Rol</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.keys(ROLE).map(r=>`<button class="b s ${f.role===r?"p":""}" data-a="setRole:${r}">${ROLE[r]}</button>`).join("")}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.keys(ROLE).filter(r=>r!=="belmas").map(r=>`<button class="b s ${f.role===r?"p":""}" data-a="setRole:${r}">${ROLE[r]}</button>`).join("")}</div>
     <div class="lbl" style="margin-top:12px">Ünvan</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${TITLES.filter(t=>t.on).map(t=>`<button class="b s ${f.title2===t.n?"p":""}" data-a="setTitle:${encodeURIComponent(t.n)}">${t.k}</button>`).join("")}</div>`:""}
    <div class="swrow" style="margin-top:13px"><button class="sw ${f.on?"on":""}" data-a="setOn"><i></i></button>
@@ -3585,6 +3586,7 @@ app.addEventListener("click",async ev=>{
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null});render();return;}
  if(k==="cycle"){const r=p[1],key=p[2];
   if(r===S.me.r){toast("Kendi rolünüzün yetkilerini değiştiremezsiniz — görevler ayrılığı gereği başka bir yönetici yapmalı.",1);return;}
+  if(r==="belmas"){toast("belmas rolünün yetkileri kimse tarafından değiştirilemez.",1);return;}
   if(LIVE_BACKEND){
    const cur=(ACCESS_LIVE[r]||{})[key]||"none";
    const nx=cur==="none"?R:cur===R?W:"none";

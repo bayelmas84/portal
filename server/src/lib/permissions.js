@@ -71,6 +71,19 @@ const DEFAULT_ACCESS = {
     "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
     "c.audit": "read",
   },
+  // "belmas": AD'den gelen, sistemin teknik/platform hesabı. Proje Yönetimi
+  // (delivery) modülünde SINIRSIZ yetki; diğer HER ekranda salt okunur.
+  // Bu rol kimse tarafından değiştirilemez (bkz. admin.js: PUT /access ve
+  // PUT /users/belmas bu role/kullanıcıya özel olarak reddedilir).
+  belmas: {
+    announcements: "read", training: "read",
+    "d.my": "write", "d.projects": "write", "d.board": "write", "d.backlog": "write", "d.sprint": "write",
+    "d.gate": "write", "d.charts": "write", "d.exec": "write", "d.team": "write", "d.docs": "write",
+    "d.docview": "write", "d.appr": "write", "d.cr": "write", "d.meeting": "write", "d.meetingview": "write",
+    "d.gantt": "write",
+    "m.users": "read", "m.units": "read", "m.dir": "read", "m.smtp": "read", "m.brand": "read",
+    "m.avail": "read", "m.access": "read", "c.audit": "read",
+  },
 };
 
 const MEETING_ALWAYS_ROLES = ["inspection", "infosec", "control"];
