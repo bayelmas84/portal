@@ -60,6 +60,7 @@ router.post("/login", async (req, res, next) => {
         unit: user.unit,
         title: user.title,
         color: user.color,
+        managerUsername: user.manager_username,
       },
       csrfToken: session.csrfSecret,
     });

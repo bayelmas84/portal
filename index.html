@@ -838,7 +838,8 @@ let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.l
  read:null,readSrc:null,docView:null,page:0,dwell:[],timer:null,quiz:null,answers:{},result:null,toast:null,gate:true,
  meetingsLive:null,meetingsLiveLoading:null,annLive:null,annLiveLoading:null,
  ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null,
- teamLive:null,teamLiveProj:null,teamLiveLoading:null};
+ teamLive:null,teamLiveProj:null,teamLiveLoading:null,
+ crLive:null,crLiveProj:null,crLiveLoading:null};
 
 /* --------------------------- gerçek backend istemcisi ---------------------------
    API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
@@ -898,6 +899,18 @@ async function loadTeamLive(projK){
   S.teamLiveProj=projK;
  }catch(e){toast("Proje ekibi yüklenemedi: "+e.message,1);S.teamLive=[];S.teamLiveProj=projK;}
  S.teamLiveLoading=null;render();}
+const CR_ST_MAP={onayda:"onayda",onaylandi:"onaylandi",reddedildi:"reddedildi"};
+async function loadCRLive(projK){
+ S.crLiveLoading=projK;
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(projK)+"/change-requests");
+  S.crLive=data.items.map(c=>({id:String(c.id),no:c.no,t:c.title,why:c.reason,impact:c.impact,
+   by:(function(){const u=USERS.find(x=>x.u===c.created_by);return u?u.n:c.created_by;})(),
+   at:(c.created_at||"").replace("T"," ").slice(0,16),st:CR_ST_MAP[c.status]||c.status,
+   appr:c.approvals.map(a=>({n:a.name,t:a.title,at:(a.approved_at||"").replace("T"," ").slice(0,16),team:a.capacity==="team"}))}));
+  S.crLiveProj=projK;
+ }catch(e){toast("Değişiklik talepleri yüklenemedi: "+e.message,1);S.crLive=[];S.crLiveProj=projK;}
+ S.crLiveLoading=null;render();}
 async function api(method,path,body,isForm){
  const opts={method,credentials:"include",headers:{}};
  if(method!=="GET"&&CSRF_TOKEN)opts.headers["X-CSRF-Token"]=CSRF_TOKEN;
@@ -1758,14 +1771,23 @@ function screenView(){
    ||`<tr><td colspan="6" style="color:var(--tm)">No approvals recorded yet.</td></tr>`);}
 
  /* --------------------------- Change requests ------------------------------ */
- if(v==="d.cr"){const p=P(),list=crsOf(p.k);
+ if(v==="d.cr"){const p=P();
+  if(LIVE_BACKEND&&(S.crLiveProj!==p.k||S.crLive===null)&&S.crLiveLoading!==p.k)loadCRLive(p.k);
+  if(LIVE_BACKEND&&(S.teamLiveProj!==p.k||S.teamLive===null)&&S.teamLiveLoading!==p.k)loadTeamLive(p.k);
+  const list=LIVE_BACKEND?(S.crLiveProj===p.k?(S.crLive||[]):[]):crsOf(p.k);
+  const loading=LIVE_BACKEND&&S.crLiveProj!==p.k;
   const ST={taslak:["draft","wr"],onayda:["pending approval","wr"],onaylandi:["approved","ok"],reddedildi:["rejected","er"]};
-  return head("Change requests",p.k+" — scope, cost and schedule changes",
+  return head("Change requests",p.k+" — scope, cost and schedule changes"+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
      `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
     ${cw("d.cr")?`<button class="b p" data-a="crAdd">New request</button>`:""}</div>`)+
+  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
   table(["No","Title","Impact","Raised by","Date","Status","Approvals",""],list.map((c,i)=>{
-   const canApprove=(hasTeamRole(p,"Business Owner")||hasTeamRole(p,"Product Owner")||S.me.r==="pmdir")
+   const key=LIVE_BACKEND?c.id:i;
+   const teamForRole=LIVE_BACKEND?(S.teamLiveProj===p.k?(S.teamLive||[]):[]):teamOf(p.k);
+   const myRoles=teamForRole.filter(m=>m.n===S.me.n).map(m=>m.r);
+   const isRequesterMgr=(USERS.find(u=>u.n===c.by)||{}).mgr===S.me.n;
+   const canApprove=(myRoles.includes("Business Owner")||myRoles.includes("Product Owner")||isRequesterMgr||S.me.r==="pmdir")
      &&c.st==="onayda"&&c.by!==S.me.n;
    return `<tr>
    <td class="m" style="color:var(--ta)">${c.no}</td>
@@ -1775,13 +1797,13 @@ function screenView(){
    <td>${pill(...(ST[c.st]||[c.st,""]))}</td>
    <td>${(c.appr||[]).map(a=>pill(a.n.split(" ")[0]+" ✓","ok")).join(" ")||pill("none")}</td>
    <td style="text-align:right;white-space:nowrap">
-    <button class="b s p" data-a="crOpen:${i}">Detail</button>
-    ${canApprove?` <button class="b s g" data-a="crAppr:${i}">Approve</button>
-      <button class="b s d" data-a="crRej:${i}">Reject</button>`:""}
-    ${c.by===S.me.n&&c.st==="taslak"?` <button class="b s p" data-a="crSend:${i}">Submit</button>`:""}
-   </td></tr>`;}).join("")||`<tr><td colspan="8" style="color:var(--tm)">No change requests.</td></tr>`)+
-  `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">A change request is approved by the Business Owner or
-   Product Owner of the project. The requester cannot approve their own request.</p>`;}
+    <button class="b s p" data-a="crOpen:${key}">Detail</button>
+    ${canApprove?` <button class="b s g" data-a="crAppr:${key}">Approve</button>
+      <button class="b s d" data-a="crRej:${key}">Reject</button>`:""}
+    ${!LIVE_BACKEND&&c.by===S.me.n&&c.st==="taslak"?` <button class="b s p" data-a="crSend:${i}">Submit</button>`:""}
+   </td></tr>`;}).join("")||`<tr><td colspan="8" style="color:var(--tm)">No change requests.</td></tr>`))+
+  `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">A change request needs the raiser's manager AND a
+   project-team member (Business Owner or Product Owner) to approve — both are required. The requester cannot approve their own request.</p>`;}
  if(v==="d.charts"){const p=P(),mt=metrics(p);
   return head("Project charts",p.k+" — "+p.n,
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
@@ -2602,7 +2624,8 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
     <button class="b" data-a="dlgClose">Cancel</button>
     <button id="okBtn" class="b ${okD?"g":"off"}" data-a="${okD?(isNew?"pdocSave":"pdocRename"):"nf"}">${isNew?"Upload":"Save"}</button></div>`);}
- if(d.type==="crdetail"){const pr=PROJ.find(x=>x.k===S.crView.k),c=crsOf(S.crView.k)[S.crView.i];
+ if(d.type==="crdetail"){const pr=PROJ.find(x=>x.k===S.crView.k);
+  const c=LIVE_BACKEND?(S.crLive||[]).find(x=>x.id===S.crView.i):crsOf(S.crView.k)[S.crView.i];
   if(!c)return "";
   const mgr=(USERS.find(u=>u.n===c.by)||{}).mgr||"—";
   const ST2={taslak:"draft",onayda:"pending approval",onaylandi:"approved",reddedildi:"rejected"};
@@ -2908,6 +2931,9 @@ app.addEventListener("click",async ev=>{
     let u=USERS.find(x=>x.u===data.user.username);
     if(!u){u={u:data.user.username,n:data.user.name,r:data.user.role,unit:data.user.unit,
      title:data.user.title,mgr:null,c:data.user.color,on:1};USERS.push(u);}
+    if(data.user.managerUsername){
+     const mu=USERS.find(x=>x.u===data.user.managerUsername);
+     u.mgr=mu?mu.n:data.user.managerUsername;}
     S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
     S.meetingsLive=null;S.meetingsLiveLoading=null;
     S.pop=null;render();return;
@@ -3343,14 +3369,29 @@ app.addEventListener("click",async ev=>{
   audit("Proje dokümanı onayı: "+d.name+" · "+useRole);
   toast(docApproved(d)?"Both approvals complete — document is now view only.":useRole+" approval recorded.");return;}
 
- if(k==="crOpen"){S.crView={k:P().k,i:+p[1]};S.dlg={type:"crdetail"};render();return;}
+ if(k==="crOpen"){S.crView={k:P().k,i:LIVE_BACKEND?p[1]:+p[1]};S.dlg={type:"crdetail"};render();return;}
  if(k==="crAdd"){S.f={};S.dlg={type:"cr"};render();return;}
- if(k==="crSave"){crsOf(P().k).push({no:"CR-"+String(ncr++).padStart(3,"0"),t:S.f.a.trim(),
+ if(k==="crSave"){
+  if(LIVE_BACKEND){
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(P().k)+"/change-requests",
+     {title:S.f.a.trim(),reason:S.f.b.trim(),impact:(S.f.c||"—").trim()});
+    S.crLive=null;S.dlg=null;S.f={};toast("Change request submitted for approval.");render();
+   }catch(e){toast("Gönderilemedi: "+e.message,1);}
+   return;}
+  crsOf(P().k).push({no:"CR-"+String(ncr++).padStart(3,"0"),t:S.f.a.trim(),
    why:S.f.b.trim(),impact:(S.f.c||"—").trim(),by:S.me.n,at:now(),st:"onayda",appr:[]});
   audit("Değişiklik talebi oluşturuldu: "+S.f.a.trim());S.dlg=null;S.f={};
   toast("Change request submitted for approval.");return;}
  if(k==="crSend"){const c=crsOf(P().k)[+p[1]];c.st="onayda";toast(c.no+" submitted.");return;}
- if(k==="crAppr"){const pr=P(),c=crsOf(pr.k)[+p[1]];
+ if(k==="crAppr"){
+  if(LIVE_BACKEND){
+   try{
+    const data=await api("POST","/api/projects/"+encodeURIComponent(P().k)+"/change-requests/"+p[1]+"/approve",{});
+    S.crLive=null;toast(data.fullyApproved?"Fully approved.":"Approval recorded ("+data.capacity+"); the other one is still required.");render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  const pr=P(),c=crsOf(pr.k)[+p[1]];
   if(c.by===S.me.n){toast("You cannot approve your own request.",1);return;}
   c.appr=c.appr||[];
   const isMgr=(USERS.find(u=>u.n===c.by)||{}).mgr===S.me.n||S.me.r==="pmdir";
@@ -3367,7 +3408,13 @@ app.addEventListener("click",async ev=>{
   audit("Değişiklik talebi onayı: "+c.no+(cap.team?" (proje ekibi)":" (yönetici)"));
   toast(done?c.no+" fully approved.":c.no+" — "+(cap.team?"project team":"manager")+" approval recorded; the other one is still required.");
   return;}
- if(k==="crRej"){const c=crsOf(P().k)[+p[1]];c.st="reddedildi";
+ if(k==="crRej"){
+  if(LIVE_BACKEND){
+   try{await api("POST","/api/projects/"+encodeURIComponent(P().k)+"/change-requests/"+p[1]+"/reject",{});
+    S.crLive=null;toast("Rejected.",1);render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  const c=crsOf(P().k)[+p[1]];c.st="reddedildi";
   audit("Değişiklik talebi reddedildi: "+c.no,0);toast(c.no+" rejected.",1);return;}
  if(k==="drill"){S.drill={kind:p[1]};render();return;}
  if(k==="drillState"){S.drill={kind:"state",value:p[1]};render();return;}

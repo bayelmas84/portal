@@ -241,7 +241,17 @@ router.post("/:k/documents/:docId/approve", requireRead("d.docview"), async (req
 router.get("/:k/change-requests", requireRead("d.cr"), async (req, res, next) => {
   try {
     const { rows } = await query("SELECT * FROM change_requests WHERE project_k=$1 ORDER BY created_at DESC", [req.params.k]);
-    res.json({ items: rows });
+    const out = [];
+    for (const cr of rows) {
+      const appr = await query(
+        `SELECT cra.username, cra.capacity, cra.approved_at, u.name, u.title
+         FROM change_request_approvals cra JOIN users u ON u.username=cra.username
+         WHERE cra.change_request_id=$1 ORDER BY cra.approved_at`,
+        [cr.id]
+      );
+      out.push({ ...cr, approvals: appr.rows });
+    }
+    res.json({ items: out });
   } catch (e) { next(e); }
 });
 
@@ -263,18 +273,58 @@ router.post("/:k/change-requests", requireWrite("d.cr"), async (req, res, next) 
 
 router.post("/:k/change-requests/:id/approve", requireRead("d.cr"), async (req, res, next) => {
   try {
-    const { capacity } = req.body || {}; // 'manager' | 'team'
-    if (!["manager", "team"].includes(capacity)) return res.status(400).json({ error: "Geçersiz onay sıfatı." });
+    const { rows } = await query("SELECT * FROM change_requests WHERE id=$1 AND project_k=$2", [req.params.id, req.params.k]);
+    const cr = rows[0];
+    if (!cr) return res.status(404).json({ error: "Değişiklik talebi bulunamadı." });
+    if (cr.status !== "onayda") return res.status(409).json({ error: "Bu talep onay bekleyen durumda değil." });
+    if (cr.created_by === req.user.username) return res.status(409).json({ error: "Kendi talebinizi onaylayamazsınız." });
+
+    // Sunucu, istemcinin bildirdiği sıfatı (manager/team) körü körüne kabul
+    // etmez: talebi açanın yöneticisi mi, yoksa proje ekibinde mi olduğunu
+    // kendisi doğrular (Proje Yönetim Direktörü her iki sıfatla da onaylayabilir).
+    const creator = await query("SELECT manager_username FROM users WHERE username=$1", [cr.created_by]);
+    const isManager = req.user.role === "pmdir" || (creator.rows[0] && creator.rows[0].manager_username === req.user.username);
+    const team = await query("SELECT 1 FROM project_team WHERE project_k=$1 AND username=$2", [req.params.k, req.user.username]);
+    const isTeam = req.user.role === "pmdir" || team.rowCount > 0;
+
+    const existing = await query("SELECT DISTINCT capacity FROM change_request_approvals WHERE change_request_id=$1", [cr.id]);
+    const have = existing.rows.map((r) => r.capacity);
+    const needManager = !have.includes("manager");
+    const needTeam = !have.includes("team");
+    let capacity = null;
+    if (needManager && isManager) capacity = "manager";
+    else if (needTeam && isTeam) capacity = "team";
+    if (!capacity) {
+      return res.status(403).json({
+        error: needManager
+          ? "Bu talebi açan kişinin yöneticisi henüz onaylamadı; önce o onaylamalı."
+          : "Proje ekibinden birinin onayı gerekiyor; bu sıfatla onay veremezsiniz.",
+      });
+    }
+
     await query(
       `INSERT INTO change_request_approvals (change_request_id, username, capacity) VALUES ($1,$2,$3)`,
-      [req.params.id, req.user.username, capacity]
+      [cr.id, req.user.username, capacity]
     );
-    const approvals = await query("SELECT DISTINCT capacity FROM change_request_approvals WHERE change_request_id=$1", [req.params.id]);
+    const approvals = await query("SELECT DISTINCT capacity FROM change_request_approvals WHERE change_request_id=$1", [cr.id]);
     const capacities = approvals.rows.map((r) => r.capacity);
-    if (capacities.includes("manager") && capacities.includes("team")) {
-      await query("UPDATE change_requests SET status='onaylandi' WHERE id=$1", [req.params.id]);
+    const fullyApproved = capacities.includes("manager") && capacities.includes("team");
+    if (fullyApproved) {
+      await query("UPDATE change_requests SET status='onaylandi' WHERE id=$1", [cr.id]);
     }
-    await audit(`Değişiklik talebi onaylandı (${capacity}): #${req.params.id}`, req.user.username);
+    await audit(`Değişiklik talebi onayı (${capacity}): ${cr.no}${fullyApproved ? " — tam onaylandı" : ""}`, req.user.username);
+    res.json({ ok: true, capacity, fullyApproved });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/change-requests/:id/reject", requireRead("d.cr"), async (req, res, next) => {
+  try {
+    const { rows } = await query("SELECT * FROM change_requests WHERE id=$1 AND project_k=$2", [req.params.id, req.params.k]);
+    const cr = rows[0];
+    if (!cr) return res.status(404).json({ error: "Değişiklik talebi bulunamadı." });
+    if (cr.created_by === req.user.username) return res.status(409).json({ error: "Kendi talebinizi reddedemezsiniz." });
+    await query("UPDATE change_requests SET status='reddedildi' WHERE id=$1", [cr.id]);
+    await audit(`Değişiklik talebi reddedildi: ${cr.no}`, req.user.username, false);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
