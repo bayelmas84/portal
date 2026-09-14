@@ -818,6 +818,10 @@ async function loadOrgChartLive(){
 let MAILTPL_LIVE=null,MAILTPL_LIVE_LOADING=false,WIRED_EVENTS_LIVE=null;
 let APP_SETTINGS_LIVE=null,APP_SETTINGS_LIVE_LOADING=false;
 let APPROVAL_RULES_LIVE=null,APPROVAL_RULES_LIVE_LOADING=false;
+let TWOFA_STATUS=null;
+async function loadTwoFactorStatusLive(){
+ try{TWOFA_STATUS=await api("GET","/api/auth/2fa/status");render();}
+ catch(e){TWOFA_STATUS=null;}}
 async function loadApprovalRulesLive(){
  APPROVAL_RULES_LIVE_LOADING=true;
  try{const data=await api("GET","/api/admin/approval-rules");APPROVAL_RULES_LIVE=data.items;}
@@ -1247,7 +1251,9 @@ function loginView(){
     <label class="field"><span>Kod</span>
      <span class="input-wrap"><input id="lcode" value="${esc(S.f&&S.f.code||"")}" placeholder="000000" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></span></label>
     ${S.err?`<div class="login-error" role="alert">${esc(S.err)}</div>`:""}
+    ${S.emailCodeSent?`<p class="m" style="color:var(--tm)">E-postanıza bir kod gönderildi (5 dk geçerli).</p>`:""}
     <button class="b g login-submit" data-a="verify2fa">Doğrula</button>
+    <button class="b s" style="margin-top:8px" data-a="send2faEmail">E-postama kod gönder</button>
     <button class="b s" style="margin-top:8px" data-a="cancel2fa">Vazgeç</button>
     `:`
     <label class="field"><span>Kullanıcı adı</span>
@@ -2945,6 +2951,9 @@ function homeView(){
      <div class="m" style="font-size:14px;color:#EBC98A;margin-top:2px">Şemayı gör <span style="font-size:10px;color:#8FA0BE">→</span></div></div>
    </div></div>
  <div style="padding:20px 24px">
+  ${LIVE_BACKEND&&TWOFA_STATUS&&TWOFA_STATUS.recommended&&!TWOFA_STATUS.enabled?`<div class="card wr" style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
+    <span style="font-size:12.5px;flex:1"><b>Rolünüz için iki faktörlü kimlik doğrulama önerilir.</b> Hesabınızı güçlendirmek için profilinizden etkinleştirin.</span>
+    <button class="b s" data-a="profile">Profil</button></div>`:""}
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-bottom:20px">
    ${canUse("a.list")?`<div><div class="lbl">Okunmamış duyurular (${live.length})</div>
     ${live.length?live.map(a=>`<div class="card" style="margin-bottom:9px">
@@ -3082,6 +3091,15 @@ function dialogView(){
     <span id="cnt" class="m" style="color:var(--tm);flex:1">0/10</span>
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b off" data-a="needFields">Reddet ve kaydet</button></div>`);}
+ if(d.type==="twofa"){
+  return wrap(`<div style="font-size:15px">2FA Kurulumu</div>
+   <p class="m" style="color:var(--tm);margin-top:8px">Google Authenticator / Microsoft Authenticator gibi bir uygulamada bu anahtarı manuel girin, ardından uygulamanın gösterdiği 6 haneli kodu aşağıya yazın.</p>
+   <div class="card" style="margin-top:10px;font-family:monospace;font-size:13px;text-align:center;word-break:break-all">${esc(d.secret)}</div>
+   <div class="lbl" style="margin-top:12px">Doğrulama kodu</div>
+   <input id="f2faCode" placeholder="000000" inputmode="numeric" maxlength="6">
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button class="b p" data-a="twofaEnable">Etkinleştir</button></div>`);}
  if(d.type==="profile"){const u=S.me;
   return wrap(`<div style="font-size:15px">Kullanıcı bilgileri</div>
    <div style="display:flex;gap:13px;align-items:center;margin:13px 0 15px">
@@ -3097,6 +3115,13 @@ function dialogView(){
     <button class="b s" data-a="avatar:foto">Fotoğraf yükle</button>
     <button class="b s" data-a="avatar:kaldir">Fotoğrafı kaldır</button></div>
    <p style="font-size:11.5px;color:var(--tm);margin:10px 0 0">Rol, birim, ünvan ve yönetici bilgileri Active Directory ve Admin Panel üzerinden yönetilir; buradan değiştirilemez.</p>
+   ${LIVE_BACKEND?`<div class="lbl" style="margin-top:15px">İki faktörlü kimlik doğrulama (2FA)</div>
+    ${TWOFA_STATUS&&TWOFA_STATUS.enabled?
+     `<p class="m" style="color:var(--tm)">Etkin. Her girişte authenticator app veya e-posta koduyla doğrulanırsınız.</p>
+      <button class="b s d" data-a="twofaDisable">Devre dışı bırak</button>`
+     :`<p class="m" style="color:var(--tm)">${TWOFA_STATUS&&TWOFA_STATUS.recommended?"Rolünüz için önerilir. ":""}Kapalı — girişte yalnızca kullanıcı adı yeterli.</p>
+      <button class="b s p" data-a="twofaSetup">Etkinleştir</button>`}
+   `:""}
    <div style="display:flex;justify-content:flex-end;margin-top:15px"><button class="b p" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="proj"){
   const unitPeople=u=>USERS.filter(x=>x.on&&x.unit===u);
@@ -3699,7 +3724,24 @@ app.addEventListener("click",async ev=>{
  if(k==="theme"){S.dark=!S.dark;render();return;}
  if(k==="togglePw"){S.showPw=!S.showPw;render();return;}
  if(k==="fill"){S.u=USERS[+p[1]].u;S.err="";render();return;}
- if(k==="cancel2fa"){S.needsTwoFactor=false;S.pendingUname=null;S.err="";render();return;}
+ if(k==="twofaDisable"){
+  try{await api("POST","/api/auth/2fa/disable",{});TWOFA_STATUS={enabled:false,recommended:TWOFA_STATUS&&TWOFA_STATUS.recommended};toast("2FA devre dışı bırakıldı.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="twofaSetup"){
+  try{const data=await api("POST","/api/auth/2fa/setup",{});S.f={};S.dlg={type:"twofa",secret:data.secret,otpauthUri:data.otpauthUri};render();}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="twofaEnable"){
+  const code=(document.getElementById("f2faCode")||{}).value||"";
+  try{await api("POST","/api/auth/2fa/enable",{code});TWOFA_STATUS={enabled:true,recommended:TWOFA_STATUS&&TWOFA_STATUS.recommended};S.dlg=null;toast("2FA etkinleştirildi.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="cancel2fa"){S.needsTwoFactor=false;S.pendingUname=null;S.err="";S.emailCodeSent=false;render();return;}
+ if(k==="send2faEmail"){
+  try{await api("POST","/api/auth/2fa/send-email-code",{});S.emailCodeSent=true;S.err="";render();}
+  catch(e){S.err=e.message||"Kod gönderilemedi.";render();}
+  return;}
  if(k==="verify2fa"){
   const code=(document.getElementById("lcode")||{}).value||"";
   try{
@@ -3712,7 +3754,7 @@ app.addEventListener("click",async ev=>{
     const mu=USERS.find(x=>x.u===data.user.managerUsername);
     u.mgr=mu?mu.n:data.user.managerUsername;}
    S.me=u;S.err="";S.needsTwoFactor=false;S.view="home";S.mod="announce";S.scr="a.list";
-   S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();loadAppSettingsLive();loadApprovalRulesLive();render();return;
+   S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();loadAppSettingsLive();loadApprovalRulesLive();loadTwoFactorStatusLive();render();return;
   }catch(e){S.err=e.message||"Kod hatalı.";render();return;}}
  if(k==="signin"){
   await checkLiveBackend();
@@ -3730,7 +3772,7 @@ app.addEventListener("click",async ev=>{
      u.mgr=mu?mu.n:data.user.managerUsername;}
     S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
     S.meetingsLive=null;S.meetingsLiveLoading=null;
-    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();loadAppSettingsLive();loadApprovalRulesLive();render();return;
+    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();loadAppSettingsLive();loadApprovalRulesLive();loadTwoFactorStatusLive();render();return;
    }catch(e){S.err=e.message||"Kullanıcı adı veya parola hatalı.";render();return;}
   }
   const u=USERS.find(x=>x.u===uname);
@@ -3760,6 +3802,7 @@ app.addEventListener("click",async ev=>{
   MAILTPL_LIVE=null;MAILTPL_LIVE_LOADING=false;WIRED_EVENTS_LIVE=null;
   APP_SETTINGS_LIVE=null;APP_SETTINGS_LIVE_LOADING=false;
   APPROVAL_RULES_LIVE=null;APPROVAL_RULES_LIVE_LOADING=false;
+  TWOFA_STATUS=null;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}

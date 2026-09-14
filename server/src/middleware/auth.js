@@ -71,6 +71,7 @@ function requireCsrf(req, res, next) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
   if (req.path === "/api/auth/login") return next();
   if (req.path === "/api/auth/2fa/verify") return next(); // henüz csrfToken alınmadı
+  if (req.path === "/api/auth/2fa/send-email-code") return next(); // henüz csrfToken alınmadı
   const header = req.get("X-CSRF-Token");
   if (!req.session || !header || header !== req.session.csrf_secret) {
     return res.status(403).json({ error: "CSRF doğrulaması başarısız." });

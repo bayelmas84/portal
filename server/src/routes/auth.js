@@ -8,6 +8,7 @@ const { verifyAgainstDirectory } = require("../auth/ldap");
 const { audit } = require("../lib/audit");
 const { encryptSecret, decryptSecret } = require("../lib/crypto");
 const { generateSecret, verifyToken, otpauthUri } = require("../lib/totp");
+const { sendMail } = require("../lib/mailer");
 
 const router = express.Router();
 
@@ -76,6 +77,29 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
+// 2FA'nın alternatif yöntemi: authenticator app yerine, bekleyen oturuma bağlı
+// olarak kullanıcının kayıtlı e-postasına 6 haneli, 5 dakika geçerli tek
+// kullanımlık bir kod gönderir.
+router.post("/2fa/send-email-code", async (req, res, next) => {
+  try {
+    if (!req.session || !req.session.pending_2fa) {
+      return res.status(400).json({ error: "Doğrulanacak bekleyen bir 2FA oturumu yok." });
+    }
+    const { rows } = await query("SELECT username, email FROM users WHERE username=$1", [req.session.username]);
+    const user = rows[0];
+    if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    await query(
+      "UPDATE sessions SET email_otp_code=$1, email_otp_expires_at=now() + interval '5 minutes' WHERE id=$2",
+      [code, req.session.id]
+    );
+    const sent = await sendMail(user.email, "Tera Portal — giriş doğrulama kodu",
+      `Merhaba, giriş doğrulama kodunuz: ${code}\nBu kod 5 dakika geçerlidir. Bu isteği siz yapmadıysanız şifrenizi değiştirin.`);
+    await audit(`2FA e-posta kodu gönderildi: ${user.username} (${sent ? "başarılı" : "SMTP kapalı"})`, user.username, sent);
+    res.json({ ok: true, sent });
+  } catch (e) { next(e); }
+});
+
 // 2. adım: şifre doğrulandıktan sonra bekleyen oturuma karşı 6 haneli TOTP
 // kodunu doğrular. req.user burada HENÜZ set değildir (attachUser, pending_2fa
 // oturumları için req.user=null yapar) — bu yüzden req.session üzerinden gideriz.
@@ -87,11 +111,19 @@ router.post("/2fa/verify", async (req, res, next) => {
     const { code } = req.body || {};
     const { rows } = await query("SELECT * FROM users WHERE username=$1 AND active", [req.session.username]);
     const user = rows[0];
-    if (!user || !user.totp_enabled || !user.totp_secret_encrypted) {
+    if (!user || !user.totp_enabled) {
       return res.status(409).json({ error: "Bu hesapta 2FA etkin değil." });
     }
-    const secret = decryptSecret(user.totp_secret_encrypted);
-    if (!verifyToken(secret, code)) {
+    // Kod, ya authenticator app'ten (TOTP) ya da e-postaya gönderilen tek
+    // kullanımlık koddan (varsa ve süresi geçmemişse) gelebilir.
+    let ok = false;
+    if (user.totp_secret_encrypted && verifyToken(decryptSecret(user.totp_secret_encrypted), code)) ok = true;
+    if (!ok && req.session.email_otp_code && req.session.email_otp_code === String(code || "") &&
+        req.session.email_otp_expires_at && new Date(req.session.email_otp_expires_at) > new Date()) {
+      ok = true;
+      await query("UPDATE sessions SET email_otp_code=NULL, email_otp_expires_at=NULL WHERE id=$1", [req.session.id]);
+    }
+    if (!ok) {
       await audit(`2FA kodu hatalı: ${user.username}`, user.username, false);
       return res.status(401).json({ error: "Kod hatalı veya süresi geçmiş." });
     }
@@ -165,7 +197,11 @@ router.post("/2fa/disable", requireAuth, async (req, res, next) => {
 router.get("/2fa/status", requireAuth, async (req, res, next) => {
   try {
     const { rows } = await query("SELECT totp_enabled FROM users WHERE username=$1", [req.user.username]);
-    res.json({ enabled: !!(rows[0] && rows[0].totp_enabled) });
+    const policy = await query("SELECT required FROM two_factor_policy WHERE role=$1", [req.user.role]);
+    res.json({
+      enabled: !!(rows[0] && rows[0].totp_enabled),
+      recommended: !!(policy.rows[0] && policy.rows[0].required),
+    });
   } catch (e) { next(e); }
 });
 
