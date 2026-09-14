@@ -760,6 +760,25 @@ const ganttRange=(tasks,pr)=>{
 /* teamOf her zaman zorunlu üyeleri (Teftiş, Risk) içerir; eksikse tamamlanır. */
 let TEAM_CACHE_LIVE={};
 let PENDING_UPLOAD_FILE=null;
+let USERS_LIVE=null,USERS_LIVE_LOADING=false;
+async function loadUsersLive(){
+ USERS_LIVE_LOADING=true;
+ try{
+  const data=await api("GET","/api/admin/users");
+  USERS_LIVE=data.items.map(u=>({
+   u:u.username,n:u.name,r:u.role,c:"#0B1F48",
+   unit:(UNITS.find(x=>x.k===u.unit)||{}).n||u.unit||"—",
+   title:(TITLES.find(x=>x.k===u.title)||{}).n||u.title||"—",
+   mgr:(function(){const m=data.items.find(x=>x.username===u.manager_username);return m?m.name:null;})(),
+   on:u.active?1:0}));
+ }catch(e){toast("Kullanıcılar yüklenemedi: "+e.message,1);USERS_LIVE=[];}
+ USERS_LIVE_LOADING=false;render();}
+async function loadBrandLive(){
+ try{
+  const data=await api("GET","/api/admin/brand");
+  Object.assign(BRAND,data.item);
+ }catch(e){/* marka ayarları yüklenemezse mevcut varsayılanlarla devam edilir */}
+ render();}
 async function loadTeamCacheLive(k){
  try{
   const data=await api("GET","/api/projects/"+encodeURIComponent(k)+"/team");
@@ -2032,16 +2051,21 @@ function screenView(){
    <td>${a.st!=="yayında"?pill(a.st,"wr"):visiblePendingOn(a.id,"del")?pill("silme onayında","wr"):pill("yayında","ok")}</td>
    <td style="text-align:right"><button class="b s p" data-a="openAnn:${a.id}">Duyuruya git</button></td></tr>`).join(""));
 
- if(v==="m.users")return head("Kullanıcılar",USERS.filter(u=>u.on).length+" aktif / "+USERS.length+" kayıt",
+ if(v==="m.users"){
+  if(LIVE_BACKEND&&USERS_LIVE===null&&!USERS_LIVE_LOADING)loadUsersLive();
+  const src=LIVE_BACKEND?(USERS_LIVE||[]):USERS;
+  const loading=LIVE_BACKEND&&USERS_LIVE===null;
+  return head("Kullanıcılar",src.filter(u=>u.on).length+" aktif / "+src.length+" kayıt"+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
    cw("m.users")?`<button class="b p" data-a="recNew:user">Kullanıcı ekle</button>`:"")+
-  table(["Ad","Birim","Ünvan","Rol","Yönetici","Durum",""],USERS.map((u,i)=>`<tr class="${u.on?"":"dim"}">
+  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
+  table(["Ad","Birim","Ünvan","Rol","Yönetici","Durum",""],src.map((u,i)=>`<tr class="${u.on?"":"dim"}">
    <td>${esc(u.n)}<div class="m" style="color:var(--tm)">${u.u}</div></td>
    <td style="color:var(--t2)">${esc(u.unit)}</td><td>${esc(u.title)}</td><td>${pill(ROLE[u.r])}</td>
-   <td style="color:var(--t2)">${esc(u.mgr)}</td><td>${onPill(u.on)}</td>
+   <td style="color:var(--t2)">${esc(u.mgr||"—")}</td><td>${onPill(u.on)}</td>
    <td style="text-align:right;white-space:nowrap">${cw("m.users")?
-    `<button class="b s" data-a="toggle:user:${i}">${u.on?"Pasife al":"Aktif et"}</button>
-     <button class="b s" data-a="recEdit:user:${i}">Düzenle</button>
-     <button class="b s d" data-a="recDel:user:${i}">Sil</button>`:""}</td></tr>`).join(""));
+    `<button class="b s" data-a="toggle:user:${LIVE_BACKEND?u.u:i}">${u.on?"Pasife al":"Aktif et"}</button>
+     <button class="b s" data-a="recEdit:user:${LIVE_BACKEND?u.u:i}">Düzenle</button>
+     ${LIVE_BACKEND?"":`<button class="b s d" data-a="recDel:user:${i}">Sil</button>`}`:""}</td></tr>`).join("")));}
 
  if(v==="m.units")return head("Birimler",UNITS.filter(u=>u.on).length+" aktif / "+UNITS.length+" kayıt",
    cw("m.units")?`<button class="b p" data-a="recNew:unit">Birim ekle</button>`:"")+
@@ -2170,7 +2194,7 @@ function screenView(){
    </div></div>`;}
 
  if(v==="m.brand"){const w=cw("m.brand");
-  return head("Marka ve metinler","Ekranlarda görünen şirket adı, ürün adı ve sloganlar buradan yönetilir")+
+  return head("Marka ve metinler","Ekranlarda görünen şirket adı, ürün adı ve sloganlar buradan yönetilir"+(LIVE_BACKEND?" · canlı backend":" · demo verisi"))+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
    <div class="card">
     ${BRAND_FIELDS.map(([k,lbl])=>`<div style="margin-bottom:11px">
@@ -2978,7 +3002,7 @@ app.addEventListener("click",async ev=>{
      u.mgr=mu?mu.n:data.user.managerUsername;}
     S.me=u;S.err="";S.view="home";S.mod="announce";S.scr="a.list";
     S.meetingsLive=null;S.meetingsLiveLoading=null;
-    S.pop=null;render();return;
+    S.pop=null;loadBrandLive();render();return;
    }catch(e){S.err=e.message||"Kullanıcı adı veya parola hatalı.";render();return;}
   }
   const u=USERS.find(x=>x.u===uname);
@@ -2997,6 +3021,7 @@ app.addEventListener("click",async ev=>{
    meetingsLive:null,meetingsLiveLoading:null,mtView:null,annLive:null,annLiveLoading:false,
    ganttLive:null,ganttLiveProj:null,ganttLiveLoading:null,teamLive:null,teamLiveProj:null,teamLiveLoading:null,
    crLive:null,crLiveProj:null,crLiveLoading:null,docsLive:null,docsLiveLoading:false});
+  USERS_LIVE=null;USERS_LIVE_LOADING=false;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
@@ -3333,13 +3358,19 @@ app.addEventListener("click",async ev=>{
   if(idx>-1){const t=tasks.splice(idx,1)[0];audit("Gantt görevi silindi: "+t.name+" ("+P().k+")");}
   toast("Görev silindi.");return;}
 
- if(k==="brAccent"){BRAND.accent=decodeURIComponent(p[1]);render();return;}
+ if(k==="brAccent"){
+  BRAND.accent=decodeURIComponent(p[1]);
+  if(LIVE_BACKEND){try{await api("PUT","/api/admin/brand",{accent:BRAND.accent});}catch(e){toast(e.message,1);}}
+  render();return;}
  if(k==="brSave"){const changed=[];const before=BRAND.company;
   BRAND_FIELDS.forEach(([key])=>{const el=document.getElementById("br_"+key);
    if(el&&el.value.trim()&&el.value.trim()!==BRAND[key]){BRAND[key]=el.value.trim();changed.push(key);}});
   /* Şirket adı değiştiyse ve alt bilgi elle düzenlenmediyse, alt bilgi de yeni ada göre üretilir. */
   if(changed.includes("company")&&!changed.includes("footer")&&BRAND.footer.includes(before)){
    BRAND.footer=BRAND.footer.split(before).join(BRAND.company);changed.push("footer");}
+  if(LIVE_BACKEND&&changed.length){
+   const payload={};changed.forEach(k2=>{payload[k2]=BRAND[k2];});
+   try{await api("PUT","/api/admin/brand",payload);}catch(e){toast(e.message,1);return;}}
   audit("Marka ve metinler güncellendi"+(changed.length?": "+changed.join(", "):""));
   toast(changed.length?"Kaydedildi — "+changed.length+" alan güncellendi.":"Değişiklik yok.");return;}
  if(k==="brReset"){BRAND={company:"Tera Yatırım Menkul Değerler A.Ş.",companyShort:"Tera Yatırım",
@@ -3347,6 +3378,9 @@ app.addEventListener("click",async ev=>{
    loginTitle:"Oturum açın",loginHint:"Kurum hesabınızla devam edin.",homeGreetSuffix:"",
    footer:"© "+new Date().getFullYear()+" Tera Yatırım Menkul Değerler A.Ş.",
    accent:"#B8894A",navy:"#0B1F48"};
+  if(LIVE_BACKEND){try{await api("PUT","/api/admin/brand",{company:BRAND.company,companyShort:BRAND.companyShort,
+   product:BRAND.product,slogan:BRAND.slogan,loginTitle:BRAND.loginTitle,loginHint:BRAND.loginHint,
+   footer:BRAND.footer,accent:BRAND.accent});}catch(e){toast(e.message,1);}}
   audit("Marka ayarları varsayılana döndürüldü");toast("Varsayılana dönüldü.");return;}
  if(k==="docProj"){S.docProj=p[1];render();return;}
  if(k==="pdocView"){S.docView2={k:p[1],id:+p[2]};S.mod="delivery";S.scr="d.docview";render();return;}
@@ -3707,14 +3741,30 @@ app.addEventListener("click",async ev=>{
   S.dlg=null;S.req=null;S.scr="p.my";toast("Talep geri çekildi. Gerekirse yeni talep girebilirsiniz.");return;}
 
  /* admin kayıtları */
- if(k==="toggle"){const src={user:USERS,unit:UNITS,title:TITLES,short:SHORTS}[p[1]],rec=src[+p[2]];
+ if(k==="toggle"){
+  if(p[1]==="user"&&LIVE_BACKEND){
+   const rec=(USERS_LIVE||[]).find(x=>x.u===p[2]);
+   if(!rec)return;
+   try{
+    await api("PUT","/api/admin/users/"+encodeURIComponent(p[2]),{active:!rec.on});
+    USERS_LIVE=null;toast((rec.n||p[2])+(rec.on?" pasife alındı.":" aktif edildi."));render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  const src={user:USERS,unit:UNITS,title:TITLES,short:SHORTS}[p[1]],rec=src[+p[2]];
   rec.on=rec.on?0:1;toast(rec.n+(rec.on?" aktif edildi.":" pasife alındı."));return;}
  if(k==="recNew"){const t=p[1];S.f={on:1};
   S.dlg={type:"rec",kind:t,idx:undefined,
    title:{user:"Kullanıcı ekle",unit:"Birim ekle",title:"Ünvan ekle",short:"Kısayol ekle"}[t],
    l1:{user:"Ad soyad",unit:"Kod",title:"Kod",short:"Görünen ad"}[t],
    l2:{user:"Birim",unit:"Birim adı",title:"Ünvan adı",short:"Link"}[t]};render();return;}
- if(k==="recEdit"){const t=p[1],i=+p[2],src={user:USERS,unit:UNITS,title:TITLES,short:SHORTS}[t],rec=src[i];
+ if(k==="recEdit"){
+  const t=p[1];
+  if(t==="user"&&LIVE_BACKEND){
+   const rec=(USERS_LIVE||[]).find(x=>x.u===p[2]);
+   if(!rec)return;
+   S.f={a:rec.n,b:rec.unit,role:rec.r,title2:rec.title,on:rec.on};
+   S.dlg={type:"rec",kind:"user",idx:p[2],title:"Kullanıcıyı düzenle",l1:"Ad soyad",l2:"Birim"};render();return;}
+  const i=+p[2],src={user:USERS,unit:UNITS,title:TITLES,short:SHORTS}[t],rec=src[i];
   S.f=t==="user"?{a:rec.n,b:rec.unit,role:rec.r,title2:rec.title,on:rec.on}
    :t==="short"?{a:rec.n,b:rec.url,on:rec.on}:{a:rec.k,b:rec.n,on:rec.on};
   S.dlg={type:"rec",kind:t,idx:i,
@@ -3722,6 +3772,21 @@ app.addEventListener("click",async ev=>{
    l1:{user:"Ad soyad",unit:"Kod",title:"Kod",short:"Görünen ad"}[t],
    l2:{user:"Birim",unit:"Birim adı",title:"Ünvan adı",short:"Link"}[t]};render();return;}
  if(k==="recSave"){const d=S.dlg,f=S.f;
+  if(d.kind==="user"&&LIVE_BACKEND){
+   const unitCode=(UNITS.find(x=>x.n===f.b.trim())||{}).k||null;
+   const titleCode=(TITLES.find(x=>x.n===f.title2)||{}).k||null;
+   try{
+    if(d.idx===undefined){
+     const username=f.a.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z\s]/g,"").trim().replace(/\s+/g,".");
+     await api("POST","/api/admin/users",{username,name:f.a.trim(),
+      email:username+"@terayatirim.com.tr",role:f.role||"staff",unit:unitCode,title:titleCode});
+    }else{
+     await api("PUT","/api/admin/users/"+encodeURIComponent(d.idx),{name:f.a.trim(),unit:unitCode,title:titleCode,
+      role:f.role||undefined,active:!!f.on});
+    }
+    USERS_LIVE=null;S.dlg=null;S.f={};toast("Kayıt kaydedildi.");render();
+   }catch(e){toast(e.message,1);}
+   return;}
   if(d.kind==="user"){if(d.idx===undefined)
     USERS.push({u:f.a.toLowerCase().replace(/\s+/g,"."),n:f.a.trim(),r:f.role||"staff",c:"#0F6E56",
      unit:f.b.trim(),title:f.title2||"Uzman",mgr:S.me.n,on:f.on?1:0});
