@@ -1,68 +1,32 @@
 # Tera Portal
 
-Tera Yatırım kurumsal portalı: duyurular, kontrollü dokümanlar, zorunlu okuma,
-onay akışları, ekran ve bildirim yönetimi.
+Tek dosyalık, sunucusuz bir web uygulaması. Tüm arayüz, veri ve iş mantığı
+`index.html` içinde çalışır; bir derleme adımına, veritabanına veya backend'e
+ihtiyaç duymaz.
 
-**Kurulum yapacaksanız `docs/KURULUM.md` dosyasını açın.** Bu dosya yalnızca genel bakıştır.
+**Kurulum için `KURULUM.md` dosyasını açın.**
 
-## Belgeler
+## İçerik
 
-| Dosya | İçerik | Kime |
-|---|---|---|
-| `docs/KURULUM.md` | Adım adım kurulum, doğrulama, sorun giderme | Sistem yöneticisi |
-| `docs/GUVENLIK.md` | Uygulanan kontroller ve bilinen sınırlar | Bilgi güvenliği, teftiş |
-| `docs/TEST-RAPORU.md` | 41 testin sonucu, OWASP eşlemesi | İç kontrol, teftiş |
+`index.html` şunları içerir:
 
-## Mimari
+- Duyurular, zorunlu okuma ve kavrama sınavı, onay akışları
+- Proje Yönetimi: Toplantı Notları (gündem takibi, devir), Gantt Chart
+- Admin Panel: kullanıcı/rol/yetki yönetimi, Dizin (AD) ve SMTP ayarları ekranları,
+  marka/metin yönetimi, ekran açma/kapama
+- Duyarlı (responsive) tasarım: masaüstü, tablet ve mobilde kullanılabilir
 
-```
-Tarayıcı ──HTTPS──> Nginx (443) ──> Node/Express (127.0.0.1:8080) ──> PostgreSQL
-                                            │
-                                            ├──> Active Directory (LDAPS 636)
-                                            └──> Dosya deposu (/var/lib/tera-portal/uploads)
-```
+## Sınırlar (önemli)
 
-- `server/src/routes` — uç noktalar (duyuru, doküman, onay, yönetim)
-- `server/src/services` — yetki modeli, bildirim, LDAP
-- `server/src/middleware` — oturum, yetki, güvenlik başlıkları, CSRF, hata
-- `server/src/lib` — veri katmanı, denetim zinciri, göç, başlangıç verisi
-- `client` — API'ye bağlı tek sayfa arayüz (satır içi betik yok, CSP uyumlu)
-- `ops` — systemd birimi, nginx yapılandırması, yedek, sağlık denetimi, statik tarama, zamanlanmış işler
-- `tests` — 92 otomatik test (51 işlevsel, 41 güvenlik; 7'si PRISMA Fortify kategorilerinin karşılığı)
+Bu uygulama tarayıcıda bellek içinde çalışır:
 
-## Temel iş kuralları
+- Sayfa yenilendiğinde tüm veriler (kullanıcılar, projeler, toplantı notları,
+  duyurular) sıfırlanır — kalıcı bir veritabanı yoktur.
+- "Giriş" ekranı gerçek bir kimlik doğrulama değildir; herhangi bir hesap
+  şifresiz seçilebilir.
+- SMTP/Dizin (AD) ayarları ekranları gerçek bir sunucuya bağlanmaz; bağlantı
+  denemeleri ve e-posta gönderimi taklit edilir (prototip/demo amaçlıdır).
 
-- Her duyuru onaydan geçer: **Yasal → Teftiş**, **Genel → girenin yöneticisi**.
-- Onay bekleyen duyuru ve doküman yalnızca **girene ve Teftiş'e** görünür.
-- Doküman onayı yalnızca Teftiş'tedir; giren dosyayı değiştirebilir veya talebi iptal edebilir.
-- Silme ve kaldırma doğrudan yapılmaz; gerekçeli talep açılır.
-- Zorunlu okumada sayfa başına asgari süre **sunucuda** ölçülür.
-- Ekranlar rollerden bağımsız olarak açık / bakımda / kapalı yapılabilir.
-- Kimse kendi talebini onaylayamaz, kendi rolünün yetkisini değiştiremez.
-- Yayına giren doküman tüm aktif kullanıcılara zorunlu okuma olarak atanır.
-- Kavrama sınavı puanı sunucuda hesaplanır (ağırlıklı, geçme 70); kalan kişi dokümanı baştan okur.
-- Süresi geçmiş zorunlu okuması olan kullanıcıya portalın kalanı kapanır.
-- Active Directory bağlantısı ve e-posta ayarları (SMTP sunucusu, port, şifreleme, kimlik, gönderen, grup adresleri) Admin Panel'den girilir; parola şifreli saklanır ve ekrana geri dönmez.
-- Kurulumda **yalnızca Proje Yönetimi, Admin Panel ve Kısayollar açıktır**; diğer modüller kapalı gelir ve Ekran yönetimi'nden açılır.
-- Raporlar modülü BI servisinin (PRISMA) katalogu ve yaşam döngüsüdür: geliştirme → Teftiş onayı → yayın → emekli. Rapor açılışında portal imzalı, 60 saniye geçerli bir kimlik devri anahtarı üretir.
-
-## Geliştirme
-
-```bash
-npm ci
-npm test                  # tüm testler (49)
-npm run test:security     # yalnızca güvenlik paketi
-npm run audit             # bağımlılık zafiyet taraması
-ops/security-scan.sh      # statik kod taraması (23 Fortify kalıbı)
-```
-
-## Zamanlanmış işler
-
-| İş | Betik | Önerilen sıklık |
-|---|---|---|
-| E-posta kuyruğunu boşaltma | `ops/mail-worker.js` | 5 dakika |
-| Zorunlu okuma hatırlatmaları | `ops/reminder-job.js` | Hafta içi 08:00 |
-| Sprint burndown anlık görüntüsü | `ops/burndown-job.js` | Günlük 23:55 |
-| Yedekleme | `ops/backup.sh` | Günlük 02:00 |
-
-Cron satırları `docs/KURULUM.md` bölüm 12.1 ve 13'te yazılıdır.
+Bu sınırları kaldırıp gerçek, kalıcı veri ve kimlik doğrulamasıyla çalışan bir
+sürüm isterseniz, bu ayrı bir geliştirme işidir (gerçek bir backend ve
+veritabanı gerektirir).
