@@ -1,4 +1,10 @@
 "use strict";
+// GÜVENLİK NOTU: Her istemciye connectTimeout/timeout verilir — bu olmadan,
+// AD sunucusu yanıt vermediğinde (ağ sorunu, yanlış firewall kuralı, sunucu
+// çökmüş) bir bind() isteği SONSUZA KADAR askıda kalabilir; bu da HTTP
+// isteğini (ve dolayısıyla o worker'ı) süresiz kilitler — kendiliğinden bir
+// DoS riskidir. 5sn bağlantı + 8sn genel işlem süresi, yavaş ama çalışan bir
+// AD için yeterli, donmuş bir bağlantı için ise makul bir üst sınırdır.
 const { Client } = require("ldapts");
 const { query } = require("../db");
 const { decryptSecret } = require("../lib/crypto");
@@ -19,7 +25,7 @@ async function verifyAgainstDirectory(username, password) {
   if (!dir.active || !dir.url) {
     throw new Error("Dizin (AD) ayarları tanımlı/etkin değil.");
   }
-  const client = new Client({ url: dir.url, tlsOptions: { rejectUnauthorized: !!dir.tls } });
+  const client = new Client({ url: dir.url, tlsOptions: { rejectUnauthorized: !!dir.tls }, connectTimeout: 5000, timeout: 8000 });
   const bindPassword = decryptSecret(dir.bind_password_encrypted);
   try {
     await client.bind(dir.bind_dn, bindPassword);
@@ -33,7 +39,7 @@ async function verifyAgainstDirectory(username, password) {
     const userDn = searchEntries[0].dn;
     await client.unbind();
     // Kullanıcının kendi parolasıyla ikinci bir bağlantı denenir (asıl doğrulama budur).
-    const userClient = new Client({ url: dir.url, tlsOptions: { rejectUnauthorized: !!dir.tls } });
+    const userClient = new Client({ url: dir.url, tlsOptions: { rejectUnauthorized: !!dir.tls }, connectTimeout: 5000, timeout: 8000 });
     try {
       await userClient.bind(userDn, password);
       return true;
@@ -50,7 +56,7 @@ async function testDirectoryConnection() {
   if (!dir.url || !dir.bind_dn) {
     return { ok: false, msg: "Önce sunucu ve servis hesabı bilgilerini kaydedin." };
   }
-  const client = new Client({ url: dir.url, tlsOptions: { rejectUnauthorized: !!dir.tls } });
+  const client = new Client({ url: dir.url, tlsOptions: { rejectUnauthorized: !!dir.tls }, connectTimeout: 5000, timeout: 8000 });
   try {
     const bindPassword = decryptSecret(dir.bind_password_encrypted);
     await client.bind(dir.bind_dn, bindPassword);
