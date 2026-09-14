@@ -1,6 +1,6 @@
 "use strict";
 const { pool, query } = require("./db");
-const { ACCESS } = require("./lib/permissions");
+const { DEFAULT_ACCESS } = require("./lib/permissions");
 
 const UNITS = [
   ["BT", "Bilgi Teknolojileri"], ["TFT", "Teftiş Kurulu"], ["UYM", "Uyum ve İç Kontrol"],
@@ -46,7 +46,7 @@ async function seed() {
     }
   }
 
-  for (const [role, screens] of Object.entries(ACCESS)) {
+  for (const [role, screens] of Object.entries(DEFAULT_ACCESS)) {
     for (const [screenKey, level] of Object.entries(screens)) {
       await query(
         "INSERT INTO role_access (role, screen_key, level) VALUES ($1,$2,$3) ON CONFLICT (role, screen_key) DO UPDATE SET level=$3",
@@ -61,7 +61,7 @@ async function seed() {
      ON CONFLICT (k) DO NOTHING`
   );
 
-  console.log("[seed] tamamlandı: " + USERS.length + " kullanıcı, " + Object.keys(ACCESS).length + " rol için erişim matrisi.");
+  console.log("[seed] tamamlandı: " + USERS.length + " kullanıcı, " + Object.keys(DEFAULT_ACCESS).length + " rol için erişim matrisi.");
 }
 
 if (require.main === module) {

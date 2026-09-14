@@ -30,22 +30,30 @@ function requireAuth(req, res, next) {
 }
 
 function requireRead(screenKey) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: "Oturum açmanız gerekiyor." });
-    if (!canRead(req.user.role, screenKey)) {
-      return res.status(403).json({ error: "Bu ekrana erişim yetkiniz yok." });
+  return async (req, res, next) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Oturum açmanız gerekiyor." });
+      if (!(await canRead(req.user.role, screenKey))) {
+        return res.status(403).json({ error: "Bu ekrana erişim yetkiniz yok." });
+      }
+      next();
+    } catch (e) {
+      next(e);
     }
-    next();
   };
 }
 
 function requireWrite(screenKey) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: "Oturum açmanız gerekiyor." });
-    if (!canWrite(req.user.role, screenKey)) {
-      return res.status(403).json({ error: "Bu işlem için yetkiniz yok." });
+  return async (req, res, next) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Oturum açmanız gerekiyor." });
+      if (!(await canWrite(req.user.role, screenKey))) {
+        return res.status(403).json({ error: "Bu işlem için yetkiniz yok." });
+      }
+      next();
+    } catch (e) {
+      next(e);
     }
-    next();
   };
 }
 

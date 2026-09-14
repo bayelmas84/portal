@@ -5,7 +5,12 @@ const { requireRead, requireWrite } = require("../middleware/auth");
 const { encryptSecret } = require("../lib/crypto");
 const { testDirectoryConnection } = require("../auth/ldap");
 const { getSmtpSettings, saveSmtpSettings, setSmtpActive, testSmtpConnection } = require("../lib/mailer");
+const {
+  getAllAccess, setAccess, resetAccessToDefault,
+  getAllAvailability, setAvailability, DEFAULT_ACCESS,
+} = require("../lib/permissions");
 const { audit } = require("../lib/audit");
+const { config } = require("../config");
 
 const router = express.Router();
 
@@ -15,6 +20,51 @@ router.get("/users", requireRead("m.users"), async (req, res, next) => {
       "SELECT username, name, email, role, unit, title, manager_username, active FROM users ORDER BY name"
     );
     res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+const VALID_ROLES = Object.keys(DEFAULT_ACCESS).concat(["gmy", "opsdir"]).filter((v, i, a) => a.indexOf(v) === i);
+
+router.post("/users", requireWrite("m.users"), async (req, res, next) => {
+  try {
+    const { username, name, email, role, unit, title, managerUsername } = req.body || {};
+    if (!username || !/^[a-z]+\.[a-z]+$/.test(username)) {
+      return res.status(400).json({ error: "Kullanıcı adı 'ad.soyad' biçiminde olmalı." });
+    }
+    if (!name || !email || !role) return res.status(400).json({ error: "Ad, e-posta ve rol zorunlu." });
+    if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
+    const { rows } = await query(
+      `INSERT INTO users (username,name,email,role,unit,title,manager_username)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING username,name,email,role,unit,title,manager_username,active`,
+      [username, name, email, role, unit || null, title || null, managerUsername || null]
+    );
+    await audit(`Kullanıcı oluşturuldu: ${username} (${role})`, req.user.username);
+    res.status(201).json({ item: rows[0] });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Bu kullanıcı adı zaten var." });
+    next(e);
+  }
+});
+
+router.put("/users/:username", requireWrite("m.users"), async (req, res, next) => {
+  try {
+    const { name, email, role, unit, title, managerUsername, active } = req.body || {};
+    if (role && !VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
+    if (req.params.username === req.user.username && role && role !== req.user.role) {
+      return res.status(409).json({ error: "Kendi rolünüzü değiştiremezsiniz." });
+    }
+    const { rows } = await query(
+      `UPDATE users SET
+         name=COALESCE($1,name), email=COALESCE($2,email), role=COALESCE($3,role),
+         unit=COALESCE($4,unit), title=COALESCE($5,title),
+         manager_username=COALESCE($6,manager_username), active=COALESCE($7,active)
+       WHERE username=$8
+       RETURNING username,name,email,role,unit,title,manager_username,active`,
+      [name, email, role, unit, title, managerUsername, active, req.params.username]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+    await audit(`Kullanıcı güncellendi: ${req.params.username}`, req.user.username);
+    res.json({ item: rows[0] });
   } catch (e) { next(e); }
 });
 
@@ -128,5 +178,54 @@ router.put("/brand", requireWrite("m.brand"), async (req, res, next) => {
 
 // Not: "imza" (powered by bayelmas) kasıtlı olarak bu API'de yoktur — sabittir,
 // istemci tarafında hardcode edilir, hiçbir admin ucundan değiştirilemez.
+
+// --------------------------- Ekran yetkileri (m.access) ---------------------
+router.get("/access", requireRead("m.access"), async (req, res, next) => {
+  try {
+    res.json({ items: await getAllAccess() });
+  } catch (e) { next(e); }
+});
+
+router.put("/access", requireWrite("m.access"), async (req, res, next) => {
+  try {
+    const { role, screenKey, level } = req.body || {};
+    if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
+    if (!["none", "read", "write"].includes(level)) return res.status(400).json({ error: "Geçersiz seviye." });
+    // Admin'in kendi admin panel erişimini kaldırması kilitlenmeye yol açar; engellenir.
+    if (role === "admin" && ["m.access", "m.avail"].includes(screenKey) && level === "none") {
+      return res.status(409).json({ error: "Admin rolünün bu ekranlara erişimi kaldırılamaz (kilitlenme riski)." });
+    }
+    await setAccess(role, screenKey, level);
+    await audit(`Ekran yetkisi değişti: ${role} / ${screenKey} -> ${level}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+router.post("/access/reset", requireWrite("m.access"), async (req, res, next) => {
+  try {
+    await resetAccessToDefault();
+    await audit("Ekran yetkileri varsayılana döndürüldü", req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// --------------------------- Ekran yönetimi (m.avail) ------------------------
+router.get("/availability", requireRead("m.avail"), async (req, res, next) => {
+  try {
+    res.json({ items: await getAllAvailability() });
+  } catch (e) { next(e); }
+});
+
+router.put("/availability", requireWrite("m.avail"), async (req, res, next) => {
+  try {
+    const { screenKey, status } = req.body || {};
+    if (["admin", "m.avail", "m.access"].includes(screenKey) && status !== "acik") {
+      return res.status(409).json({ error: "Admin Panel ve bu iki ekran kapatılamaz (kilitlenme riski)." });
+    }
+    await setAvailability(screenKey, status);
+    await audit(`Ekran durumu değişti: ${screenKey} -> ${status}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
 
 module.exports = router;

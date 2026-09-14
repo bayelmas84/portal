@@ -1,12 +1,27 @@
 "use strict";
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const multer = require("multer");
 const { query, withTransaction } = require("../db");
 const { requireRead, requireWrite } = require("../middleware/auth");
-const { canRead, MEETING_ALWAYS_ROLES } = require("../lib/permissions");
+const { canWrite, MEETING_ALWAYS_ROLES } = require("../lib/permissions");
 const { audit } = require("../lib/audit");
 const { sendMail } = require("../lib/mailer");
+const { config } = require("../config");
 
 const router = express.Router();
+
+fs.mkdirSync(config.uploadDir, { recursive: true });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: config.uploadMaxMb * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== "application/pdf") return cb(new Error("Yalnızca PDF kabul edilir."));
+    cb(null, true);
+  },
+});
 
 const DOC_TYPE_ORDER = ["Proje Kartı", "BRD", "FRD", "UAT", "Go Live", "Risk ve Uyumluluk", "Kapanış"];
 const APPROVAL_STEPS = [
@@ -97,9 +112,17 @@ router.get("/:k/documents", requireRead("d.docs"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/:k/documents", requireWrite("d.docs"), async (req, res, next) => {
+function uploadPdf(req, res, next) {
+  upload.single("file")(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || "Dosya yüklenemedi." });
+    next();
+  });
+}
+
+router.post("/:k/documents", requireWrite("d.docs"), uploadPdf, async (req, res, next) => {
   try {
-    const { docType, title, fileName, filePath, pageCount } = req.body || {};
+    const { docType, title } = req.body || {};
+    if (!req.file) return res.status(400).json({ error: "PDF dosyası zorunlu." });
     if (!DOC_TYPE_ORDER.includes(docType)) return res.status(400).json({ error: "Geçersiz doküman tipi." });
     const idx = DOC_TYPE_ORDER.indexOf(docType);
     if (idx > 0) {
@@ -112,18 +135,46 @@ router.post("/:k/documents", requireWrite("d.docs"), async (req, res, next) => {
         return res.status(409).json({ error: `${prevType} tamamen onaylanmadan ${docType} yüklenemez.` });
       }
     }
+    const sha256 = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+    const storedName = `${crypto.randomBytes(16).toString("hex")}.pdf`;
+    const fullPath = path.join(config.uploadDir, storedName);
+    fs.writeFileSync(fullPath, req.file.buffer);
+
     const { rows } = await query(
-      `INSERT INTO project_documents (project_k, doc_type, title, file_name, file_path, page_count, uploaded_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO project_documents (project_k, doc_type, title, file_name, file_path, file_sha256, page_count, uploaded_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT (project_k, doc_type) DO UPDATE SET
-         title=$3, file_name=$4, file_path=$5, page_count=$6, uploaded_by=$7,
+         title=$3, file_name=$4, file_path=$5, file_sha256=$6, page_count=$7, uploaded_by=$8,
          status='onay_akisinda', current_step=1, uploaded_at=now(), reject_reason=NULL
-       RETURNING *`,
-      [req.params.k, docType, title, fileName, filePath, pageCount || 1, req.user.username]
+       RETURNING id, project_k, doc_type, title, file_name, status, current_step, uploaded_by, uploaded_at`,
+      [req.params.k, docType, title || req.file.originalname, req.file.originalname, storedName, sha256, 1, req.user.username]
     );
     await query("DELETE FROM project_document_approvals WHERE document_id=$1", [rows[0].id]);
-    await audit(`Proje dokümanı yüklendi: ${docType} — ${req.params.k}`, req.user.username);
+    await audit(`Proje dokümanı yüklendi: ${docType} — ${req.params.k} (${sha256.slice(0, 12)}…)`, req.user.username);
     res.status(201).json({ item: rows[0] });
+  } catch (e) {
+    if (e.message === "Yalnızca PDF kabul edilir.") return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+// Dosyanın kendisi: yalnızca ilgili projeye erişimi olanlar indirebilir; dosya
+// adı path traversal'a karşı önce diskteki gerçek (rastgele üretilmiş) ada
+// çevrilir, kullanıcıdan gelen değer asla doğrudan dosya yoluna eklenmez.
+router.get("/:k/documents/:docId/file", requireRead("d.docview"), async (req, res, next) => {
+  try {
+    const { rows } = await query("SELECT * FROM project_documents WHERE id=$1 AND project_k=$2", [
+      req.params.docId, req.params.k,
+    ]);
+    const doc = rows[0];
+    if (!doc) return res.status(404).json({ error: "Doküman bulunamadı." });
+    if (!/^[a-f0-9]{32}\.pdf$/.test(doc.file_path)) return res.status(400).json({ error: "Geçersiz dosya kaydı." });
+    const abs = path.resolve(config.uploadDir, doc.file_path);
+    if (!abs.startsWith(path.resolve(config.uploadDir) + path.sep)) return res.status(400).json({ error: "Geçersiz yol." });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${doc.doc_type.replace(/[^A-Za-z0-9-]/g, "_")}.pdf"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.sendFile(abs);
   } catch (e) { next(e); }
 });
 
@@ -242,7 +293,7 @@ router.get("/meetings", requireRead("d.meeting"), async (req, res, next) => {
       `SELECT * FROM meetings WHERE ($1='ALL' OR project_k=$1) ORDER BY meeting_date DESC, id DESC`,
       [projFilter]
     );
-    const canWriteMeetings = canRead(req.user.role, "d.meeting") && require("../lib/permissions").canWrite(req.user.role, "d.meeting");
+    const canWriteMeetings = await canWrite(req.user.role, "d.meeting");
     const out = [];
     for (const m of meetings) {
       const parts = await query("SELECT username FROM meeting_participants WHERE meeting_id=$1", [m.id]);
