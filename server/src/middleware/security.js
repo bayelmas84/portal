@@ -46,9 +46,20 @@ const loginLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
+  // GÜVENLİK NOTU: Bu portal kurumsal ağ kısıtlamasıyla (NETWORK_ALLOWED_CIDRS)
+  // birlikte kullanılıyor — yani NAT arkasındaki TÜM çalışanlar aynı genel IP'den
+  // görünebilir. IP başına düşük bir limit bu durumda meşru kullanıcıları
+  // birbirini engelleme riskiyle karşı karşıya bırakır (yük testiyle tespit
+  // edildi: 300/dk altında sağlık kontrolleri bile bloklanıyordu). Limit bu
+  // riski azaltacak şekilde yükseltilmiştir; asıl brute-force koruması zaten
+  // ayrı ve çok daha sıkı olan loginLimiter'dadır.
+  // Kurumsal NAT arkasında yüzlerce kullanıcı aynı görünür IP'yi paylaşabilir;
+  // saniyede 100 istek/IP, gerçek kullanım için bolca pay bırakırken kötüye
+  // kullanımı/otomatik saldırıyı yine de sınırlar.
+  max: 6000,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.originalUrl === "/api/healthz", // sağlık kontrolü ASLA sınırlanmamalı (mount noktasına göre req.path relatif olur, originalUrl tam yolu verir)
 });
 
 function notFound(req, res) {
