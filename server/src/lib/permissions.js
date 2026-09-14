@@ -25,7 +25,7 @@ const DEFAULT_ACCESS = {
     "m.avail": "read", "m.access": "read",
   },
   inspection: {
-    announcements: "write", training: "read",
+    announcements: "write", training: "write",
     "d.docs": "read", "d.docview": "read", "d.appr": "read",
     "d.meeting": "read", "d.meetingview": "read",
   },
@@ -58,7 +58,7 @@ const DEFAULT_ACCESS = {
     "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read",
   },
   staff: {
-    announcements: "read", training: "write",
+    announcements: "read", training: "read",
     "d.docs": "read", "d.docview": "read",
     "d.meeting": "read", "d.meetingview": "read", "d.gantt": "read",
   },
