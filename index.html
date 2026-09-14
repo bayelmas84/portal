@@ -445,6 +445,7 @@ let USERS=[
   title:"Grup Direktörü",mgr:"Genel Müdür",on:1},
  {u:"elif.yalcin",n:"Elif Yalçın",r:"admin",c:"#A3121C",unit:"Bilgi Teknolojileri",title:"Direktör",mgr:"Deniz Okur",on:1},
  {u:"kerem.aslan",n:"Kerem Aslan",r:"inspection",c:"#7A1F3D",unit:"Teftiş Kurulu",title:"Müdür",mgr:"Deniz Okur",on:1},
+ {u:"seda.tunc",n:"Seda Tunç",r:"inspection",c:"#5A1F3D",unit:"Teftiş Kurulu",title:"Uzman",mgr:"Kerem Aslan",on:1},
  {u:"burak.temel",n:"Burak Temel",r:"infosec",c:"#0178BA",unit:"Bilgi Teknolojileri",title:"Müdür",mgr:"Elif Yalçın",on:1},
  {u:"gonul.aladag",n:"Gönül Aladağ",r:"control",c:"#8E0D4D",unit:"Uyum ve İç Kontrol",title:"Müdür",mgr:"Deniz Okur",on:1},
  {u:"deniz.okur",n:"Deniz Okur",r:"gmy",c:"#4B3B8F",unit:"Portföy Yönetimi",title:"Genel Müdür Yardımcısı",mgr:"Genel Müdür",on:1},
@@ -776,7 +777,7 @@ async function loadUsersLive(){
  USERS_LIVE_LOADING=false;render();}
 let PENDING_TRAIN_FILE=null;
 let TRAIN_DOCS_LIVE=null,TRAIN_DOCS_LIVE_LOADING=false;
-const REQ_KIND_LABEL={"ann.publish":"Duyuru yayınlama","ann.delete":"Duyuru silme"};
+const REQ_KIND_LABEL={"ann.publish":"Duyuru yayınlama","ann.delete":"Duyuru silme","training.close":"Eğitim kapatma"};
 const REQ_ST_MAP={bekliyor:"bekliyor",onaylandi:"onaylandı",reddedildi:"reddedildi",geri_cekildi:"geri çekildi"};
 function mapReqLive(r){
  const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
@@ -1790,14 +1791,20 @@ function screenView(){
    LIVE_BACKEND?`<button class="b p" data-a="trainAuthorAdd">Yeni doküman ekle</button>`:"")+
   (!LIVE_BACKEND?`<div class="card wr"><span style="font-size:12.5px">Bu özellik yalnızca gerçek backend'e bağlıyken çalışır (demo modunda kullanılamaz).</span></div>`:
    TRAIN_DOCS_LIVE===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
-   table(["No","Başlık","Sürüm","Kategori","Soru","Atanan","Tamamlayan","Yayın"],TRAIN_DOCS_LIVE.map(d=>`<tr>
+   `<div class="card wr" style="margin-bottom:12px;font-size:12px;line-height:1.6">
+     En az bir kişi tamamladıktan sonra bir eğitim <b>hiçbir şekilde düzenlenemez veya silinemez</b> — admin dahil.
+     Yeni bir ihtiyaç varsa yeni bir doküman/sürüm yayınlayın ve eskisi için <b>kapatma talebi</b> açın; kapatma yalnızca
+     yükleyenin yöneticisi ve Teftiş'in İKİSİ DE onayladığında gerçekleşir.</div>`+
+   table(["No","Başlık","Sürüm","Kategori","Soru","Atanan","Tamamlayan","Durum",""],TRAIN_DOCS_LIVE.map(d=>`<tr>
     <td class="m" style="color:var(--ta)">${esc(d.doc_no)}</td><td>${esc(d.title)}</td>
     <td class="m">${esc(d.version)}</td><td>${pill(d.category)}</td>
     <td class="m" style="text-align:center">${d.question_count}</td>
     <td class="m" style="text-align:center">${d.assignment_count}</td>
     <td class="m" style="text-align:center">${d.completed_count}</td>
-    <td class="m" style="color:var(--tm)">${(d.created_at||"").slice(0,10)}</td></tr>`).join("")
-    ||`<tr><td colspan="8" style="color:var(--tm)">Henüz yayınlanmış doküman yok.</td></tr>`));}
+    <td>${d.status==="yayinda"?pill("yayında","ok"):d.status==="kapali"?pill("kapalı"):pill(d.status,"wr")}</td>
+    <td style="text-align:right">${d.status==="yayinda"&&d.created_by===S.me.u
+     ?`<button class="b s d" data-a="trainCloseAsk:${d.id}">Kapatma talebi</button>`:""}</td></tr>`).join("")
+    ||`<tr><td colspan="9" style="color:var(--tm)">Henüz yayınlanmış doküman yok.</td></tr>`));}
 
  /* ------------------------- Gerçek doküman okuma + sınav (canlı backend) ------------------------- */
  if(v==="t.readlive"){
@@ -2853,6 +2860,18 @@ function dialogView(){
     <span id="cnt" class="m" style="color:var(--tm);flex:1">0/10</span>
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b off" data-a="needFields">Onaya gönder</button></div>`);}
+ if(d.type==="trainClose"){
+  return wrap(`<div style="font-size:15px">Eğitimi kapatma talebi</div>
+   <p style="font-size:12.5px;color:var(--t2);line-height:1.65;margin:9px 0 12px">
+    <b>${esc(d.docNo)} v${esc(d.version)} — ${esc(d.title)}</b> kapatılacak. Bu doğrudan yapılmaz; talep hem
+    yöneticinize HEM DE Teftiş'e gider, ikisi de onaylamadan doküman kapanmaz. Zaten tamamlamış kullanıcıların
+    kaydı hiçbir zaman silinmez; yalnızca henüz tamamlamamış olanların ataması kaldırılır.</p>
+   <div class="lbl">Kapatma gerekçesi</div>
+   <textarea id="fReason" placeholder="Neden kapatılıyor? (en az 10 karakter — örn. yeni sürüm yayınlandı)">${esc(f.reason||"")}</textarea>
+   <div style="display:flex;align-items:center;gap:9px;margin-top:11px">
+    <span id="cnt" class="m" style="color:var(--tm);flex:1">0/10</span>
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button id="okBtn" class="b off" data-a="needFields">Kapatma talebini gönder</button></div>`);}
  if(d.type==="docdel"){const doc=DOCS[d.idx];
   return wrap(`<div style="font-size:15px">Doküman kaldırma talebi</div>
    <p style="font-size:12.5px;color:var(--t2);line-height:1.65;margin:9px 0 12px">
@@ -3181,6 +3200,7 @@ function validate(){
   if(!f.crit)miss.push("kritiklik");if(!f.until)miss.push("tarih");
   return [miss.length===0,d.id?"annSave":"annSend",miss.length?"eksik: "+miss.join(", "):""];}
  if(d.type==="del")return [(f.reason||"").trim().length>=10,"delSend:"+d.id,""];
+ if(d.type==="trainClose")return [(f.reason||"").trim().length>=10,"trainCloseSend:"+d.docId,""];
  if(d.type==="docrej")return [(f.reason||"").trim().length>=10,"docRejSend:"+d.idx,""];
  if(d.type==="docdel")return [(f.reason||"").trim().length>=10,"docDelSend:"+d.idx,""];
  if(d.type==="proj"){
@@ -4190,6 +4210,16 @@ app.addEventListener("click",async ev=>{
    const data=await api("POST","/api/training/documents",fd,true);
    TRAIN_DOCS_LIVE=null;S.dlg=null;S.f={};PENDING_TRAIN_FILE=null;
    toast("Yayınlandı — "+data.assigned+" kişiye atandı.");render();
+  }catch(e){toast(e.message,1);}
+  return;}
+ if(k==="trainCloseAsk"){
+  const d=(TRAIN_DOCS_LIVE||[]).find(x=>x.id===p[1]);if(!d)return;
+  S.f={};S.dlg={type:"trainClose",docId:d.id,docNo:d.doc_no,version:d.version,title:d.title};render();return;}
+ if(k==="trainCloseSend"){
+  try{
+   await api("POST","/api/training/documents/"+p[1]+"/close-request",{reason:S.f.reason.trim()});
+   S.dlg=null;S.f={};TRAIN_DOCS_LIVE=null;
+   toast("Kapatma talebi gönderildi — yönetici ve Teftiş onayı bekleniyor.");render();
   }catch(e){toast(e.message,1);}
   return;}
 

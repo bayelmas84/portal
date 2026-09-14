@@ -15,6 +15,7 @@ const USERS = [
   ["leyla.varol", "Leyla Varol", "control", "RSK", "GDIR", null, "#5B2E8C"],
   ["elif.yalcin", "Elif Yalçın", "admin", "BT", "DIR", "deniz.okur", "#A3121C"],
   ["kerem.aslan", "Kerem Aslan", "inspection", "TFT", "MDR", "deniz.okur", "#7A1F3D"],
+  ["seda.tunc", "Seda Tunç", "inspection", "TFT", "UZM", "kerem.aslan", "#5A1F3D"],
   ["burak.temel", "Burak Temel", "infosec", "BT", "MDR", "elif.yalcin", "#0178BA"],
   ["gonul.aladag", "Gönül Aladağ", "control", "UYM", "MDR", "deniz.okur", "#8E0D4D"],
   ["deniz.okur", "Deniz Okur", "gmy", "PRT", "GMY", null, "#4B3B8F"],

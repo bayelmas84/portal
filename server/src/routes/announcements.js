@@ -186,6 +186,32 @@ router.post("/requests/:id/decide", requireRead("announcements"), async (req, re
           await client.query("DELETE FROM announcements WHERE id=$1", [reqRow.target_id]);
         }
         // reddedilirse duyuru "yayinda" durumunda kalmaya devam eder, ekstra işlem gerekmez.
+      } else if (reqRow.kind === "training.close") {
+        // İKİ imza gerekir (yönetici + Teftiş). Biri reddederse kardeş talep de düşer.
+        // İkisi de onaylanınca doküman GERÇEKTEN kapanır ve tamamlanmamış atamalar silinir
+        // (tamamlanmış kayıtlar — sınav geçmişi — asla dokunulmaz, kalıcı kalır).
+        if (decision !== "onayla") {
+          await client.query(
+            `UPDATE approval_requests SET status='geri_cekildi', decision_reason=$1, decided_at=now()
+             WHERE kind='training.close' AND target_id=$2 AND status='bekliyor'`,
+            [`Diğer onaycı reddetti: ${reason || ""}`.trim(), reqRow.target_id]
+          );
+        } else {
+          const remaining = await client.query(
+            "SELECT 1 FROM approval_requests WHERE kind='training.close' AND target_id=$1 AND status='bekliyor'",
+            [reqRow.target_id]
+          );
+          if (!remaining.rowCount) {
+            await client.query(
+              "UPDATE policy_documents SET status='kapali', closed_at=now(), closed_reason=$1 WHERE id=$2",
+              [reqRow.reason, reqRow.target_id]
+            );
+            await client.query(
+              "DELETE FROM training_assignments WHERE policy_document_id=$1 AND completed_at IS NULL",
+              [reqRow.target_id]
+            );
+          }
+        }
       }
     });
     await audit(`Talep ${decision === "onayla" ? "onaylandı" : "reddedildi"}: #${reqRow.id} ${reqRow.subject}`, req.user.username);

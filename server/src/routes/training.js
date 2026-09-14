@@ -202,4 +202,55 @@ router.get("/documents/:id/file", requireRead("training"), async (req, res, next
   }
 });
 
+// -------------------------- Eğitimi kapatma (emekliye ayırma) --------------------------
+// KURAL: yayındaki bir zorunlu okuma dokümanı hiçbir zaman doğrudan düzenlenemez veya
+// silinemez (admin dahil) — bu, tamamlamış kullanıcıların kaydını bozmamak içindir.
+// Tek yol: yükleyen kişi bir kapatma talebi açar; hem yöneticisi HEM DE Teftiş
+// onaylamadan doküman kapanmaz. İki onaydan biri reddederse talebin tamamı düşer.
+router.post("/documents/:id/close-request", requireWrite("training"), async (req, res, next) => {
+  try {
+    const { reason } = req.body || {};
+    if (!reason || reason.trim().length < 10) return res.status(400).json({ error: "Gerekçe en az 10 karakter olmalı." });
+    const { rows } = await query("SELECT * FROM policy_documents WHERE id=$1", [req.params.id]);
+    const doc = rows[0];
+    if (!doc) return res.status(404).json({ error: "Doküman bulunamadı." });
+    if (doc.created_by !== req.user.username) return res.status(403).json({ error: "Bu dokümanı yalnızca yükleyen kişi kapatma talebi açabilir." });
+    if (doc.status !== "yayinda") return res.status(409).json({ error: "Yalnızca yayındaki bir doküman için kapatma talebi açılabilir." });
+
+    const pending = await query(
+      "SELECT 1 FROM approval_requests WHERE kind='training.close' AND target_id=$1 AND status='bekliyor'",
+      [doc.id]
+    );
+    if (pending.rowCount) return res.status(409).json({ error: "Bu doküman için zaten bekleyen bir kapatma talebi var." });
+
+    const me = await query("SELECT manager_username FROM users WHERE username=$1", [req.user.username]);
+    const managerUsername = me.rows[0] && me.rows[0].manager_username;
+    if (!managerUsername) return res.status(409).json({ error: "Yöneticiniz tanımlı değil, kapatma talebi açılamıyor." });
+    const insp = await query(
+      "SELECT username FROM users WHERE role='inspection' AND active AND username != $1 ORDER BY username LIMIT 1",
+      [req.user.username]
+    );
+    if (!insp.rowCount) return res.status(409).json({ error: "Tanımlı bir Teftiş kullanıcısı yok." });
+    const inspectionUsername = insp.rows[0].username;
+
+    const subject = `${doc.doc_no} v${doc.version} — ${doc.title}`;
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason)
+         VALUES ('training.close',$1,'Genel','policy_document',$2,$3,$4,$5)`,
+        [subject, doc.id, req.user.username, managerUsername, reason.trim()]
+      );
+      await client.query(
+        `INSERT INTO approval_requests (kind, subject, category, target_type, target_id, requested_by, approver, reason)
+         VALUES ('training.close',$1,'Genel','policy_document',$2,$3,$4,$5)`,
+        [subject, doc.id, req.user.username, inspectionUsername, reason.trim()]
+      );
+    });
+    await audit(`Eğitim kapatma talebi açıldı: ${subject} (onaycılar: ${managerUsername}, ${inspectionUsername})`, req.user.username);
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;
