@@ -3593,8 +3593,8 @@ app.addEventListener("click",async ev=>{
   const filt=((document.getElementById("dFilter")||{}).value||f.filter||"");
   const pass=(document.getElementById("dPass")||{}).value||"";
   S.dirF={url,baseDn:base,bindDn:bind,filter:filt};
-  if(!/^ldaps?:\/\/[A-Za-z0-9._-]+(:\d{1,5})?$/.test(url.trim()))
-   {toast("Sunucu adresi ldaps://sunucu:636 biçiminde olmalı.",1);return;}
+  if(!/^ldaps:\/\/[A-Za-z0-9._-]+(:\d{1,5})?$/.test(url.trim()))
+   {toast("Sunucu adresi ldaps://sunucu:636 biçiminde olmalı (şifresiz ldap:// kabul edilmez).",1);return;}
   if(base.trim().length<3){toast("Base DN zorunlu.",1);return;}
   if(bind.trim().length<3){toast("Servis hesabı DN zorunlu.",1);return;}
   if(!filt.includes("{username}")){toast("Kullanıcı filtresi {username} yer tutucusunu içermeli.",1);return;}

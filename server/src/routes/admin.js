@@ -129,8 +129,9 @@ router.get("/directory", requireRead("m.dir"), async (req, res, next) => {
 router.put("/directory", requireWrite("m.dir"), async (req, res, next) => {
   try {
     const { url, baseDn, bindDn, bindPassword, userFilter, tls, defaultRole, active } = req.body || {};
-    if (!/^ldaps?:\/\/[A-Za-z0-9._-]+(:\d{1,5})?$/.test(String(url || "").trim())) {
-      return res.status(400).json({ error: "Sunucu adresi ldaps://sunucu:636 biçiminde olmalı." });
+    // GÜVENLİK: yalnızca şifreli LDAPS kabul edilir; düz ldap:// (şifresiz) reddedilir.
+    if (!/^ldaps:\/\/[A-Za-z0-9._-]+(:\d{1,5})?$/.test(String(url || "").trim())) {
+      return res.status(400).json({ error: "Sunucu adresi ldaps://sunucu:636 biçiminde olmalı (şifresiz ldap:// kabul edilmez)." });
     }
     if (!baseDn || baseDn.trim().length < 3) return res.status(400).json({ error: "Base DN zorunlu." });
     if (!bindDn || bindDn.trim().length < 3) return res.status(400).json({ error: "Servis hesabı DN zorunlu." });

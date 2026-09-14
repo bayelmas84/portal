@@ -11,6 +11,17 @@ function createApp() {
   if (config.trustProxy) app.set("trust proxy", 1);
 
   app.use(securityHeaders);
+  // GÜVENLİK: üretimde (Nginx arkasında, trustProxy açıkken) düz HTTP isteği
+  // gelirse HTTPS'e yönlendirilir. Nginx zaten bunu yapar; bu, Nginx yanlış
+  // yapılandırılsa veya biri Node'a doğrudan erişse bile ikinci bir savunma
+  // katmanıdır (defense in depth). Health-check bu kontrolden muaf tutulur.
+  if (config.nodeEnv === "production" && config.trustProxy) {
+    app.use((req, res, next) => {
+      if (req.path === "/api/healthz") return next();
+      if (req.secure || req.get("x-forwarded-proto") === "https") return next();
+      return res.redirect(301, `https://${req.get("host")}${req.originalUrl}`);
+    });
+  }
   app.use(express.json({ limit: "1mb" }));
   app.use(cookieParser());
   app.use(attachUser);

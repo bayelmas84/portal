@@ -55,5 +55,13 @@ if (config.nodeEnv === "production" && !config.appEncryptionKey) {
     "APP_ENCRYPTION_KEY tanımlı değil. Üretimde SMTP/AD parolaları şifrelenemez, başlatma durduruldu."
   );
 }
+// GÜVENLİK: üretimde tüm trafik HTTPS olmalı — düz HTTP asla kullanılmaz.
+// (TLS sonlandırma Nginx'te yapılır; Node yalnızca localhost'ta HTTP dinler —
+// bkz. KURULUM.md. Burada zorlanan, dışa açık APP_URL'in https:// olmasıdır.)
+if (config.nodeEnv === "production" && !config.appUrl.startsWith("https://")) {
+  throw new Error(
+    "APP_URL https:// ile başlamalı. Üretimde düz HTTP kullanılamaz, başlatma durduruldu."
+  );
+}
 
 module.exports = { config };
