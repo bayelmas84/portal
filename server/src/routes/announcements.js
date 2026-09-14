@@ -124,11 +124,13 @@ router.post("/:id/read", requireRead("announcements"), async (req, res, next) =>
   }
 });
 
-// Onay kutusu: bana onay bekleyen talepler
+// Onay kutusu: onaycısı ben olan TÜM talepler (durum farketmez — açık/onaylanan/
+// reddedilen). Varsayılan filtreleme (yalnızca açık gösterme) frontend'de yapılır;
+// backend hepsini döner ki dropdown'dan geçmişe de bakılabilsin.
 router.get("/requests/inbox", requireRead("announcements"), async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT * FROM approval_requests WHERE approver=$1 AND status='bekliyor' ORDER BY created_at`,
+      `SELECT * FROM approval_requests WHERE approver=$1 ORDER BY created_at DESC`,
       [req.user.username]
     );
     res.json({ items: rows });
@@ -137,11 +139,11 @@ router.get("/requests/inbox", requireRead("announcements"), async (req, res, nex
   }
 });
 
-// Onay kutusu: benim açtığım ve hâlâ bekleyen talepler
+// Onay kutusu: benim açtığım TÜM talepler (durum farketmez).
 router.get("/requests/mine", requireRead("announcements"), async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT * FROM approval_requests WHERE requested_by=$1 AND status='bekliyor' ORDER BY created_at DESC`,
+      `SELECT * FROM approval_requests WHERE requested_by=$1 ORDER BY created_at DESC`,
       [req.user.username]
     );
     res.json({ items: rows });

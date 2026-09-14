@@ -78,6 +78,13 @@ async function applyAdminAction(targetType, payload, actingUsername) {
       await setAvailability(screenKey, status);
       return;
     }
+    case "admin.availability.bulk": {
+      const { targets } = payload;
+      for (const [key, status] of Object.entries(targets || {})) {
+        await setAvailability(key, status);
+      }
+      return;
+    }
     default:
       throw new Error(`Bilinmeyen admin işlemi: ${targetType}`);
   }

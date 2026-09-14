@@ -350,7 +350,7 @@ const SCREENS={
    ["t.author","Doküman ve sınav yönetimi","ti-writing"],["t.readlive","Doküman",null]],
  reports:[["r.list","Rapor kataloğu","ti-list-search"],["r.view","Örnek rapor","ti-chart-bar"],
    ["r.dev","Rapor geliştirme","ti-adjustments"],["r.usage","Kullanım raporu","ti-chart-histogram"]],
- approvals:[["p.in","Onayımda bekleyenler","ti-inbox"],["p.my","Onay beklediklerim","ti-clock"],["p.done","Onayladıklarım","ti-checks"]],
+ approvals:[["p.in","Bekleyen İşlerim","ti-inbox"]],
  compliance:[["c.read","Okuma raporu","ti-list-details"],["c.rem","Hatırlatma planı","ti-clock"]],
  audit:[["c.audit","Denetim Kaydı","ti-list-search"]],
  shortcuts:[["s.all","Tüm kısayollar","ti-link"]],
@@ -1105,10 +1105,12 @@ async function loadMyAccessLive(){
  try{const data=await api("GET","/api/auth/my-access");MY_ACCESS=data.access;}
  catch(e){MY_ACCESS={};}
  render();}
+const ALL_SCREEN_KEYS=(function(){const a=MODULES.map(m=>m[0]);
+ Object.keys(SCREENS).forEach(mk=>(SCREENS[mk]||[]).forEach(x=>a.push(x[0])));return a;})();
 async function loadAvailabilityLive(){
  try{
   const map=(await api("GET","/api/admin/availability")).items||{};
-  BACKEND_MANAGED_KEYS.forEach(k=>{if(map[k]&&map[k]!=="acik")AVAIL[k]=map[k];else delete AVAIL[k];});
+  ALL_SCREEN_KEYS.forEach(k=>{if(map[k]&&map[k]!=="acik")AVAIL[k]=map[k];else delete AVAIL[k];});
  }catch(e){/* alınamazsa yerel varsayılanlarla devam edilir */}
  render();}
 function lvl(k){
@@ -1151,6 +1153,8 @@ const catPill=c=>c==="Yasal"?pill("Yasal","er"):pill("Genel");
 const onPill=on=>on?pill("aktif","ok"):pill("pasif","er");
 const inbox=()=>REQS.filter(r=>r.appr===S.me.n&&r.st==="bekliyor");
 const mineReqs=()=>REQS.filter(r=>r.by===S.me.n&&r.st==="bekliyor");
+const inboxAll=()=>REQS.filter(r=>r.appr===S.me.n);
+const mineAll=()=>REQS.filter(r=>r.by===S.me.n);
 const stPill=s=>s==="bekliyor"?pill("bekliyor","wr"):s==="onaylandı"?pill("onaylandı","ok"):
  s==="reddedildi"?pill("reddedildi","er"):pill("geri çekildi");
 const pendingOn=(id,kind)=>REQS.some(r=>r.target===id&&r.st==="bekliyor"&&(!kind||r.kind===kind));
@@ -2346,40 +2350,36 @@ function screenView(){
 
  /* ---- onaylar ---- */
  if(v==="p.in"){
-  if(LIVE_BACKEND&&S.reqsInboxLive===null)loadReqsLive("inbox");
-  const l=LIVE_BACKEND?(S.reqsInboxLive||[]):inbox();
-  return head("Onayımda bekleyenler","Onay ve ret talebin detayında verilir"+(LIVE_BACKEND?" · canlı backend":""))+
-  (LIVE_BACKEND&&S.reqsInboxLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
-  (l.length?table(["Talep","Konu","Kategori","Talep eden","Tarih",""],l.map(r=>`<tr>
+  if(LIVE_BACKEND){
+   if(S.reqsInboxLive===null)loadReqsLive("inbox");
+   if(S.reqsMineLive===null)loadReqsLive("mine");}
+  const tab=S.pendingTab||"in";
+  const filter=S.pendingFilter||"acik";
+  const allIn=LIVE_BACKEND?(S.reqsInboxLive||[]):inboxAll();
+  const allMine=LIVE_BACKEND?(S.reqsMineLive||[]):mineAll();
+  const loading=LIVE_BACKEND&&(tab==="in"?S.reqsInboxLive===null:S.reqsMineLive===null);
+  const source=tab==="in"?allIn:allMine;
+  const FILTER_MAP={acik:"bekliyor",onaylandi:"onaylandı",reddedildi:"reddedildi"};
+  const list=source.filter(r=>r.st===FILTER_MAP[filter]);
+  const tabBtn=(id,label)=>`<button class="b s ${tab===id?"p":""}" data-a="pendTab:${id}">${label}</button>`;
+  return head("Bekleyen İşlerim","Onay ve ret talep detayında verilir"+(LIVE_BACKEND?" · canlı backend":""),
+   `<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+     ${tabBtn("in","Onayımda bekleyenler ("+allIn.filter(r=>r.st==="bekliyor").length+")")}
+     ${tabBtn("mine","Onay beklediklerim ("+allMine.filter(r=>r.st==="bekliyor").length+")")}
+     <select id="fPendFilter" style="margin-left:8px;padding:6px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12.5px">
+      <option value="acik" ${filter==="acik"?"selected":""}>Açık talepler</option>
+      <option value="onaylandi" ${filter==="onaylandi"?"selected":""}>Onaylananlar</option>
+      <option value="reddedildi" ${filter==="reddedildi"?"selected":""}>Reddedilenler</option>
+     </select></div>`)+
+  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
+  (list.length?table(["Talep","Konu","Kategori","Talep eden","Onaycı","Durum","Tarih",""],list.map(r=>`<tr>
    <td>${r.type}<div class="m" style="color:var(--tm)">#${r.id}</div></td><td>${esc(r.subj)}</td>
-   <td>${catPill(r.cat)}</td><td style="color:var(--t2)">${esc(r.by)}</td><td class="m" style="color:var(--tm)">${r.at}</td>
-   <td style="text-align:right"><button class="b s p" data-a="openReq:${r.id}">Detay</button></td></tr>`).join(""))
-  :`<div class="card ok"><span style="font-size:12px">Onayınızı bekleyen talep yok.</span></div>`));}
-
- if(v==="p.my"){
-  if(LIVE_BACKEND&&S.reqsMineLive===null)loadReqsLive("mine");
-  const l=LIVE_BACKEND?(S.reqsMineLive||[]):mineReqs();
-  const hist=LIVE_BACKEND?[]:REQS.filter(r=>r.by===S.me.n&&r.st!=="bekliyor");
-  return head("Onay beklediklerim","Düzeltme yoktur; talebi geri çekip yeniden girin"+(LIVE_BACKEND?" · canlı backend":""))+
-  (LIVE_BACKEND&&S.reqsMineLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
-  (l.length?table(["Talep","Konu","Onaya düşen","Tarih",""],l.map(r=>`<tr><td>${r.type}</td><td>${esc(r.subj)}</td>
-   <td style="color:var(--t2)">${esc(r.appr)}</td><td class="m" style="color:var(--tm)">${r.at}</td>
-   <td style="text-align:right;white-space:nowrap"><button class="b s" data-a="openReq:${r.id}">Detay</button>
-    ${LIVE_BACKEND?"":`<button class="b s d" data-a="withdraw:${r.id}">Geri çek</button>`}</td></tr>`).join(""))
-  :`<p style="font-size:12px;color:var(--tm)">Bekleyen talebiniz yok.</p>`))+
-  (hist.length?`<div class="lbl" style="margin-top:15px">Sonuçlanan taleplerim</div>
-   ${table(["Talep","Konu","Durum",""],hist.map(r=>`<tr><td>${r.type}</td><td>${esc(r.subj)}</td><td>${stPill(r.st)}</td>
-    <td style="text-align:right"><button class="b s" data-a="openReq:${r.id}">Detay</button></td></tr>`).join(""))}`:"");}
-
- if(v==="p.done"){
-  if(LIVE_BACKEND&&S.reqsDoneLive===null)loadReqsLive("done");
-  const l=LIVE_BACKEND?(S.reqsDoneLive||[]):REQS.filter(r=>r.dec===S.me.n);
-  return head("Onayladıklarım","Karar verdiğiniz talepler · salt görüntüleme"+(LIVE_BACKEND?" · canlı backend":""))+
-  (LIVE_BACKEND&&S.reqsDoneLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
-  (l.length?table(["Talep","Konu","Talep eden","Karar","Tarih",""],l.map(r=>`<tr><td>${r.type}</td><td>${esc(r.subj)}</td>
-   <td style="color:var(--t2)">${esc(r.by)}</td><td>${stPill(r.st)}</td><td class="m" style="color:var(--tm)">${r.decAt||""}</td>
-   <td style="text-align:right"><button class="b s" data-a="openReq:${r.id}">Detay</button></td></tr>`).join(""))
-  :`<p style="font-size:12px;color:var(--tm)">Henüz karar verdiğiniz talep yok.</p>`));}
+   <td>${catPill(r.cat)}</td><td style="color:var(--t2)">${esc(r.by)}</td><td style="color:var(--t2)">${esc(r.appr)}</td>
+   <td>${stPill(r.st)}${r.st==="reddedildi"&&r.decReason?` <span class="m" style="color:var(--tm)" title="${esc(r.decReason)}">(gerekçe var)</span>`:""}</td>
+   <td class="m" style="color:var(--tm)">${r.at}</td>
+   <td style="text-align:right;white-space:nowrap"><button class="b s p" data-a="openReq:${r.id}">Detay</button>
+    ${tab==="mine"&&r.st==="bekliyor"&&!LIVE_BACKEND?` <button class="b s d" data-a="withdraw:${r.id}">Geri çek</button>`:""}</td></tr>`).join(""))
+  :`<div class="card ok"><span style="font-size:12px">${filter==="acik"?"Bu listede açık talep yok.":"Bu filtreye uyan talep yok."}</span></div>`));}
 
  /* ---- kısayollar ---- */
  if(v==="s.all")return head("Tüm kısayollar","Git düğmesi uygulamayı yeni sekmede açar")+
@@ -3360,6 +3360,8 @@ function afterRender(){
     seçimiyle aynı dropdown deseni. */
  const mtProjFilterSel=document.getElementById("fMtProjFilterSel");
  if(mtProjFilterSel)mtProjFilterSel.onchange=e=>{S.mtProj=e.target.value;S.meetingsLive=null;render();};
+ const pendFilterSel=document.getElementById("fPendFilter");
+ if(pendFilterSel)pendFilterSel.onchange=e=>{S.pendingFilter=e.target.value;render();};
  const mtProjSel=document.getElementById("fMtProjSel");
  if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
   S.f.items=S.f.projKey&&S.f.projKey!=="OTHER"
@@ -3480,6 +3482,7 @@ app.addEventListener("click",async ev=>{
   USERS_LIVE=null;USERS_LIVE_LOADING=false;ACCESS_LIVE=null;ACCESS_LIVE_LOADING=false;MY_ACCESS=null;
   TRAIN_DOCS_LIVE=null;TRAIN_DOCS_LIVE_LOADING=false;PENDING_UPLOAD_FILE=null;PENDING_TRAIN_FILE=null;
   AUDIT_LIVE=null;AUDIT_LIVE_LOADING=false;
+  S.pendingTab=null;S.pendingFilter=null;
   render();return;}
  if(k==="popLater"){popSeen[S.me.u]=[...(popSeen[S.me.u]||[]),S.pop];S.pop=null;render();return;}
  if(k==="popRead"){markAnn(+p[1]);S.pop=null;toast("Duyuru okundu olarak kaydedildi.");return;}
@@ -3498,7 +3501,7 @@ app.addEventListener("click",async ev=>{
    const nx=cur==="none"?R:cur===R?W:"none";
    try{
     const data=await api("PUT","/api/admin/access",{role:r,screenKey:key,level:nx});
-    toast(data.message||"Onaya gönderildi.");render();
+    S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();
    }catch(e){toast(e.message,1);}
    return;}
   const cur=(ACC[r]||{})[key]||"none";
@@ -3508,9 +3511,9 @@ app.addEventListener("click",async ev=>{
  if(k==="avail"){const key=p[1],val=p[2];
   if(["admin","m.avail","m.access","approvals","p.in","p.my","p.done"].includes(key)){
    toast("Admin Panel, Ekran yönetimi/yetkileri ve Onay kutusu kapatılamaz (kilitlenme riski).",1);return;}
-  if(LIVE_BACKEND&&BACKEND_MANAGED_KEYS.includes(key)){
+  if(LIVE_BACKEND){
    try{const data=await api("PUT","/api/admin/availability",{screenKey:key,status:val});
-    toast(data.message||"Onaya gönderildi.");render();}
+    S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();}
    catch(e){toast(e.message,1);}
    return;}
   if(val==="acik")delete AVAIL[key];else AVAIL[key]=val;
@@ -3520,22 +3523,24 @@ app.addEventListener("click",async ev=>{
   toast(key+" → "+AV_LABEL[val]);return;}
  if(k==="availReset"){
   if(LIVE_BACKEND){
+   const targets={};ALL_SCREEN_KEYS.forEach(key=>{targets[key]="acik";});
    try{
-    await Promise.all(BACKEND_MANAGED_KEYS.map(key=>api("PUT","/api/admin/availability",{screenKey:key,status:"acik"})));
-    toast("Onaya gönderildi — yöneticiniz onaylayınca tüm ekranlar açılacak.");render();
+    const data=await api("POST","/api/admin/availability/bulk",{targets});
+    toast(data.message||"Onaya gönderildi — yöneticiniz onaylayınca tüm ekranlar açılacak.");render();
    }catch(e){toast(e.message,1);}
    return;}
   AVAIL={};audit("Tüm ekranlar açıldı");toast("Tüm modül ve ekranlar açıldı.");return;}
  if(k==="availDefault"){
   if(LIVE_BACKEND){
-   const target={};
-   MODULES.forEach(m=>{if(!DEFAULT_OPEN.includes(m[0]))target[m[0]]="kapali";});
+   const targets={};
+   ALL_SCREEN_KEYS.forEach(key=>{targets[key]="acik";});
+   MODULES.forEach(m=>{if(!DEFAULT_OPEN.includes(m[0]))targets[m[0]]="kapali";});
    Object.keys(SCREENS).forEach(mk=>{if(!DEFAULT_OPEN.includes(mk))
-     (SCREENS[mk]||[]).forEach(x=>{target[x[0]]="kapali";});});
+     (SCREENS[mk]||[]).forEach(x=>{targets[x[0]]="kapali";});});
+   ["admin","m.avail","m.access","approvals","p.in","p.my","p.done"].forEach(k2=>{targets[k2]="acik";});
    try{
-    await Promise.all(BACKEND_MANAGED_KEYS.map(key=>
-     api("PUT","/api/admin/availability",{screenKey:key,status:(key==="admin"||key==="m.avail")?"acik":(target[key]||"acik")})));
-    toast("Onaya gönderildi — yöneticiniz onaylayınca varsayılana dönülecek.");render();
+    const data=await api("POST","/api/admin/availability/bulk",{targets});
+    toast(data.message||"Onaya gönderildi — yöneticiniz onaylayınca varsayılana dönülecek.");render();
    }catch(e){toast(e.message,1);}
    return;}
   AVAIL={};
@@ -3616,7 +3621,7 @@ app.addEventListener("click",async ev=>{
   render();return;}
  if(k==="accReset"){
   if(LIVE_BACKEND){
-   try{const data=await api("POST","/api/admin/access/reset",{});toast(data.message||"Onaya gönderildi.");render();}
+   try{const data=await api("POST","/api/admin/access/reset",{});S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();}
    catch(e){toast(e.message,1);}
    return;}
   Object.keys(ACC_DEFAULT).forEach(r=>{
@@ -3880,7 +3885,7 @@ app.addEventListener("click",async ev=>{
 
  if(k==="brAccent"){
   if(LIVE_BACKEND){
-   try{const data=await api("PUT","/api/admin/brand",{accent:decodeURIComponent(p[1])});toast(data.message||"Onaya gönderildi.");render();}
+   try{const data=await api("PUT","/api/admin/brand",{accent:decodeURIComponent(p[1])});S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();}
    catch(e){toast(e.message,1);}
    return;}
   BRAND.accent=decodeURIComponent(p[1]);render();return;}
@@ -3888,7 +3893,7 @@ app.addEventListener("click",async ev=>{
   const values={};BRAND_FIELDS.forEach(([key])=>{const el=document.getElementById("br_"+key);
    if(el&&el.value.trim())values[key]=el.value.trim();});
   if(LIVE_BACKEND){
-   try{const data=await api("PUT","/api/admin/brand",values);toast(data.message||"Onaya gönderildi.");render();}
+   try{const data=await api("PUT","/api/admin/brand",values);S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();}
    catch(e){toast(e.message,1);}
    return;}
   const changed=[];const before=BRAND.company;
@@ -3904,7 +3909,7 @@ app.addEventListener("click",async ev=>{
    loginTitle:"Oturum açın",loginHint:"Kurum hesabınızla devam edin.",
    footer:"© "+new Date().getFullYear()+" Tera Yatırım Menkul Değerler A.Ş.",accent:"#B8894A"};
   if(LIVE_BACKEND){
-   try{const data=await api("PUT","/api/admin/brand",defaults);toast(data.message||"Onaya gönderildi.");render();}
+   try{const data=await api("PUT","/api/admin/brand",defaults);S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();}
    catch(e){toast(e.message,1);}
    return;}
   BRAND={...defaults,homeGreetSuffix:"",navy:"#0B1F48"};
@@ -4267,7 +4272,7 @@ app.addEventListener("click",async ev=>{
  if(k==="trainCloseSend"){
   try{
    await api("POST","/api/training/documents/"+p[1]+"/close-request",{reason:S.f.reason.trim()});
-   S.dlg=null;S.f={};TRAIN_DOCS_LIVE=null;
+   S.dlg=null;S.f={};TRAIN_DOCS_LIVE=null;S.reqsMineLive=null;
    toast("Kapatma talebi gönderildi — yönetici ve Teftiş onayı bekleniyor.");render();
   }catch(e){toast(e.message,1);}
   return;}
@@ -4334,7 +4339,7 @@ app.addEventListener("click",async ev=>{
    try{
     await api("POST","/api/announcements",{title:S.f.title.trim(),body:S.f.body.trim(),
      category:S.f.cat,criticality:S.f.crit,validUntil:S.f.until||null,popup:!!S.f.pop});
-    S.dlg=null;S.f={};S.annLive=null;
+    S.dlg=null;S.f={};S.annLive=null;S.reqsMineLive=null;
     toast("Duyuru onaya gönderildi; onaylanana kadar yayına çıkmaz.");render();
    }catch(e){toast("Gönderilemedi: "+e.message,1);}
    return;}
@@ -4364,7 +4369,7 @@ app.addEventListener("click",async ev=>{
   if(LIVE_BACKEND){
    try{
     await api("POST","/api/announcements/"+p[1]+"/delete-request",{reason:S.f.reason.trim()});
-    S.dlg=null;S.f={};S.ann=null;S.annLive=null;
+    S.dlg=null;S.f={};S.ann=null;S.annLive=null;S.reqsMineLive=null;
     toast("Silme talebi onaya gönderildi.");render();
    }catch(e){toast(e.message,1);}
    return;}
@@ -4399,6 +4404,7 @@ app.addEventListener("click",async ev=>{
   audit(d.no+" onaylandı ve yayına alındı · bildirim: "+(to.join(", ")||"gönderilmedi"));toast(d.no+" yayına alındı; yükleyene ve tüm personele e-posta gönderildi.");return;}
 
  /* onay akışı */
+ if(k==="pendTab"){S.pendingTab=p[1];render();return;}
  if(k==="openReq"){S.req=+p[1];S.ann=null;S.dec=null;S.f={};render();return;}
  if(k==="reqClose"){S.req=null;S.dec=null;render();return;}
  if(k==="dec"){S.dec=p[1];S.f={};render();return;}
@@ -4449,7 +4455,7 @@ app.addEventListener("click",async ev=>{
  if(k==="doWithdraw"){const r=REQS.find(x=>x.id===+p[1]);r.st="geri çekildi";r.decAt=now();
   if(r.kind==="pub"){const i=ANN.findIndex(a=>a.id===r.target);if(i>=0)ANN.splice(i,1);}
   if(r.kind==="docdel"){const d=DOCS.find(x=>x.no===r.target);if(d)delete d.pendingDel;}
-  S.dlg=null;S.req=null;S.scr="p.my";toast("Talep geri çekildi. Gerekirse yeni talep girebilirsiniz.");return;}
+  S.dlg=null;S.req=null;S.scr="p.in";toast("Talep geri çekildi. Gerekirse yeni talep girebilirsiniz.");return;}
 
  /* admin kayıtları */
  if(k==="toggle"){
@@ -4458,7 +4464,7 @@ app.addEventListener("click",async ev=>{
    if(!rec)return;
    try{
     const data=await api("PUT","/api/admin/users/"+encodeURIComponent(p[2]),{active:!rec.on});
-    toast(data.message||"Onaya gönderildi.");render();
+    S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();
    }catch(e){toast(e.message,1);}
    return;}
   const src={user:USERS,unit:UNITS,title:TITLES,short:SHORTS}[p[1]],rec=src[+p[2]];
@@ -4495,7 +4501,7 @@ app.addEventListener("click",async ev=>{
       })()
      :api("PUT","/api/admin/users/"+encodeURIComponent(d.idx),{name:f.a.trim(),unit:unitCode,title:titleCode,
        role:f.role||undefined,active:!!f.on}));
-    S.dlg=null;S.f={};toast(data.message||"Onaya gönderildi.");render();
+    S.dlg=null;S.f={};S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();
    }catch(e){toast(e.message,1);}
    return;}
   if(d.kind==="user"){if(d.idx===undefined)

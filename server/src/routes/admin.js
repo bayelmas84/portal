@@ -229,4 +229,21 @@ router.put("/availability", requireWrite("m.avail"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Toplu ekran durumu değişikliği (ör. "Tümünü aç", "Varsayılana dön"): onlarca ayrı
+// onay talebi açmak yerine TEK bir talep, tüm hedefleri payload'da taşır.
+router.post("/availability/bulk", requireWrite("m.avail"), async (req, res, next) => {
+  try {
+    const { targets } = req.body || {};
+    if (!targets || typeof targets !== "object") return res.status(400).json({ error: "targets bir harita olmalı." });
+    const locked = ["admin", "m.avail", "m.access", "approvals", "p.in", "p.my", "p.done"];
+    for (const [key, status] of Object.entries(targets)) {
+      if (locked.includes(key) && status !== "acik") {
+        return res.status(409).json({ error: `${key} kapatılamaz (kilitlenme riski).` });
+      }
+    }
+    await requestAdminApproval(req, res, "admin.availability.bulk", { targets },
+      `Toplu ekran durumu değişikliği (${Object.keys(targets).length} ekran)`);
+  } catch (e) { next(e); }
+});
+
 module.exports = router;
