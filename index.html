@@ -2192,10 +2192,13 @@ function screenView(){
    ${distributionChart(p)}`;}
 
  if(v==="d.exec"){
+  if(LIVE_BACKEND&&PROJ.some(p=>!p.itemsLoaded)&&!S.execLoading){S.execLoading=true;loadAllIssuesLive().then(()=>{S.execLoading=false;render();});}
   if(!isExecTitle())return `<div class="card er" style="max-width:560px">
    <div style="font-size:14px">Access restricted</div>
    <p style="font-size:12.5px;line-height:1.65;margin:8px 0 0">This report is available to <b>Director</b>,
     <b>Group Director</b> and <b>Executive Vice President</b> titles only. Your title: ${esc(S.me.title)}.</p></div>`;
+  if(LIVE_BACKEND&&PROJ.some(p=>!p.itemsLoaded))
+   return head("Executive summary","")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
   const rows=PROJ.map(p=>({p,mt:metrics(p)}));
   const tot={pts:rows.reduce((a,r)=>a+r.mt.pts,0),done:rows.reduce((a,r)=>a+r.mt.donePts,0),
    bugs:rows.reduce((a,r)=>a+r.mt.bugs,0),
