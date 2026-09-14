@@ -104,10 +104,22 @@ async function applyAdminAction(targetType, payload, actingUsername) {
       return;
     }
     case "admin.approval_rule": {
-      const { category, approverRole } = payload;
+      const { category, approverRole, criticalities, active } = payload;
+      const sets = [];
+      const values = [category];
+      if (approverRole !== undefined) { values.push(approverRole); sets.push(`approver_role=$${values.length}`); }
+      if (criticalities !== undefined) { values.push(criticalities); sets.push(`criticalities=$${values.length}`); }
+      if (active !== undefined) { values.push(active); sets.push(`active=$${values.length}`); }
+      values.push(actingUsername);
+      sets.push(`updated_by=$${values.length}`, "updated_at=now()");
+      await query(`UPDATE approval_rules SET ${sets.join(", ")} WHERE category=$1`, values);
+      return;
+    }
+    case "admin.approval_rule_create": {
+      const { category, approverRole, criticalities } = payload;
       await query(
-        "INSERT INTO approval_rules (category, approver_role, updated_by, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (category) DO UPDATE SET approver_role=$2, updated_by=$3, updated_at=now()",
-        [category, approverRole, actingUsername]
+        "INSERT INTO approval_rules (category, approver_role, criticalities, active, updated_by, updated_at) VALUES ($1,$2,$3,true,$4,now())",
+        [category, approverRole, criticalities, actingUsername]
       );
       return;
     }

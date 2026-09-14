@@ -56,14 +56,48 @@ router.get("/approval-rules", requireAuth, async (req, res, next) => {
 
 router.put("/approval-rules/:category", requireWrite("m.approvalrules"), async (req, res, next) => {
   try {
-    const { approverRole } = req.body || {};
-    if (!approverRole || !/^[a-z]+$/.test(approverRole)) return res.status(400).json({ error: "Geçersiz onaycı (küçük harf, örn. manager, inspection)." });
+    const { approverRole, criticalities, active } = req.body || {};
+    const payload = { category: req.params.category };
+    const descParts = [];
+    if (approverRole !== undefined) {
+      if (!/^[a-z]+$/.test(approverRole)) return res.status(400).json({ error: "Geçersiz onaycı (küçük harf, örn. manager, inspection)." });
+      if (approverRole !== "manager") {
+        const roleCheck = await query("SELECT 1 FROM users WHERE role=$1 AND active LIMIT 1", [approverRole]);
+        if (!roleCheck.rowCount) return res.status(400).json({ error: `"${approverRole}" rolünde aktif kullanıcı yok.` });
+      }
+      payload.approverRole = approverRole;
+      descParts.push(`onaycı->${approverRole}`);
+    }
+    if (criticalities !== undefined) {
+      if (!/^[^,]+(,[^,]+)*$/.test(String(criticalities))) return res.status(400).json({ error: "Kritiklik listesi virgülle ayrılmış, boş olmayan değerler içermeli." });
+      payload.criticalities = criticalities;
+      descParts.push(`kritiklikler->${criticalities}`);
+    }
+    if (active !== undefined) {
+      payload.active = !!active;
+      descParts.push(active ? "aktif edildi" : "pasife alındı");
+    }
+    if (!descParts.length) return res.status(400).json({ error: "Değiştirilecek bir alan gönderilmedi." });
+    await requestAdminApproval(req, res, "admin.approval_rule", payload,
+      `Kategori güncelleme: ${req.params.category} (${descParts.join(", ")})`);
+  } catch (e) { next(e); }
+});
+
+router.post("/approval-rules", requireWrite("m.approvalrules"), async (req, res, next) => {
+  try {
+    const { category, approverRole, criticalities } = req.body || {};
+    if (!category || !category.trim() || category.trim().length > 40) return res.status(400).json({ error: "Kategori adı 1-40 karakter olmalı." });
+    if (!/^[a-zçğıöşü]+$/i.test(approverRole || "")) return res.status(400).json({ error: "Geçersiz onaycı (küçük harf, örn. manager, inspection)." });
     if (approverRole !== "manager") {
       const roleCheck = await query("SELECT 1 FROM users WHERE role=$1 AND active LIMIT 1", [approverRole]);
       if (!roleCheck.rowCount) return res.status(400).json({ error: `"${approverRole}" rolünde aktif kullanıcı yok.` });
     }
-    await requestAdminApproval(req, res, "admin.approval_rule", { category: req.params.category, approverRole },
-      `Onay kuralı değişikliği: ${req.params.category} -> ${approverRole}`);
+    if (!criticalities || !/^[^,]+(,[^,]+)*$/.test(String(criticalities))) return res.status(400).json({ error: "Kritiklik listesi virgülle ayrılmış, boş olmayan değerler içermeli." });
+    const existing = await query("SELECT 1 FROM approval_rules WHERE category=$1", [category.trim()]);
+    if (existing.rowCount) return res.status(409).json({ error: "Bu kategori adı zaten kullanılıyor." });
+    await requestAdminApproval(req, res, "admin.approval_rule_create",
+      { category: category.trim(), approverRole, criticalities },
+      `Yeni duyuru kategorisi: ${category.trim()}`);
   } catch (e) { next(e); }
 });
 
@@ -72,8 +106,7 @@ router.put("/approval-rules/:category", requireWrite("m.approvalrules"), async (
 // tabidir - tıpkı marka/SMTP ayarları gibi.
 const SETTINGS_KEYS = [
   "reading_seconds_per_page", "quiz_pass_score", "training_default_due_days",
-  "sprint_default_days", "story_point_scale",
-  "criticality_options_yasal", "criticality_options_genel", "login_max_attempts",
+  "sprint_default_days", "story_point_scale", "login_max_attempts",
 ];
 router.get("/settings", requireAuth, async (req, res, next) => {
   try {
@@ -88,13 +121,8 @@ router.put("/settings", requireWrite("m.settings"), async (req, res, next) => {
   try {
     const entries = Object.entries(req.body || {}).filter(([k]) => SETTINGS_KEYS.includes(k));
     if (!entries.length) return res.status(400).json({ error: "Geçerli bir ayar gönderilmedi." });
-    const TEXT_LIST_KEYS = ["criticality_options_yasal", "criticality_options_genel"];
-    for (const [k, v] of entries) {
-      if (TEXT_LIST_KEYS.includes(k)) {
-        if (!/^[^,]+(,[^,]+)*$/.test(String(v))) return res.status(400).json({ error: `"${k}" virgülle ayrılmış, boş olmayan bir liste olmalı.` });
-      } else if (!/^[0-9,]+$/.test(String(v))) {
-        return res.status(400).json({ error: "Değerler yalnızca sayı (ve virgülle ayrılmış liste) olabilir." });
-      }
+    for (const [, v] of entries) {
+      if (!/^[0-9,]+$/.test(String(v))) return res.status(400).json({ error: "Değerler yalnızca sayı (ve virgülle ayrılmış liste) olabilir." });
     }
     await requestAdminApproval(req, res, "admin.settings", Object.fromEntries(entries),
       `Uygulama ayarları güncelleme: ${entries.map(([k]) => k).join(", ")}`);

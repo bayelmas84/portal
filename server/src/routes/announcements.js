@@ -36,20 +36,17 @@ router.post("/", requireWrite("announcements"), async (req, res, next) => {
     const { title, body, category, criticality, validUntil, popup } = req.body || {};
     if (!title || title.trim().length < 5) return res.status(400).json({ error: "Başlık en az 5 karakter olmalı." });
     if (!body || !body.trim()) return res.status(400).json({ error: "Metin zorunlu." });
-    if (!["Yasal", "Genel"].includes(category)) return res.status(400).json({ error: "Geçersiz kategori." });
-    const critSetting = await query(
-      "SELECT value FROM app_settings WHERE key=$1",
-      [category === "Yasal" ? "criticality_options_yasal" : "criticality_options_genel"]
-    );
-    const allowedCrits = critSetting.rowCount ? critSetting.rows[0].value.split(",") : (category === "Yasal" ? ["Kritik", "Yüksek"] : ["Yüksek", "Orta", "Düşük"]);
+    // Kategori tanımı (ad, kritiklik listesi, onaycı, aktif/pasif) tamamen
+    // parametriktir — m.approvalrules ekranından yönetilir. Sabit kod artık
+    // yalnızca tablo boşsa (migration henüz çalışmadıysa) devreye giren bir
+    // son çare (fallback) niteliğindedir.
+    const catRow = await query("SELECT criticalities, approver_role FROM approval_rules WHERE category=$1 AND active=true", [category]);
+    if (!catRow.rowCount) return res.status(400).json({ error: "Geçersiz veya pasif kategori." });
+    const allowedCrits = catRow.rows[0].criticalities.split(",");
     if (criticality && !allowedCrits.includes(criticality)) {
       return res.status(400).json({ error: `Geçersiz kritiklik. Bu kategoride izin verilenler: ${allowedCrits.join(", ")}` });
     }
-
-    // Onay kuralı matrisi (m.approvalrules ekranından yönetilir); tanımlı
-    // değilse eski sabit davranışa (Yasal->Teftiş, Genel->yönetici) düşülür.
-    const ruleRow = await query("SELECT approver_role FROM approval_rules WHERE category=$1", [category]);
-    const approverRole = ruleRow.rowCount ? ruleRow.rows[0].approver_role : (category === "Yasal" ? "inspection" : "manager");
+    const approverRole = catRow.rows[0].approver_role;
 
     let approver;
     if (approverRole === "manager") {

@@ -834,8 +834,6 @@ async function loadAppSettingsLive(){
   APP_SETTINGS_LIVE=data.item;
   if(data.item.reading_seconds_per_page)SPP=Number(data.item.reading_seconds_per_page);
   if(data.item.quiz_pass_score)PASS=Number(data.item.quiz_pass_score);
-  if(data.item.criticality_options_yasal)CRITS.Yasal=data.item.criticality_options_yasal.split(",");
-  if(data.item.criticality_options_genel)CRITS.Genel=data.item.criticality_options_genel.split(",");
  }catch(e){APP_SETTINGS_LIVE={};}
  APP_SETTINGS_LIVE_LOADING=false;render();}
 async function loadMailTplLive(){
@@ -1223,7 +1221,12 @@ const docPending=d=>d.st!=="yayında";
 const annPending=a=>a.st!=="yayında";
 const canEditPending=rec=>rec.by===S.me.n;      /* giren: değiştirebilir veya iptal edebilir */
 const canApprovePending=()=>isInsp();            /* onay ve ret yalnızca Teftiş */
-const approverFor=cat=>cat==="Yasal"?TEFTIS:S.me.mgr;
+const approverFor=cat=>{
+ if(LIVE_BACKEND&&APPROVAL_RULES_LIVE){
+  const r=APPROVAL_RULES_LIVE.find(x=>x.category===cat);
+  if(r)return r.approver_role==="manager"?S.me.mgr:(r.approver_role==="inspection"?TEFTIS:r.approver_role);
+ }
+ return cat==="Yasal"?TEFTIS:S.me.mgr;};
 const P=()=>PROJ[S.proj];
 const myIssues=()=>PROJ.flatMap((p,pi)=>p.items.filter(i=>i.as===S.me.n).map(i=>({i,p,pi})));
 
@@ -2573,8 +2576,6 @@ function screenView(){
    ["training_default_due_days","Eğitim varsayılan süre (gün)"],
    ["sprint_default_days","Sprint varsayılan süre (gün)"],
    ["story_point_scale","Story point ölçeği (virgülle)"],
-   ["criticality_options_yasal","Yasal kategori kritiklik seçenekleri (virgülle)"],
-   ["criticality_options_genel","Genel kategori kritiklik seçenekleri (virgülle)"],
    ["login_max_attempts","Giriş deneme limiti (15 dk içinde)"]];
   return head("Genel Ayarlar","Değişiklikler yöneticinizin onayına gider · canlı backend")+
    `<div class="card" style="max-width:520px">
@@ -2585,15 +2586,18 @@ function screenView(){
    </div>`;}
 
  if(v==="m.approvalrules"){
-  if(!LIVE_BACKEND)return head("Onay Kuralları","")+`<div class="card wr"><span style="font-size:12.5px">
-   Onay kuralları yalnızca gerçek backend'e bağlıyken kullanılabilir.</span></div>`;
+  if(!LIVE_BACKEND)return head("Duyuru Kategorileri","")+`<div class="card wr"><span style="font-size:12.5px">
+   Bu ekran yalnızca gerçek backend'e bağlıyken kullanılabilir.</span></div>`;
   if(APPROVAL_RULES_LIVE===null&&!APPROVAL_RULES_LIVE_LOADING)loadApprovalRulesLive();
-  if(APPROVAL_RULES_LIVE===null)return head("Onay Kuralları","")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
-  return head("Onay Kuralları","Duyuru kategorisine göre onaycı — değişiklik yöneticinizin onayına gider · canlı backend")+
-   `<div class="card wr" style="margin-bottom:12px;font-size:12px">"manager" = talebi açanın yöneticisi; diğer değerler bir rol adıdır (örn. inspection).</div>`+
-   table(["Kategori","Onaycı",""],APPROVAL_RULES_LIVE.map(r=>`<tr>
+  if(APPROVAL_RULES_LIVE===null)return head("Duyuru Kategorileri","")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
+  return head("Duyuru Kategorileri","Kategori, kritiklik listesi ve onaycı — değişiklikler yöneticinizin onayına gider · canlı backend",
+    cw("m.approvalrules")?`<button class="b p" data-a="ruleNew">Yeni kategori</button>`:"")+
+   `<div class="card wr" style="margin-bottom:12px;font-size:12px">Onaycıda "manager" = talebi açanın yöneticisi; diğer değerler bir rol adıdır (örn. inspection). Kategori adı sonradan değiştirilemez/silinemez — yalnızca pasife alınabilir.</div>`+
+   table(["Kategori","Kritiklik seçenekleri","Onaycı","Durum",""],APPROVAL_RULES_LIVE.map(r=>`<tr class="${r.active?"":"dim"}">
     <td>${esc(r.category)}</td>
+    <td class="m" style="color:var(--t2)">${esc(r.criticalities)}</td>
     <td class="m" style="color:var(--ta)">${esc(r.approver_role)}</td>
+    <td>${r.active?pill("aktif","ok"):pill("pasif","er")}</td>
     <td style="text-align:right">${cw("m.approvalrules")?`<button class="b s" data-a="ruleEdit:${encodeURIComponent(r.category)}">Değiştir</button>`:""}</td></tr>`).join(""));}
 
 
@@ -3043,18 +3047,19 @@ function orgChartView(){
 function dialogView(){
  const d=S.dlg;if(!d)return "";const f=S.f;
  const wrap=inner=>`<div class="ov"><div class="dlg">${inner}</div></div>`;
- if(d.type==="ann"){const opts=CRITS[f.cat]||[];
+ if(d.type==="ann"){
+  const cats=(LIVE_BACKEND&&APPROVAL_RULES_LIVE)?APPROVAL_RULES_LIVE.filter(r=>r.active).map(r=>r.category):["Yasal","Genel"];
+  const opts=(LIVE_BACKEND&&APPROVAL_RULES_LIVE)?((APPROVAL_RULES_LIVE.find(r=>r.category===f.cat)||{}).criticalities||"").split(",").filter(Boolean):(CRITS[f.cat]||[]);
   return wrap(`<div style="font-size:15px">${d.id?"Duyuruyu düzenle":"Yeni duyuru"}</div>
    <div class="card wr" style="margin-top:10px;font-size:12px;line-height:1.6">
-    Duyuru doğrudan yayınlanmaz. <b>Yasal</b> kategorisi Teftiş onayına, <b>Genel</b> kategorisi yöneticiniz <b>${esc(S.me.mgr)}</b> onayına düşer.</div>
+    Duyuru doğrudan yayınlanmaz; kategoriye göre belirlenen onaycıya (yönetici veya ilgili birim) gönderilir.</div>
    <div class="lbl" style="margin-top:13px">Başlık</div><input id="fTitle" value="${esc(f.title||"")}" placeholder="Kısa ve açık başlık">
    <div class="lbl" style="margin-top:12px">Metin</div><textarea id="fBody" placeholder="Duyuru metni">${esc(f.body||"")}</textarea>
    <div class="lbl" style="margin-top:12px">Kategori</div>
-   <div style="display:flex;gap:7px">${["Yasal","Genel"].map(c=>`<button class="b ${f.cat===c?"p":""}" data-a="setCat:${c}">${c}</button>`).join("")}</div>
+   <div style="display:flex;gap:7px;flex-wrap:wrap">${cats.map(c=>`<button class="b ${f.cat===c?"p":""}" data-a="setCat:${c}">${esc(c)}</button>`).join("")}</div>
    <p class="m" style="color:var(--tm);margin:7px 0 0">Onaya düşecek: <b>${esc(approverFor(f.cat))}</b></p>
    <div class="lbl" style="margin-top:12px">Kritiklik</div>
-   <div style="display:flex;gap:7px;flex-wrap:wrap">${opts.map(c=>`<button class="b ${f.crit===c?"p":""}" data-a="setCrit:${c}">${c}</button>`).join("")}</div>
-   <p class="m" style="color:var(--tm);margin:7px 0 0">${f.cat==="Yasal"?"Yasal duyurular yalnızca Kritik veya Yüksek olabilir.":"Genel duyurularda Kritik seçilemez."}</p>
+   <div style="display:flex;gap:7px;flex-wrap:wrap">${opts.map(c=>`<button class="b ${f.crit===c?"p":""}" data-a="setCrit:${c}">${esc(c)}</button>`).join("")}</div>
    <div class="lbl" style="margin-top:12px">Geçerlilik bitiş tarihi</div><input id="fUntil" type="date" value="${f.until||""}">
    <div class="swrow" style="margin-top:13px"><button class="sw ${f.pop?"on":""}" data-a="setPop"><i></i></button>
     <span style="flex:1"><span style="display:block;font-size:12.5px">Girişte pop-up göster</span>
@@ -3403,13 +3408,31 @@ function dialogView(){
    </div>
    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="rule"){
-  return wrap(`<div style="font-size:15px">Onay kuralı: ${esc(d.category)}</div>
+  const cur=(APPROVAL_RULES_LIVE||[]).find(r=>r.category===d.category)||{};
+  return wrap(`<div style="font-size:15px">Kategori: ${esc(d.category)}</div>
    <div class="lbl" style="margin-top:12px">Onaycı</div>
-   <input id="fRuleRole" value="${esc(f.role||"")}" placeholder="manager veya inspection">
+   <input id="fRuleRole" value="${esc(f.role!==undefined?f.role:cur.approver_role||"")}" placeholder="manager veya inspection">
    <p class="m" style="color:var(--tm);margin:7px 0 0">"manager" = talebi açanın yöneticisi; başka bir değer bir rol adı olmalı.</p>
+   <div class="lbl" style="margin-top:12px">Kritiklik seçenekleri (virgülle)</div>
+   <input id="fRuleCrits" value="${esc(f.crits!==undefined?f.crits:cur.criticalities||"")}" placeholder="örn. Yüksek,Orta,Düşük">
+   <div class="swrow" style="margin-top:13px"><button class="sw ${(f.active!==undefined?f.active:cur.active)?"on":""}" data-a="ruleToggleActive"><i></i></button>
+    <span style="flex:1"><span style="display:block;font-size:12.5px">Aktif</span>
+     <span class="m" style="color:var(--tm)">Pasif kategoriler yeni duyuru oluştururken seçilemez.</span></span></div>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b p" data-a="ruleSave">Onaya gönder</button></div>`);}
+ if(d.type==="ruleNew"){
+  return wrap(`<div style="font-size:15px">Yeni duyuru kategorisi</div>
+   <div class="lbl" style="margin-top:12px">Kategori adı</div>
+   <input id="fRuleNewCat" value="${esc(f.cat||"")}" placeholder="örn. Duyuru-IT">
+   <p class="m" style="color:var(--tm);margin:5px 0 0">Kategori adı sonradan değiştirilemez, yalnızca pasife alınabilir.</p>
+   <div class="lbl" style="margin-top:12px">Onaycı</div>
+   <input id="fRuleNewRole" value="${esc(f.role||"")}" placeholder="manager veya inspection">
+   <div class="lbl" style="margin-top:12px">Kritiklik seçenekleri (virgülle)</div>
+   <input id="fRuleNewCrits" value="${esc(f.crits||"")}" placeholder="örn. Yüksek,Orta,Düşük">
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button class="b p" data-a="ruleCreate">Onaya gönder</button></div>`);}
  if(d.type==="tpl"){const isNew=d.idx===undefined;
   return wrap(`<div style="font-size:15px">${isNew?"Yeni mail şablonu":"Mail şablonunu düzenle"}</div>
    <div class="card wr" style="margin-top:10px;font-size:12px;line-height:1.6">
@@ -4710,7 +4733,9 @@ app.addEventListener("click",async ev=>{
   if(a.st==="yayında"&&!cw("a.edit")){toast("Yayınlanmış duyuruyu yalnızca Teftiş değiştirebilir.",1);return;}
   if(a.st!=="yayında"&&a.by!==S.me.n){toast("Onay bekleyen duyuruyu yalnızca girişi yapan kişi değiştirebilir.",1);return;}
   S.f={title:a.t,body:a.body,cat:a.cat,crit:a.crit,until:a.until,pop:a.pop};S.dlg={type:"ann",id:a.id};render();return;}
- if(k==="setCat"){S.f.cat=p[1];if(CRITS[p[1]]&&!CRITS[p[1]].includes(S.f.crit))S.f.crit="";render();return;}
+ if(k==="setCat"){S.f.cat=p[1];
+  const opts=(LIVE_BACKEND&&APPROVAL_RULES_LIVE)?((APPROVAL_RULES_LIVE.find(r=>r.category===p[1])||{}).criticalities||"").split(",").filter(Boolean):(CRITS[p[1]]||[]);
+  if(opts.length&&!opts.includes(S.f.crit))S.f.crit="";render();return;}
  if(k==="setCrit"){S.f.crit=p[1];render();return;}
  if(k==="setPop"){S.f.pop=S.f.pop?0:1;render();return;}
  if(k==="setOn"){S.f.on=S.f.on?0:1;render();return;}
@@ -4883,14 +4908,33 @@ app.addEventListener("click",async ev=>{
   try{const data=await api("GET","/api/search?q="+encodeURIComponent(q));S.searchResults=data.items;render();}
   catch(e){/* sessizce yut, arama kritik degil */}
   return;}
- if(k==="ruleEdit"){S.f={role:""};S.dlg={type:"rule",category:decodeURIComponent(p[1])};render();return;}
+ if(k==="ruleEdit"){S.f={};S.dlg={type:"rule",category:decodeURIComponent(p[1])};render();return;}
+ if(k==="ruleToggleActive"){const cur=(APPROVAL_RULES_LIVE||[]).find(r=>r.category===S.dlg.category)||{};S.f.active=!(S.f.active!==undefined?S.f.active:cur.active);render();return;}
  if(k==="ruleSave"){
-  try{const data=await api("PUT","/api/admin/approval-rules/"+encodeURIComponent(S.dlg.category),{approverRole:S.f.role.trim()});
+  const roleEl=document.getElementById("fRuleRole"),critsEl=document.getElementById("fRuleCrits");
+  const cur=(APPROVAL_RULES_LIVE||[]).find(r=>r.category===S.dlg.category)||{};
+  const payload={};
+  const roleVal=(roleEl?roleEl.value:cur.approver_role||"").trim();
+  if(roleVal&&roleVal!==cur.approver_role)payload.approverRole=roleVal;
+  const critsVal=(critsEl?critsEl.value:cur.criticalities||"").trim();
+  if(critsVal&&critsVal!==cur.criticalities)payload.criticalities=critsVal;
+  if(S.f.active!==undefined&&S.f.active!==cur.active)payload.active=S.f.active;
+  if(!Object.keys(payload).length){toast("Değişiklik yapılmadı.",1);return;}
+  try{const data=await api("PUT","/api/admin/approval-rules/"+encodeURIComponent(S.dlg.category),payload);
+   S.dlg=null;toast(data.message||"Onaya gönderildi.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="ruleNew"){S.f={};S.dlg={type:"ruleNew"};render();return;}
+ if(k==="ruleCreate"){
+  const cat=(document.getElementById("fRuleNewCat")||{}).value||"";
+  const role=(document.getElementById("fRuleNewRole")||{}).value||"";
+  const crits=(document.getElementById("fRuleNewCrits")||{}).value||"";
+  try{const data=await api("POST","/api/admin/approval-rules",{category:cat.trim(),approverRole:role.trim(),criticalities:crits.trim()});
    S.dlg=null;toast(data.message||"Onaya gönderildi.");render();}
   catch(e){toast(e.message,1);}
   return;}
  if(k==="settingsSave"){
-  const keys=["reading_seconds_per_page","quiz_pass_score","training_default_due_days","sprint_default_days","story_point_scale","criticality_options_yasal","criticality_options_genel","login_max_attempts"];
+  const keys=["reading_seconds_per_page","quiz_pass_score","training_default_due_days","sprint_default_days","story_point_scale","login_max_attempts"];
   const payload={};
   keys.forEach(key=>{const el=document.getElementById("fSet_"+key);if(el)payload[key]=el.value.trim();});
   try{const data=await api("PUT","/api/admin/settings",payload);toast(data.message||"Onaya gönderildi.");render();}
