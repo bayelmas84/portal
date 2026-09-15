@@ -77,7 +77,7 @@ test("Toplantı notu: pm oluşturabilir, katılımcı olmayan görmez, Teftiş h
   assert.equal(inspList.body.items.some((m) => m.id === create.body.item.id), true);
 });
 
-test("Toplantı maddesi: devredilince proje devir kuyruğuna düşer", async () => {
+test("Toplantı maddesi: tek seferlik (recurrence yok) toplantıda taşınamaz", async () => {
   const pm = await login("tolga.firat");
   const create = await request(app)
     .post("/api/projects/meetings")
@@ -94,10 +94,53 @@ test("Toplantı maddesi: devredilince proje devir kuyruğuna düşer", async () 
     .set("Cookie", pm.cookie)
     .set("X-CSRF-Token", pm.csrf)
     .send({ status: "carried" });
-  assert.equal(carry.status, 200);
+  assert.equal(carry.status, 400);
+});
 
-  const queue = await request(app).get("/api/projects/TRADE/meetings/carry-queue").set("Cookie", pm.cookie);
-  assert.ok(queue.body.items.some((i) => i.text === "Devredilecek"));
+test("Toplantı maddesi: haftalık periyodik toplantıda taşınınca sonraki hafta için yeni toplantı açılır, mükerrer Task oluşmaz", async () => {
+  const pm = await login("tolga.firat");
+  // Bu testin defalarca çalıştırılması (dev DB sıfırlanmadan) aynı "sonraki
+  // oluşum" toplantısına eski koşulardan kalma aynı metinli maddeler
+  // biriktirebilir; benzersiz bir metin kullanmak testi izole eder.
+  const uniqueText = `Haftalık Devir Maddesi ${Date.now()}`;
+  const uniqueDate = `2026-${String(11 + (Date.now() % 2)).padStart(2, "0")}-06`;
+  const create = await request(app)
+    .post("/api/projects/meetings")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({
+      projectK: "TRADE", date: uniqueDate, recurrence: "weekly",
+      participants: ["mert.balkan"], items: [{ text: uniqueText, assigneeUsername: "mert.balkan" }],
+    });
+  assert.equal(create.status, 201);
+  const meetingId = create.body.item.id;
+  const itemsRes = await request(app).get("/api/projects/meetings?project=TRADE").set("Cookie", pm.cookie);
+  const meeting = itemsRes.body.items.find((m) => m.id === meetingId);
+  const originalItem = meeting.items.find((i) => i.text === uniqueText);
+  const itemId = originalItem.id;
+  const originalLinkedKey = originalItem.linked_issue_key;
+  assert.ok(originalLinkedKey);
+
+  const carry = await request(app)
+    .post(`/api/projects/meetings/${meetingId}/items/${itemId}/status`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ status: "carried" });
+  assert.equal(carry.status, 200);
+  const expectedNextDate = new Date(uniqueDate + "T00:00:00Z");
+  expectedNextDate.setUTCDate(expectedNextDate.getUTCDate() + 7);
+  assert.equal(carry.body.nextDate, expectedNextDate.toISOString().slice(0, 10));
+
+  const itemsRes2 = await request(app).get("/api/projects/meetings?project=TRADE").set("Cookie", pm.cookie);
+  const nextMeeting = itemsRes2.body.items.find((m) => m.meeting_date.slice(0, 10) === carry.body.nextDate && m.recurrence === "weekly");
+  assert.ok(nextMeeting, "sonraki haftanın toplantısı oluşmalı");
+  const carriedItem = nextMeeting.items.find((i) => i.text === uniqueText);
+  assert.ok(carriedItem, "taşınan madde sonraki toplantıda bulunmalı");
+  assert.equal(carriedItem.linked_issue_key, originalLinkedKey, "aynı Task yeniden kullanılmalı, mükerrer açılmamalı");
+
+  const issuesRes = await request(app).get("/api/projects/TOPLANTI/issues").set("Cookie", pm.cookie);
+  const matchingTasks = issuesRes.body.items.filter((i) => i.issue_key === originalLinkedKey);
+  assert.equal(matchingTasks.length, 1, "Task tablosunda hâlâ tek kayıt olmalı");
 });
 
 test("Toplantı maddesi: assignee olmadan reddedilir", async () => {

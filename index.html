@@ -893,6 +893,14 @@ function nextKeyForPrefixDemo(mp,prefix){
 function nextKeyDashDemo(mp){
  const nums=mp.items.map(i=>+String(i.key).split("-")[1]||0);
  return mp.k+"-"+((nums.length?Math.max.apply(null,nums):0)+1);}
+/* Backend'deki computeNextMeetingDate ile BİREBİR aynı: periyodik bir
+   toplantının "sonraki oluşum" tarihini hesaplar. */
+function computeNextMeetingDateDemo(dateStr,recurrence){
+ const d=new Date(dateStr+"T00:00:00Z");
+ if(recurrence==="weekly")d.setUTCDate(d.getUTCDate()+7);
+ else if(recurrence==="monthly")d.setUTCMonth(d.getUTCMonth()+1);
+ else if(recurrence==="quarterly")d.setUTCMonth(d.getUTCMonth()+3);
+ return d.toISOString().slice(0,10);}
 const LINK_INVERSE_LABEL={blocks:"is blocked by",clones:"is cloned by",duplicates:"is duplicated by",relates:"relates to"};
 const LINK_FORWARD_LABEL={blocks:"blocks",clones:"clones",duplicates:"duplicates",relates:"relates to"};
 function demoLinksFor(pk,key){
@@ -1211,7 +1219,7 @@ async function loadMeetingsLive(projFilter){
  try{
   const data=await api("GET","/api/projects/meetings?project="+encodeURIComponent(projFilter));
   S.meetingsLive=data.items.map(m=>({
-   id:+m.id,projKey:m.project_k||"OTHER",projOther:m.project_other_subject,
+   id:+m.id,projKey:m.project_k||"OTHER",projOther:m.project_other_subject,recurrence:m.recurrence||null,
    title:m.title,date:(m.meeting_date||"").slice(0,10),time:m.meeting_time,notes:m.notes,
    by:(function(){const u=USERS.find(x=>x.u===m.created_by);return u?u.n:m.created_by;})(),at:(m.created_at||"").replace("T"," ").slice(0,16),
    participants:m.participants.map(uname=>{const u=USERS.find(x=>x.u===uname);return u?u.n:uname;}),
@@ -2243,7 +2251,8 @@ function screenView(){
    <span style="flex:1;font-size:12.5px">${it.carriedFrom?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}
     ${it.linkedIssueKey&&toplantiIdx>=0?`<span class="m" style="color:var(--tm)"> · </span>${issueKeyLink(toplantiIdx,it.linkedIssueKey)}`:""}</span>
    ${extra||""}</div>`;
-  return head(esc(m.title),(pr?pr.k+" · "+esc(pr.n):"Other"+(m.projOther?" · "+esc(m.projOther):""))+" · "+(m.date||"")+(m.time?" "+m.time:""),
+  return head(esc(m.title),(pr?pr.k+" · "+esc(pr.n):"Other"+(m.projOther?" · "+esc(m.projOther):""))+" · "+(m.date||"")+(m.time?" "+m.time:"")
+    +(m.recurrence?" · "+m.recurrence.charAt(0).toUpperCase()+m.recurrence.slice(1):" · One-time"),
     `<button class="b" data-a="mtClose">Back to list</button>`)+
    `<div class="card" style="margin-bottom:13px;font-size:12px;line-height:1.7">
      <div class="lbl">Attendees</div>
@@ -2253,7 +2262,7 @@ function screenView(){
      <p class="m" style="color:var(--tm);margin-top:9px">Created by: ${esc(m.by)} · ${m.at}</p></div>
     <div class="lbl">Open — ${groups.open.length}</div>
     ${groups.open.map(it=>itemRow(it,canWrite?`<button class="b s" data-a="mtCancelItem:${it.id}">Cancel</button>
-      <button class="b s" data-a="mtCarryItem:${it.id}">Carry to next meeting</button>`:"")).join("")
+      ${m.recurrence?`<button class="b s" data-a="mtCarryItem:${it.id}">Carry to next meeting</button>`:""}`:"")).join("")
      ||`<p class="m" style="color:var(--tm)">No open items.</p>`}
     <div class="lbl" style="margin-top:14px">Done — ${groups.done.length}</div>
     ${groups.done.map(it=>itemRow(it)).join("")||`<p class="m" style="color:var(--tm)">No completed items.</p>`}
@@ -2292,6 +2301,14 @@ function screenView(){
       <option value="" ${!f.time?"selected":""}>No time</option>
       ${TIME_SLOTS_15MIN.map(t=>`<option value="${t}" ${f.time===t?"selected":""}>${t}</option>`).join("")}</select></div>
     <p class="m" style="color:var(--tm);margin:5px 0 0">Time: 08:00–20:00, 15-minute steps only.</p>
+
+    <div class="lbl" style="margin-top:13px">Recurrence</div>
+    <select id="fMtRecurrence">
+     <option value="" ${!f.recurrence?"selected":""}>One-time (no carry-over)</option>
+     <option value="weekly" ${f.recurrence==="weekly"?"selected":""}>Weekly</option>
+     <option value="monthly" ${f.recurrence==="monthly"?"selected":""}>Monthly</option>
+     <option value="quarterly" ${f.recurrence==="quarterly"?"selected":""}>Quarterly</option></select>
+    <p class="m" style="color:var(--tm);margin:5px 0 0">Only recurring meetings allow carrying an item to the next occurrence.</p>
 
     <div class="lbl" style="margin-top:13px">Title (optional)</div>
     <input id="fMtTitle" value="${esc(f.title||"")}" placeholder="E.g.: Weekly status meeting">
@@ -4075,7 +4092,7 @@ function afterRender(){
   if(el)el.oninput=e=>{S.dirF=S.dirF||{};S.dirF[key]=e.target.value;};});
  [["fTitle","title"],["fBody","body"],["fUntil","until"],["fReason","reason"],["fNo","no"],
   ["fA","a"],["fB","b"],["fC","c"],["fR","r"],["frej","rej"],
-  ["fMtDate","date"],["fMtTime","time"],["fMtTitle","title"],["fMtNewItem","newItem"],["fMtNotes","notes"],
+  ["fMtDate","date"],["fMtTime","time"],["fMtRecurrence","recurrence"],["fMtTitle","title"],["fMtNewItem","newItem"],["fMtNotes","notes"],
   ["fMtOtherSubject","otherSubject"],
   ["fGName","name"],["fGStart","start"],["fGEnd","end"],
   ["fTplKey","key"],["fTplName","name"],["fTplSubject","subject"],["fTplBody","body"],
@@ -4643,6 +4660,7 @@ app.addEventListener("click",async ev=>{
     const data=await api("POST","/api/projects/meetings",{
      projectK:f.projKey==="OTHER"?null:f.projKey,otherSubject:subject,
      title:(f.title||"").trim()||undefined,date:f.date,time:f.time||undefined,
+     recurrence:f.recurrence||undefined,
      notes:(f.notes||"").trim()||undefined,participants:usernamesOf(f.parts||[]),
      items:(f.items||[]).map(it=>({text:it.text,carriedQueueId:it.carriedQueueId||undefined,
       assigneeUsername:usernamesOf([it.assignee])[0],dueDate:it.due||null}))});
@@ -4655,7 +4673,7 @@ app.addEventListener("click",async ev=>{
     S.mtView=+data.item.id;S.mod="delivery";S.scr="d.meetingview";render();
    }catch(e){toast("Kaydedilemedi: "+e.message,1);}
    return;}
-  const m={id:nextMeeting++,projKey:f.projKey,projOther:subject,
+  const m={id:nextMeeting++,projKey:f.projKey,projOther:subject,recurrence:f.recurrence||null,
    title:"placeholder", // aşağıda gerçek başlık (subject-türetilmiş ya da özel) atanacak
    date:f.date,time:f.time||"",participants:[...(f.parts||[])],notes:(f.notes||"").trim(),
    items:(f.items||[]).map(it=>({id:it.id,text:it.text,status:"open",carriedFrom:!!it.carried,
@@ -4745,14 +4763,30 @@ app.addEventListener("click",async ev=>{
   if(LIVE_BACKEND){
    const m=(S.meetingsLive||[]).find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
    if(!it)return;
-   try{await api("POST","/api/projects/meetings/"+S.mtView+"/items/"+p[1]+"/status",{status:"carried"});it.status="carried";
-    toast("Madde bir sonraki toplantıya aktarılacak.");render();}
-   catch(e){toast("Durum güncellenemedi: "+e.message,1);}
+   try{
+    const data=await api("POST","/api/projects/meetings/"+S.mtView+"/items/"+p[1]+"/status",{status:"carried"});
+    it.status="carried";S.meetingsLive=null; // sonraki toplantı Meeting Notes listesinde görünsün diye yeniden yüklenecek
+    toast("Madde sonraki toplantıya ("+data.nextDate+") taşındı.");render();}
+   catch(e){toast(e.message,1);}
    return;}
   const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
-  if(!it)return;it.status="carried";CARRY[m.projKey]=CARRY[m.projKey]||[];
-  CARRY[m.projKey].push({text:it.text,linkedIssueKey:it.linkedIssueKey||null,assignee:it.assignee||null,due:it.due||""});
-  toast("Madde bir sonraki toplantıya aktarılacak.");render();return;}
+  if(!it)return;
+  if(!m.recurrence){toast("Yalnızca periyodik (weekly/monthly/quarterly) toplantılarda madde taşınabilir.",1);return;}
+  const nextDate=computeNextMeetingDateDemo(m.date,m.recurrence);
+  // Bu seri için "sonraki oluşum" zaten var mı (aynı proje/konu, aynı
+  // periyodiklik, aynı tarih)? Varsa maddeyi ORAYA ekle, yoksa yeni bir
+  // toplantı oluştur — art arda birden fazla madde taşındığında mükerrer
+  // "sonraki toplantı" açılmasın diye.
+  let targetMeeting=MEETINGS.find(x=>x.projKey===m.projKey&&x.projOther===m.projOther&&x.recurrence===m.recurrence&&x.date===nextDate);
+  if(!targetMeeting){
+   targetMeeting={id:nextMeeting++,projKey:m.projKey,projOther:m.projOther,recurrence:m.recurrence,
+    title:m.title,date:nextDate,time:m.time||"",participants:[...m.participants],notes:"",items:[],by:S.me.n,at:now()};
+   MEETINGS.unshift(targetMeeting);
+  }
+  targetMeeting.items.push({id:"mi"+(nextMeetingItem++),text:it.text,status:"open",carriedFrom:true,
+   assignee:it.assignee||null,due:it.due||null,linkedIssueKey:it.linkedIssueKey||null});
+  it.status="carried";
+  toast("Madde sonraki toplantıya ("+nextDate+") taşındı.");render();return;}
  if(k==="mtReopen"){
   if(LIVE_BACKEND){
    const m=(S.meetingsLive||[]).find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
@@ -4762,7 +4796,6 @@ app.addEventListener("click",async ev=>{
    return;}
   const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
   if(!it)return;
-  if(it.status==="carried")CARRY[m.projKey]=(CARRY[m.projKey]||[]).filter(c=>c.text!==it.text);
   it.status="open";render();return;}
 
  /* -------------------------------- Gantt Chart ------------------------------- */

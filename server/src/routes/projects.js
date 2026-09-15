@@ -1083,10 +1083,13 @@ router.get("/meetings", requireRead("d.meeting"), async (req, res, next) => {
 
 router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
   try {
-    const { projectK, otherSubject, title, date, time, notes, participants, items } = req.body || {};
+    const { projectK, otherSubject, title, date, time, notes, participants, items, recurrence } = req.body || {};
     if (!projectK && !otherSubject) return res.status(400).json({ error: "Proje veya toplantı konusu (Diğer) zorunlu." });
     if (!date) return res.status(400).json({ error: "Tarih zorunlu." });
     if (!Array.isArray(participants) || !participants.length) return res.status(400).json({ error: "En az bir katılımcı gerekli." });
+    if (recurrence && !["weekly", "monthly", "quarterly"].includes(recurrence)) {
+      return res.status(400).json({ error: "Geçersiz periyodiklik." });
+    }
     // Her gündem maddesi mutlaka bir kişiye atanmalıdır (bitiş tarihi opsiyoneldir).
     for (const it of items || []) {
       if (!it.text || !it.text.trim()) return res.status(400).json({ error: "Gündem maddesi metni boş olamaz." });
@@ -1137,9 +1140,9 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
       if (!meetingTitle) meetingTitle = "Toplantı Notu";
 
       const m = await client.query(
-        `INSERT INTO meetings (project_k, project_other_subject, title, meeting_date, meeting_time, notes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [projectK || null, projectK ? null : otherSubject, meetingTitle, date, time || null, notes || null, req.user.username]
+        `INSERT INTO meetings (project_k, project_other_subject, title, meeting_date, meeting_time, notes, created_by, recurrence)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [projectK || null, projectK ? null : otherSubject, meetingTitle, date, time || null, notes || null, req.user.username, recurrence || null]
       );
       for (const p of participants) {
         await client.query("INSERT INTO meeting_participants (meeting_id, username) VALUES ($1,$2)", [m.rows[0].id, p]);
@@ -1193,6 +1196,16 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Periyodik toplantılarda "sonraki oluşum" tarihini hesaplar: haftalık ->
+// +7 gün (aynı haftanın günü), aylık -> +1 ay (aynı gün), üç aylık -> +3 ay.
+function computeNextMeetingDate(dateStr, recurrence) {
+  const d = new Date(dateStr + "T00:00:00Z");
+  if (recurrence === "weekly") d.setUTCDate(d.getUTCDate() + 7);
+  else if (recurrence === "monthly") d.setUTCMonth(d.getUTCMonth() + 1);
+  else if (recurrence === "quarterly") d.setUTCMonth(d.getUTCMonth() + 3);
+  return d.toISOString().slice(0, 10);
+}
+
 router.post("/meetings/:id/items/:itemId/status", requireWrite("d.meeting"), async (req, res, next) => {
   try {
     const { status } = req.body || {}; // 'open' | 'done' | 'cancelled' | 'carried'
@@ -1201,19 +1214,57 @@ router.post("/meetings/:id/items/:itemId/status", requireWrite("d.meeting"), asy
     }
     const item = await query("SELECT * FROM meeting_items WHERE id=$1 AND meeting_id=$2", [req.params.itemId, req.params.id]);
     if (!item.rowCount) return res.status(404).json({ error: "Madde bulunamadı." });
-    await query("UPDATE meeting_items SET status=$1 WHERE id=$2", [status, req.params.itemId]);
+    const meetingRow = await query("SELECT * FROM meetings WHERE id=$1", [req.params.id]);
+    const mtg = meetingRow.rows[0];
 
     if (status === "carried") {
-      const m = await query("SELECT project_k FROM meetings WHERE id=$1", [req.params.id]);
-      if (m.rows[0].project_k) {
-        await query(
-          "INSERT INTO meeting_carry_queue (project_k, text, from_meeting_id, linked_issue_key) VALUES ($1,$2,$3,$4)",
-          [m.rows[0].project_k, item.rows[0].text, req.params.id, item.rows[0].linked_issue_key || null]
-        );
+      // Yalnızca PERİYODİK (haftalık/aylık/üç aylık) toplantılarda madde
+      // taşınabilir — tek seferlik toplantılarda bu özellik yoktur.
+      if (!mtg.recurrence) {
+        return res.status(400).json({ error: "Yalnızca periyodik (weekly/monthly/quarterly) toplantılarda madde taşınabilir." });
       }
-    } else {
-      await query("DELETE FROM meeting_carry_queue WHERE from_meeting_id=$1 AND text=$2", [req.params.id, item.rows[0].text]);
+      const nextDate = computeNextMeetingDate(mtg.meeting_date.toISOString().slice(0, 10), mtg.recurrence);
+      const parts = await query("SELECT username FROM meeting_participants WHERE meeting_id=$1", [mtg.id]);
+      const participantUsernames = parts.rows.map((r) => r.username);
+
+      await withTransaction(async (client) => {
+        // Bu seri için "sonraki oluşum" zaten var mı (aynı proje/konu,
+        // aynı periyodiklik, aynı tarih)? Varsa maddeyi ORAYA ekle, yoksa
+        // yeni bir toplantı oluştur — art arda birden fazla madde
+        // taşındığında mükerrer "sonraki toplantı" açılmasın diye.
+        const existing = await client.query(
+          `SELECT id FROM meetings WHERE project_k IS NOT DISTINCT FROM $1 AND project_other_subject IS NOT DISTINCT FROM $2
+             AND recurrence=$3 AND meeting_date=$4`,
+          [mtg.project_k, mtg.project_other_subject, mtg.recurrence, nextDate]
+        );
+        let nextMeetingId;
+        if (existing.rowCount) {
+          nextMeetingId = existing.rows[0].id;
+        } else {
+          const ins = await client.query(
+            `INSERT INTO meetings (project_k, project_other_subject, title, meeting_date, meeting_time, notes, created_by, recurrence)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+            [mtg.project_k, mtg.project_other_subject, mtg.title, nextDate, mtg.meeting_time, null, req.user.username, mtg.recurrence]
+          );
+          nextMeetingId = ins.rows[0].id;
+          for (const u of participantUsernames) {
+            await client.query("INSERT INTO meeting_participants (meeting_id, username) VALUES ($1,$2)", [nextMeetingId, u]);
+          }
+        }
+        // Önceki taşıma mantığıyla AYNI: yeni bir Task AÇILMAZ, mevcut
+        // Task'ın anahtarı (varsa) olduğu gibi yeni toplantı maddesine taşınır.
+        await client.query(
+          `INSERT INTO meeting_items (meeting_id, text, status, assignee_username, due_date, linked_issue_key, carried_from_meeting_id)
+           VALUES ($1,$2,'open',$3,$4,$5,$6)`,
+          [nextMeetingId, item.rows[0].text, item.rows[0].assignee_username, item.rows[0].due_date, item.rows[0].linked_issue_key, mtg.id]
+        );
+      });
+      await query("UPDATE meeting_items SET status=$1 WHERE id=$2", [status, req.params.itemId]);
+      await audit(`Toplantı maddesi sonraki oluşuma (${nextDate}) taşındı: #${req.params.itemId}`, req.user.username);
+      return res.json({ ok: true, nextDate });
     }
+
+    await query("UPDATE meeting_items SET status=$1 WHERE id=$2", [status, req.params.itemId]);
     await audit(`Toplantı maddesi durumu değişti: #${req.params.itemId} -> ${status}`, req.user.username);
     res.json({ ok: true });
   } catch (e) { next(e); }
