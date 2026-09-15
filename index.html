@@ -1259,9 +1259,18 @@ function loginView(){
    <img class="hero" src="${HERO}" width="${HERO_W}" height="${HERO_H}"
      alt="Tera Yatırım — Her şey bir arada, tek bir yerde" decoding="sync" fetchpriority="high">
    <div class="login-panel">
-    <h2>${esc(BRAND.loginTitle)}</h2>
-    <p class="login-hint">${esc(BRAND.loginHint)}</p>
+    <h2>${S.mustChangePassword?"Şifre değişikliği zorunlu":esc(BRAND.loginTitle)}</h2>
+    <p class="login-hint">${S.mustChangePassword?"İlk girişte ya da bir sıfırlama sonrasında yeni bir şifre belirlemeniz gerekiyor.":esc(BRAND.loginHint)}</p>
 
+    ${S.mustChangePassword?`
+    <label class="field"><span>Yeni şifre</span>
+     <span class="input-wrap"><input id="lnewpw1" type="password" placeholder="en az 8 karakter, harf+rakam" autocomplete="new-password"></span></label>
+    <label class="field"><span>Yeni şifre (tekrar)</span>
+     <span class="input-wrap"><input id="lnewpw2" type="password" placeholder="şifreyi tekrar girin" autocomplete="new-password"></span></label>
+    ${S.err?`<div class="login-error" role="alert">${esc(S.err)}</div>`:""}
+    <button class="b g login-submit" data-a="confirmChangePassword">Şifreyi belirle ve giriş yap</button>
+    <button class="b s" style="margin-top:8px" data-a="cancelChangePassword">Vazgeç</button>
+    `:`
     <label class="field"><span>Kullanıcı adı</span>
      <span class="input-wrap"><span class="prefix">TERA\\</span>
       <input id="lu" value="${esc(S.u)}" placeholder="ad.soyad" autocomplete="username"
@@ -1278,6 +1287,7 @@ function loginView(){
     <details class="demo"><summary>Prototip hesapları</summary>
      <div class="demo-list">${USERS.filter(u=>u.on).map(u=>
       `<button class="b s" data-a="fill:${USERS.indexOf(u)}">${esc(u.n)}</button>`).join("")}</div></details>
+    `}
    </div>
   </div>
   <div class="login-legal m">${esc(BRAND.footer)}
@@ -2479,6 +2489,7 @@ function screenView(){
    <td style="text-align:right;white-space:nowrap">${u.u==="belmas"?`<span class="m" style="color:var(--tm)">değiştirilemez</span>`:cw("m.users")?
     `<button class="b s" data-a="toggle:user:${LIVE_BACKEND?u.u:i}">${u.on?"Pasife al":"Aktif et"}</button>
      <button class="b s" data-a="recEdit:user:${LIVE_BACKEND?u.u:i}">Düzenle</button>
+     ${LIVE_BACKEND&&!DIR.active?`<button class="b s" data-a="resetPw:${u.u}">Şifreyi sıfırla</button>`:""}
      ${LIVE_BACKEND?"":`<button class="b s d" data-a="recDel:user:${i}">Sil</button>`}`:""}</td></tr>`).join("")));}
 
  if(v==="m.units"){
@@ -3431,7 +3442,10 @@ function dialogView(){
    ${d.kind==="user"?`<div class="lbl" style="margin-top:12px">Rol</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.keys(ROLE).filter(r=>r!=="belmas").map(r=>`<button class="b s ${f.role===r?"p":""}" data-a="setRole:${r}">${ROLE[r]}</button>`).join("")}</div>
     <div class="lbl" style="margin-top:12px">Ünvan</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${TITLES.filter(t=>t.on).map(t=>`<button class="b s ${f.title2===t.n?"p":""}" data-a="setTitle:${encodeURIComponent(t.n)}">${t.k}</button>`).join("")}</div>`:""}
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${TITLES.filter(t=>t.on).map(t=>`<button class="b s ${f.title2===t.n?"p":""}" data-a="setTitle:${encodeURIComponent(t.n)}">${t.k}</button>`).join("")}</div>
+    ${isNew&&LIVE_BACKEND&&!DIR.active?`<div class="lbl" style="margin-top:12px">İlk giriş şifresi</div>
+     <input id="fInitPw" type="text" placeholder="en az 8 karakter, harf+rakam" autocomplete="new-password">
+     <p class="m" style="color:var(--tm);margin:6px 0 0">Kullanıcı ilk girişte bu şifreyle girip kendi şifresini belirlemek zorunda kalacak.</p>`:""}`:""}
    <div class="swrow" style="margin-top:13px"><button class="sw ${f.on?"on":""}" data-a="setOn"><i></i></button>
     <span style="flex:1"><span style="display:block;font-size:12.5px">Kayıt aktif</span>
     <span class="m" style="color:var(--tm)">${f.on?"aktif — atamalarda seçilebilir":"pasif — yeni atamalarda seçilemez"}</span></span></div>
@@ -3465,6 +3479,14 @@ function dialogView(){
     <span id="hint" class="m" style="color:var(--tm);flex:1"></span>
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b off" data-a="needFields">Ekle</button></div>`);}
+ if(d.type==="resetPw"){
+  return wrap(`<div style="font-size:15px">Şifre sıfırlansın mı?</div>
+   <p class="m" style="color:var(--tm);margin-top:8px"><b>${esc(d.username)}</b> için yeni bir ilk giriş şifresi belirleyin. Kullanıcı bu şifreyle girip kendi şifresini belirlemek zorunda kalacak; mevcut oturumları sonlandırılacak.</p>
+   <div class="lbl" style="margin-top:12px">Yeni ilk giriş şifresi</div>
+   <input id="fResetPw" type="text" placeholder="en az 8 karakter, harf+rakam" autocomplete="new-password">
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button class="b p" data-a="resetPwConfirm:${d.username}">Onaya gönder</button></div>`);}
  if(d.type==="confirm")
   return wrap(`<div style="display:flex;gap:12px">${ic("alert-triangle",20,"color:#a3121c")}
    <div style="flex:1"><div style="font-size:15px">${d.title}</div>
@@ -3739,9 +3761,11 @@ app.addEventListener("click",async ev=>{
  if(k==="signin"){
   await checkLiveBackend();
   const uname=(S.u||"").trim().toLowerCase();
+  const pword=(document.getElementById("lp")||{}).value||"";
   if(LIVE_BACKEND){
    try{
-    const data=await api("POST","/api/auth/login",{username:uname});
+    const data=await api("POST","/api/auth/login",{username:uname,password:pword});
+    if(data.mustChangePassword){CSRF_TOKEN=data.csrfToken;S.mustChangePassword=true;S.pendingUname=uname;S.err="";S.f={};render();return;}
     CSRF_TOKEN=data.csrfToken;
     let u=USERS.find(x=>x.u===data.user.username);
     if(!u){u={u:data.user.username,n:data.user.name,r:data.user.role,unit:data.user.unit,
@@ -3762,6 +3786,23 @@ app.addEventListener("click",async ev=>{
   const annOpen=isOpen("announce")&&isOpen("a.list")&&perm("a.list")!=="none";
   const c=annOpen?ANN.find(a=>a.st==="yayında"&&a.pop&&!seenPop(a.id)&&!isAnnRead(a.id)):null;
   S.pop=c?c.id:null;render();return;}
+ if(k==="confirmChangePassword"){
+  const p1=(document.getElementById("lnewpw1")||{}).value||"";
+  const p2=(document.getElementById("lnewpw2")||{}).value||"";
+  if(p1!==p2){S.err="Yeni şifre ile tekrarı eşleşmiyor.";render();return;}
+  try{
+   const data=await api("POST","/api/auth/change-password",{newPassword:p1,confirmPassword:p2});
+   CSRF_TOKEN=data.csrfToken;
+   let u=USERS.find(x=>x.u===data.user.username);
+   if(!u){u={u:data.user.username,n:data.user.name,r:data.user.role,unit:data.user.unit,
+    title:data.user.title,mgr:null,c:data.user.color,on:1};USERS.push(u);}
+   if(data.user.managerUsername){
+    const mu=USERS.find(x=>x.u===data.user.managerUsername);
+    u.mgr=mu?mu.n:data.user.managerUsername;}
+   S.me=u;S.err="";S.mustChangePassword=false;S.view="home";S.mod="announce";S.scr="a.list";
+   S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();loadAppSettingsLive();loadApprovalRulesLive();render();return;
+  }catch(e){S.err=e.message||"Şifre değiştirilemedi.";render();return;}}
+ if(k==="cancelChangePassword"){S.mustChangePassword=false;S.pendingUname=null;S.err="";render();return;}
  if(k==="signout"){
   if(LIVE_BACKEND){try{await api("POST","/api/auth/logout");}catch(e){/* yine de yerel oturumu kapat */}CSRF_TOKEN=null;LIVE_BACKEND=false;}
   TEAM_CACHE_LIVE={};
@@ -4869,6 +4910,13 @@ app.addEventListener("click",async ev=>{
    title:{user:"Kullanıcı ekle",unit:"Birim ekle",title:"Ünvan ekle",short:"Kısayol ekle"}[t],
    l1:{user:"Ad soyad",unit:"Kod",title:"Kod",short:"Görünen ad"}[t],
    l2:{user:"Birim",unit:"Birim adı",title:"Ünvan adı",short:"Link"}[t]};render();return;}
+ if(k==="resetPw"){S.dlg={type:"resetPw",username:p[1]};render();return;}
+ if(k==="resetPwConfirm"){
+  const pw=(document.getElementById("fResetPw")||{}).value||"";
+  try{const data=await api("POST","/api/admin/users/"+encodeURIComponent(p[1])+"/reset-password",{newPassword:pw});
+   S.dlg=null;toast(data.message||"Onaya gönderildi.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
  if(k==="recEdit"){
   const t=p[1];
   if(t==="user"&&LIVE_BACKEND){
@@ -4904,8 +4952,9 @@ app.addEventListener("click",async ev=>{
     const data=await(d.idx===undefined
      ?(async()=>{
        const username=f.a.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z\s]/g,"").trim().replace(/\s+/g,".");
+       const initPw=(document.getElementById("fInitPw")||{}).value||undefined;
        return api("POST","/api/admin/users",{username,name:f.a.trim(),
-        email:username+"@terayatirim.com.tr",role:f.role||"staff",unit:unitCode,title:titleCode});
+        email:username+"@terayatirim.com.tr",role:f.role||"staff",unit:unitCode,title:titleCode,initialPassword:initPw});
       })()
      :api("PUT","/api/admin/users/"+encodeURIComponent(d.idx),{name:f.a.trim(),unit:unitCode,title:titleCode,
        role:f.role||undefined,active:!!f.on}));
