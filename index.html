@@ -797,6 +797,15 @@ const ganttRange=(tasks,pr)=>{
 /* teamOf her zaman zorunlu üyeleri (Teftiş, Risk) içerir; eksikse tamamlanır. */
 let TEAM_CACHE_LIVE={};
 let PENDING_UPLOAD_FILE=null;
+let PENDING_ISSUE_FILE=null;
+/* Canlı backend'deki konu ekleri (dokümanlar) — "PROJK::ISSUE-KEY" -> [{id,file_name,...}] */
+let ISSUE_ATTACH_LIVE={};
+const ISSUE_ATTACH_EXT_OK=/\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
+async function loadIssueAttachmentsLive(pk,key){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/attachments");
+  ISSUE_ATTACH_LIVE[pk+"::"+key]=data.items;render();
+ }catch(e){/* sessiz geç — panel açıksa boş liste gösterilir */}}
 let USERS_LIVE=null,USERS_LIVE_LOADING=false;
 async function loadUsersLive(){
  USERS_LIVE_LOADING=true;
@@ -910,7 +919,7 @@ async function loadIssuesLive(k){
   const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
   proj.items=data.items.map(it=>({key:it.issue_key,ty:it.issue_type,t:it.title,st:it.status,
    pri:it.priority,pts:it.story_points,as:it.assignee_username?nameOf(it.assignee_username):null,
-   assigneeUsername:it.assignee_username,parent:it.parent_key,inSprint:it.in_sprint}));
+   assigneeUsername:it.assignee_username,parent:it.parent_key,inSprint:it.in_sprint,desc:it.description||""}));
   proj.itemsLoaded=true;
  }catch(e){toast("Konular yüklenemedi: "+e.message,1);}
  render();}
@@ -3244,6 +3253,8 @@ function dialogView(){
   const members=teamOf(p.k);
   return wrap(`<div style="font-size:15px">New issue — ${p.k}</div>
    <div class="lbl" style="margin-top:11px">SUMMARY</div><input id="fA" value="${esc(f.a||"")}" placeholder="Short, actionable summary">
+   <div class="lbl" style="margin-top:11px">DESCRIPTION</div>
+   <textarea id="fIssueDesc" rows="3" placeholder="Optional details, steps to reproduce, context…" style="width:100%;resize:vertical">${esc(f.desc||"")}</textarea>
    <div class="lbl" style="margin-top:11px">TYPE</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap">${["Epic","Story","Task","Bug"].map(t=>
      `<button class="b s ${(f.ty||"Story")===t?"p":""}" data-a="iType:${t}" style="color:${(f.ty||"Story")===t?"#fff":TYC[t]}">${t}</button>`).join("")}</div>
@@ -3264,6 +3275,10 @@ function dialogView(){
    <div class="lbl" style="margin-top:11px">PLACE IN</div>
    <div style="display:flex;gap:6px">${[["backlog","Backlog"],["todo","To Do"]].map(x=>
      `<button class="b s ${(f.st||"backlog")===x[0]?"p":""}" data-a="iSt:${x[0]}">${x[1]}</button>`).join("")}</div>
+   <div class="lbl" style="margin-top:11px">ATTACH DOCUMENT (optional)</div>
+   <input type="file" id="fIssueDoc" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="padding:7px">
+   ${f.docFile?`<div class="card ok" style="margin-top:8px;font-size:12px">${esc(f.docFile)}</div>`:""}
+   <p class="m" style="color:var(--tm);margin:6px 0 0">PDF, Word, Excel or image files.</p>
    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
     <button class="b" data-a="dlgClose">Cancel</button>
     <button id="okBtn" class="b ${okI?"g":"off"}" data-a="${okI?"issueSave":"nf"}">Create issue</button></div>`);}
@@ -3513,6 +3528,8 @@ function dialogView(){
     <button id="okBtn" class="b off" data-a="needFields">${isNew?"Ekle":"Kaydet"}</button></div>`);}
  if(d.type==="issue"){const p=PROJ[d.pi],i=p.items.find(x=>x.key===d.key);if(!i)return "";
   const kids=childrenOf(p,i.key),par=i.parent?itemByKey(p,i.parent):null;
+  const attKey=p.k+"::"+i.key;
+  const atts=LIVE_BACKEND?(ISSUE_ATTACH_LIVE[attKey]||null):null;
   return wrap(`<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
     <span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span>
     <span class="m" style="color:var(--ta)">${i.key}</span><span style="flex:1"></span>${pill(FLOW[i.st],"")}</div>
@@ -3523,6 +3540,20 @@ function dialogView(){
      ["Children",kids.length?kids.map(c=>`<span class="pl">${c.key} ${FLOW[c.st]}</span>`).join(" "):"—"]]
     .map(x=>`<div style="display:flex;gap:11px;margin-bottom:8px">
     <span class="lbl" style="width:88px;margin:0">${x[0]}</span><span style="flex:1;font-size:12.5px">${x[1]}</span></div>`).join("")}
+   ${i.desc?`<div class="lbl" style="margin-top:12px">Description</div>
+    <div class="card" style="margin-top:6px;font-size:12.5px;white-space:pre-wrap">${esc(i.desc)}</div>`:""}
+   <div class="lbl" style="margin-top:12px">Documents</div>
+   ${LIVE_BACKEND?(atts===null?`<p class="m" style="color:var(--tm);margin:4px 0 0">Loading…</p>`
+     :atts.length?atts.map(a=>`<div class="card" style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:9px">
+       <a href="/api/projects/${p.k}/issues/${i.key}/attachments/${a.id}/file" target="_blank" style="flex:1;color:var(--ta)">${esc(a.file_name)}</a>
+       <span class="m" style="color:var(--tm)">${(a.size_bytes/1024).toFixed(0)} KB</span>
+       ${cw("d.board")?`<button class="b s d" data-a="issueAttDel:${d.pi}:${i.key}:${a.id}" title="Sil">✕</button>`:""}</div>`).join("")
+     :`<p class="m" style="color:var(--tm);margin:4px 0 0">No documents attached yet.</p>`)
+    :(i.doc?`<div class="card" style="margin-top:6px;font-size:12px">${esc(i.doc)} <span class="m" style="color:var(--tm)">(demo)</span></div>`
+      :`<p class="m" style="color:var(--tm);margin:4px 0 0">No documents attached yet.</p>`)}
+   ${LIVE_BACKEND&&cw("d.board")?`<div style="display:flex;gap:7px;align-items:center;margin-top:8px">
+    <input type="file" id="fIssueDetailDoc" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="padding:6px;flex:1">
+    <button class="b s" data-a="issueAttAdd:${d.pi}:${i.key}">Add</button></div>`:""}
    ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">${(NEXT[i.st]||[]).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
@@ -3696,6 +3727,13 @@ function afterRender(){
   if(file.type!=="application/pdf"&&!/\.pdf$/i.test(file.name)){
    toast("Only PDF files are accepted — "+file.name+" rejected.",1);e.target.value="";return;}
   PENDING_UPLOAD_FILE=file;S.f.file=file.name;render();};
+ const fid=document.getElementById("fIssueDoc");
+ if(fid)fid.onchange=e=>{const file=e.target.files&&e.target.files[0];if(!file)return;
+  if(!ISSUE_ATTACH_EXT_OK.test(file.name)){
+   toast("Unsupported file type — "+file.name+" rejected.",1);e.target.value="";return;}
+  PENDING_ISSUE_FILE=file;S.f.docFile=file.name;render();};
+ const fidesc=document.getElementById("fIssueDesc");
+ if(fidesc)fidesc.oninput=e=>{S.f.desc=e.target.value;};
  [["dUrl","url"],["dBase","baseDn"],["dBind","bindDn"],["dFilter","filter"]].forEach(([id,key])=>{
   const el=document.getElementById(id);
   if(el)el.oninput=e=>{S.dirF=S.dirF||{};S.dirF[key]=e.target.value;};});
@@ -4150,7 +4188,7 @@ app.addEventListener("click",async ev=>{
  if(k==="openProj"){S.proj=+p[1];S.mod="delivery";S.scr="d.board";S.dlg=null;render();return;}
  if(k==="execFilter"){S.execFilter=p[1]||null;S.execUnit=null;render();return;}
  if(k==="execUnit"){S.execUnit=decodeURIComponent(p[1]||"");S.execFilter=null;render();return;}
- if(k==="issueNew"){S.f={ty:"Story",pri:"Medium",pts:3,st:"backlog"};S.dlg={type:"issue2"};render();return;}
+ if(k==="issueNew"){S.f={ty:"Story",pri:"Medium",pts:3,st:"backlog"};PENDING_ISSUE_FILE=null;S.dlg={type:"issue2"};render();return;}
  if(k==="iType"){S.f.ty=p[1];S.f.parent=null;render();return;}
  if(k==="iParent"){S.f.parent=p[1];render();return;}
  if(k==="iPri"){S.f.pri=p[1];render();return;}
@@ -4162,10 +4200,15 @@ app.addEventListener("click",async ev=>{
    const pr=P();
    const asUser=S.f.as?(USERS.find(u=>u.n===S.f.as)||{}).u:null;
    try{
-    await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/issues",{
-     issueType:S.f.ty||"Story",title:S.f.a.trim(),status:S.f.st||"backlog",
+    const created=await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/issues",{
+     issueType:S.f.ty||"Story",title:S.f.a.trim(),description:(S.f.desc||"").trim(),status:S.f.st||"backlog",
      priority:S.f.pri||"Medium",storyPoints:S.f.pts||3,assigneeUsername:asUser,parentKey:S.f.parent||null});
-    S.dlg=null;S.f={};toast("Konu oluşturuldu.");
+    if(PENDING_ISSUE_FILE&&created&&created.item){
+     const fd=new FormData();fd.append("file",PENDING_ISSUE_FILE);
+     try{await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(created.item.issue_key)+"/attachments",fd,true);}
+     catch(e){toast("Konu oluşturuldu ama doküman eklenemedi: "+e.message,1);}
+    }
+    PENDING_ISSUE_FILE=null;S.dlg=null;S.f={};toast("Konu oluşturuldu.");
     await loadIssuesLive(pr.k);render();
    }catch(e){toast(e.message,1);}
    return;}
@@ -4173,8 +4216,9 @@ app.addEventListener("click",async ev=>{
   const nums=pr.items.map(i=>+String(i.key).split("-")[1]||0);
   const key=pr.k+"-"+((nums.length?Math.max.apply(null,nums):0)+1);
   pr.items.push({key,ty:S.f.ty||"Story",t:S.f.a.trim(),st:S.f.st||"backlog",
-   pri:S.f.pri||"Medium",pts:S.f.pts||3,as:S.f.as||null,parent:S.f.parent||null});
-  audit("İş kalemi oluşturuldu: "+key);S.dlg=null;S.f={};
+   pri:S.f.pri||"Medium",pts:S.f.pts||3,as:S.f.as||null,parent:S.f.parent||null,
+   desc:(S.f.desc||"").trim(),doc:S.f.docFile||null});
+  audit("İş kalemi oluşturuldu: "+key);PENDING_ISSUE_FILE=null;S.dlg=null;S.f={};
   toast(key+" created in "+(S.f&&S.f.st==="todo"?"To Do":"Backlog")+".");return;}
 
  if(k==="teamAdd"){S.f={};S.dlg={type:"team"};render();return;}
@@ -4525,7 +4569,25 @@ app.addEventListener("click",async ev=>{
  if(k==="bisave"){BIREP.push({code:"RPT-0"+(nbi++),name:S.f.a,area:S.f.b||"Genel",freq:"günlük",
    path:(S.f.c||"genel/rapor"),st:"gelistirme",owner:S.me.n,opens:0,last:null});
   audit("Yeni rapor taslağı oluşturuldu");S.dlg=null;S.f={};toast("Rapor taslağı oluşturuldu.");return;}
- if(k==="issue"){S.dlg={type:"issue",pi:+p[1],key:p[2]};render();return;}
+ if(k==="issue"){S.dlg={type:"issue",pi:+p[1],key:p[2]};render();
+  if(LIVE_BACKEND){const pk=PROJ[+p[1]].k;delete ISSUE_ATTACH_LIVE[pk+"::"+p[2]];loadIssueAttachmentsLive(pk,p[2]);}
+  return;}
+ if(k==="issueAttAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const inp=document.getElementById("fIssueDetailDoc");const file=inp&&inp.files&&inp.files[0];
+  if(!file){toast("Önce bir dosya seçin.",1);return;}
+  if(!ISSUE_ATTACH_EXT_OK.test(file.name)){toast("Desteklenmeyen dosya türü.",1);return;}
+  const fd=new FormData();fd.append("file",file);
+  try{
+   await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/attachments",fd,true);
+   toast("Doküman eklendi.");await loadIssueAttachmentsLive(pk,key);
+  }catch(e){toast(e.message,1);}
+  return;}
+ if(k==="issueAttDel"){const pi=+p[1],key=p[2],attId=p[3],pk=PROJ[pi].k;
+  try{
+   await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/attachments/"+attId);
+   toast("Doküman kaldırıldı.");await loadIssueAttachmentsLive(pk,key);
+  }catch(e){toast(e.message,1);}
+  return;}
  if(k==="move"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]),from=it.st,to=p[3];
   it.st=to;S.dlg=null;toast(p[2]+" · "+FLOW[to]);render();

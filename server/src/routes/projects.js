@@ -23,6 +23,55 @@ const upload = multer({
   },
 });
 
+// Konu (issue) eklerinde kabul edilen dosya türleri: MIME tipi -> uzantı.
+// Gercek dosya icerigi asagida validateIssueAttachmentMagic ile MIME beyanindan
+// bagimsiz olarak dogrulanir (Content-Type istemci beyanidir, guvenilmez).
+const ISSUE_ATTACH_ALLOWED = {
+  "application/pdf": "pdf",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "image/png": "png",
+  "image/jpeg": "jpg",
+};
+function validateIssueAttachmentMagic(buffer, mimetype) {
+  if (!buffer || buffer.length < 8) return false;
+  const hex4 = buffer.slice(0, 4).toString("hex");
+  switch (mimetype) {
+    case "application/pdf":
+      return buffer.slice(0, 5).toString("latin1") === "%PDF-";
+    case "image/png":
+      return buffer.slice(0, 8).toString("hex") === "89504e470d0a1a0a";
+    case "image/jpeg":
+      return buffer.slice(0, 3).toString("hex") === "ffd8ff";
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      // .docx/.xlsx aslında bir ZIP arşividir (PK imzasıyla başlar).
+      return buffer.slice(0, 2).toString("latin1") === "PK";
+    case "application/msword":
+    case "application/vnd.ms-excel":
+      // Eski OLE bileşik dosya biçimi (.doc/.xls).
+      return hex4 === "d0cf11e0";
+    default:
+      return false;
+  }
+}
+const uploadIssueDoc = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: config.uploadMaxMb * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!ISSUE_ATTACH_ALLOWED[file.mimetype]) return cb(new Error("Desteklenmeyen dosya türü."));
+    cb(null, true);
+  },
+});
+function uploadIssueAttachment(req, res, next) {
+  uploadIssueDoc.single("file")(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || "Dosya yüklenemedi." });
+    next();
+  });
+}
+
 const DOC_TYPE_ORDER = ["Proje Kartı", "BRD", "FRD", "UAT", "Go Live", "Risk ve Uyumluluk", "Kapanış"];
 const APPROVAL_STEPS = [
   { no: 1, name: "Ürün Sahibi" },
@@ -105,7 +154,7 @@ router.get("/:k/issues", requireRead("d.board"), async (req, res, next) => {
 
 router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
   try {
-    const { issueType, title, priority, storyPoints, assigneeUsername, parentKey, status } = req.body || {};
+    const { issueType, title, description, priority, storyPoints, assigneeUsername, parentKey, status } = req.body || {};
     if (!["Epic", "Story", "Task", "Bug"].includes(issueType)) return res.status(400).json({ error: "Geçersiz konu tipi." });
     if (!title || !title.trim()) return res.status(400).json({ error: "Başlık zorunlu." });
     const needParent = ISSUE_PARENT_OF[issueType];
@@ -116,6 +165,14 @@ router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
         return res.status(400).json({ error: `Üst konu geçerli bir ${needParent} olmalıdır.` });
       }
     }
+    // Atanacak kişi yalnızca bu projenin ekibinden olabilir.
+    if (assigneeUsername) {
+      const inTeam = await query(
+        "SELECT 1 FROM project_team WHERE project_k=$1 AND username=$2",
+        [req.params.k, assigneeUsername]
+      );
+      if (!inTeam.rowCount) return res.status(400).json({ error: "Atanacak kişi bu projenin ekibinde değil." });
+    }
     const proj = await query("SELECT k FROM projects WHERE k=$1", [req.params.k]);
     if (!proj.rowCount) return res.status(404).json({ error: "Proje bulunamadı." });
 
@@ -125,10 +182,10 @@ router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
       );
       const issueKey = `${req.params.k}-${seq.rows[0].n + 1}`;
       const ins = await client.query(
-        `INSERT INTO project_issues (project_k, issue_key, issue_type, title, status, priority, story_points,
+        `INSERT INTO project_issues (project_k, issue_key, issue_type, title, description, status, priority, story_points,
            assignee_username, parent_key, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-        [req.params.k, issueKey, issueType, title.trim(), status || "backlog", priority || "Medium",
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        [req.params.k, issueKey, issueType, title.trim(), (description || "").trim(), status || "backlog", priority || "Medium",
          Number(storyPoints) || 0, assigneeUsername || null, needParent ? parentKey : null, req.user.username]
       );
       return ins.rows[0];
@@ -146,9 +203,16 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     const { rows } = await query("SELECT * FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
     const issue = rows[0];
     if (!issue) return res.status(404).json({ error: "Konu bulunamadı." });
-    const { status, assigneeUsername, priority, storyPoints, title, inSprint } = req.body || {};
+    const { status, assigneeUsername, priority, storyPoints, title, description, inSprint } = req.body || {};
     if (status && !["backlog", "todo", "prog", "review", "test", "done"].includes(status)) {
       return res.status(400).json({ error: "Geçersiz durum." });
+    }
+    if (assigneeUsername) {
+      const inTeam = await query(
+        "SELECT 1 FROM project_team WHERE project_k=$1 AND username=$2",
+        [req.params.k, assigneeUsername]
+      );
+      if (!inTeam.rowCount) return res.status(400).json({ error: "Atanacak kişi bu projenin ekibinde değil." });
     }
     const fields = [];
     const values = [];
@@ -158,6 +222,7 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     if (priority !== undefined) { fields.push(`priority=$${i++}`); values.push(priority); }
     if (storyPoints !== undefined) { fields.push(`story_points=$${i++}`); values.push(Number(storyPoints) || 0); }
     if (title !== undefined) { fields.push(`title=$${i++}`); values.push(title.trim()); }
+    if (description !== undefined) { fields.push(`description=$${i++}`); values.push(description.trim()); }
     if (inSprint !== undefined) { fields.push(`in_sprint=$${i++}`); values.push(!!inSprint); }
     if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });
     fields.push(`updated_at=now()`);
@@ -167,6 +232,77 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
       values
     );
     await audit(`Konu güncellendi: ${req.params.issueKey}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// --------------------------- Konu ekleri (dokümanlar) ---------------------------
+router.get("/:k/issues/:issueKey/attachments", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT id, file_name, mime_type, size_bytes, uploaded_by, uploaded_at
+       FROM project_issue_attachments WHERE project_k=$1 AND issue_key=$2 ORDER BY uploaded_at`,
+      [req.params.k, req.params.issueKey]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/issues/:issueKey/attachments", requireWrite("d.board"), uploadIssueAttachment, async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Dosya zorunlu." });
+    const issue = await query(
+      "SELECT issue_key FROM project_issues WHERE project_k=$1 AND issue_key=$2",
+      [req.params.k, req.params.issueKey]
+    );
+    if (!issue.rowCount) return res.status(404).json({ error: "Konu bulunamadı." });
+    // GÜVENLİK: Content-Type istemci beyanıdır — dosyanın gerçek imzası ayrıca doğrulanır.
+    if (!validateIssueAttachmentMagic(req.file.buffer, req.file.mimetype)) {
+      return res.status(400).json({ error: "Dosya içeriği beyan edilen türle eşleşmiyor." });
+    }
+    const ext = ISSUE_ATTACH_ALLOWED[req.file.mimetype];
+    const storedName = `${crypto.randomBytes(16).toString("hex")}.${ext}`;
+    fs.writeFileSync(path.join(config.uploadDir, storedName), req.file.buffer);
+    const { rows } = await query(
+      `INSERT INTO project_issue_attachments
+         (project_k, issue_key, file_name, stored_name, mime_type, size_bytes, uploaded_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id, file_name, mime_type, size_bytes, uploaded_by, uploaded_at`,
+      [req.params.k, req.params.issueKey, req.file.originalname, storedName, req.file.mimetype, req.file.size, req.user.username]
+    );
+    await audit(`Konuya doküman eklendi: ${req.params.issueKey} — ${req.file.originalname}`, req.user.username);
+    res.status(201).json({ item: rows[0] });
+  } catch (e) { next(e); }
+});
+
+// Dosyanın kendisi: path traversal'a karşı yalnızca diskteki rastgele üretilmiş ad kullanılır.
+router.get("/:k/issues/:issueKey/attachments/:id/file", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "SELECT * FROM project_issue_attachments WHERE id=$1 AND project_k=$2 AND issue_key=$3",
+      [req.params.id, req.params.k, req.params.issueKey]
+    );
+    const att = rows[0];
+    if (!att) return res.status(404).json({ error: "Doküman bulunamadı." });
+    if (!/^[a-f0-9]{32}\.[a-z0-9]+$/.test(att.stored_name)) return res.status(400).json({ error: "Geçersiz dosya kaydı." });
+    const abs = path.resolve(config.uploadDir, att.stored_name);
+    if (!abs.startsWith(path.resolve(config.uploadDir) + path.sep)) return res.status(400).json({ error: "Geçersiz yol." });
+    res.setHeader("Content-Type", att.mime_type);
+    res.setHeader("Content-Disposition", `inline; filename="${att.file_name.replace(/[^\w.\-]/g, "_")}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.sendFile(abs);
+  } catch (e) { next(e); }
+});
+
+router.delete("/:k/issues/:issueKey/attachments/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "DELETE FROM project_issue_attachments WHERE id=$1 AND project_k=$2 AND issue_key=$3 RETURNING file_name, stored_name",
+      [req.params.id, req.params.k, req.params.issueKey]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Doküman bulunamadı." });
+    try { fs.unlinkSync(path.join(config.uploadDir, rows[0].stored_name)); } catch (_) { /* dosya zaten yoksa yok say */ }
+    await audit(`Konudan doküman kaldırıldı: ${req.params.issueKey} — ${rows[0].file_name}`, req.user.username);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
