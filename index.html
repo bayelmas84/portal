@@ -2160,9 +2160,14 @@ function screenView(){
        style="font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)"></div>
      ${!it.assignee?`<p class="m" style="color:var(--er-fg);margin:5px 0 0">Assignee required for this item.</p>`:""}</div>`).join("")
      :`<p class="m" style="color:var(--tm);margin:4px 0">No items added yet.</p>`}
-    <div style="display:flex;gap:6px">
-     <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="New agenda item..." style="flex:1">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+     <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="New agenda item..." style="flex:2;min-width:160px">
+     <select id="fMtNewItemAssignee" style="flex:1;min-width:150px">
+      <option value="" ${!f.newItemAssignee?"selected":""}>Select assignee… (required)</option>
+      ${USERS.filter(u=>u.on).map(u=>`<option value="${esc(u.n)}" ${f.newItemAssignee===u.n?"selected":""}>${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
+     <input id="fMtNewItemDue" type="date" value="${esc(f.newItemDue||"")}" title="Due date (optional)" style="width:150px">
      <button class="b s" data-a="mtAddItem">Add</button></div>
+    <p class="m" style="color:var(--tm);margin:6px 0 0">Assignee must be selected before a new item can be added.</p>
 
     <div class="lbl" style="margin-top:13px">Notes</div>
     <textarea id="fMtNotes" placeholder="Free-form notes about the meeting">${esc(f.notes||"")}</textarea>
@@ -3899,6 +3904,10 @@ function afterRender(){
  const mtPartSel=document.getElementById("fMtPartSel");
  if(mtPartSel)mtPartSel.onchange=e=>{const n=e.target.value;if(!n)return;
   S.f.parts=[...(S.f.parts||[]),n];render();};
+ const mtNewItemAssignee=document.getElementById("fMtNewItemAssignee");
+ if(mtNewItemAssignee)mtNewItemAssignee.onchange=e=>{S.f.newItemAssignee=e.target.value||"";};
+ const mtNewItemDue=document.getElementById("fMtNewItemDue");
+ if(mtNewItemDue)mtNewItemDue.onchange=e=>{S.f.newItemDue=e.target.value||"";};
  const fp=document.getElementById("fPdf");
  if(fp)fp.onchange=e=>{const file=e.target.files&&e.target.files[0];if(!file)return;
   if(file.type!=="application/pdf"&&!/\.pdf$/i.test(file.name)){
@@ -4395,7 +4404,10 @@ app.addEventListener("click",async ev=>{
  if(k==="mtRemPart"){const n=dec(p[1]);S.f.parts=(S.f.parts||[]).filter(x=>x!==n);render();return;}
  if(k==="mtAddItem"){const t=(S.f.newItem||"").trim();
   if(!t){toast("Madde metni boş olamaz.",1);return;}
-  S.f.items=[...(S.f.items||[]),{id:"mi"+(nextMeetingItem++),text:t,status:"open",assignee:null,due:""}];S.f.newItem="";render();return;}
+  if(!S.f.newItemAssignee){toast("Sorumlu (assignee) seçmeden madde eklenemez.",1);return;}
+  S.f.items=[...(S.f.items||[]),{id:"mi"+(nextMeetingItem++),text:t,status:"open",
+   assignee:S.f.newItemAssignee,due:S.f.newItemDue||""}];
+  S.f.newItem="";S.f.newItemAssignee="";S.f.newItemDue="";render();return;}
  if(k==="mtRemItem"){S.f.items=(S.f.items||[]).filter((_,i)=>i!==+p[1]);render();return;}
  if(k==="mtSave"){const f=S.f,pr=PROJ.find(x=>x.k===f.projKey);
   const subject=f.projKey==="OTHER"?(f.otherSubject||"").trim():"";

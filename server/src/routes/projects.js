@@ -165,14 +165,19 @@ async function insertIssueRow(client, projectK, opts) {
     "SELECT count(*)::int AS n FROM project_issues WHERE project_k=$1", [projectK]
   );
   const issueKey = `${projectK}-${seq.rows[0].n + 1}`;
+  // createdAt verilirse (örn. toplantı tarihinden otomatik Task açılışı) hem
+  // created_at hem updated_at o tarihe sabitlenir — aksi halde updated_at'in
+  // created_at'ten "önce" görünmesi gibi tutarsız bir görüntü oluşurdu.
+  // Verilmezse ikisi de gerçek an (now()) olur.
+  const createdAt = opts.createdAt || new Date();
   const ins = await client.query(
     `INSERT INTO project_issues (project_k, issue_key, issue_type, title, description, status, priority, story_points,
-       assignee_username, parent_key, created_by, labels, due_date)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+       assignee_username, parent_key, created_by, labels, due_date, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14) RETURNING *`,
     [projectK, issueKey, opts.issueType, opts.title.trim(), (opts.description || "").trim(),
      opts.status || "backlog", opts.priority || "Medium", Number(opts.storyPoints) || 0,
      opts.assigneeUsername || null, opts.parentKey || null, opts.createdBy,
-     sanitizeLabels(opts.labels), opts.dueDate || null]
+     sanitizeLabels(opts.labels), opts.dueDate || null, createdAt]
   );
   return ins.rows[0];
 }
@@ -1000,6 +1005,7 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
           title: `${meetingTitle} — ${date}`,
           description: notes || "",
           createdBy: req.user.username,
+          createdAt: date, // Task'lar gibi Epic de toplantı tarihiyle açılmış görünür
         });
         epicKey = epic.issue_key;
       }
@@ -1015,6 +1021,7 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
             dueDate: it.dueDate || null,
             status: "backlog", // Jira "board"a değil doğrudan backlog'a düşer
             createdBy: req.user.username,
+            createdAt: date, // "Created" alanı, notun girildiği an değil TOPLANTI tarihini gösterir
           });
           linkedIssueKey = task.issue_key;
         }

@@ -142,6 +142,9 @@ test("Toplantı maddesi: TOPLANTI projesinde Epic+Task olarak otomatik açılır
 
   const epic = issuesRes.body.items.find((i) => i.issue_key === task.parent_key);
   assert.equal(epic.issue_type, "Epic");
+  // Task ve Epic'in "Created" tarihi, notun girildiği an değil TOPLANTI tarihi olmalı.
+  assert.equal(task.created_at.slice(0, 10), "2026-11-08");
+  assert.equal(epic.created_at.slice(0, 10), "2026-11-08");
 });
 
 test("SMTP: etkin değilken e-posta gönderilmez, denetim kaydına başarısız olarak düşer", async () => {
