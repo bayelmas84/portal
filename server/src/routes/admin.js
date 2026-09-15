@@ -212,6 +212,10 @@ router.put("/units/:code", requireWrite("m.units"), async (req, res, next) => {
 });
 
 const VALID_ROLES = Object.keys(DEFAULT_ACCESS).concat(["gmy", "opsdir"]).filter((v, i, a) => a.indexOf(v) === i);
+// Proje yönetimi modülünün yetkilendirme ayarları (Project Admin ekranı ve
+// benzerleri) yalnızca Proje Yönetim Direktörü'ne aittir; Admin Panel'in
+// genel "Ekran yetkileri" mekanizması üzerinden dahi değiştirilemez.
+const LOCKED_ACCESS_KEYS = ["d.projadmin"];
 
 router.post("/users", requireWrite("m.users"), async (req, res, next) => {
   try {
@@ -397,6 +401,12 @@ router.put("/access", requireWrite("m.access"), async (req, res, next) => {
     if (!["none", "read", "write"].includes(level)) return res.status(400).json({ error: "Geçersiz seviye." });
     if (role === "admin" && ["m.access", "m.avail"].includes(screenKey) && level === "none") {
       return res.status(409).json({ error: "Admin rolünün bu ekranlara erişimi kaldırılamaz (kilitlenme riski)." });
+    }
+    // Proje yönetimi modülünün yetkilendirme ayarları (bugün: Project Admin
+    // ekranı) yalnızca Proje Yönetim Direktörü'ne aittir — Admin Panel
+    // üzerinden bile hiçbir role verilemez/kaldırılamaz.
+    if (LOCKED_ACCESS_KEYS.includes(screenKey)) {
+      return res.status(409).json({ error: "Bu ekranın yetkisi Admin Panel üzerinden değiştirilemez; sabittir." });
     }
     await requestAdminApproval(req, res, "admin.access", { role, screenKey, level },
       `Ekran yetkisi değişikliği: ${role} / ${screenKey} -> ${level}`);

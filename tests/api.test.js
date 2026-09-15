@@ -583,6 +583,86 @@ test("Zaman takibi: estimate atama, worklog eklendiğinde remaining otomatik dü
   assert.equal(worklogsAfter.body.items.length, 1);
 });
 
+test("İş akışı (workflow): tanımsız geçiş serbesttir (geriye dönük uyumluluk), tanımlı rol kısıtlaması uygulanır, pmdir her zaman override edebilir, enabled=false geçişi kapatır", async () => {
+  const pm = await login("tolga.firat");
+  const mod = await login("bayram.elmas");
+
+  const issue = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Workflow Test ${Date.now()}` });
+  const issueKey = issue.body.item.issue_key;
+
+  // Hiç workflow satırı olmayan bir (from,to) çifti: backlog->done. TRADE'in
+  // varsayılan seed'inde bu tanımlı DEĞİL, dolayısıyla serbest olmalı.
+  const freeJump = await request(app)
+    .put(`/api/projects/TRADE/issues/${issueKey}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ status: "done" });
+  assert.equal(freeJump.status, 200, "tanımlı bir kısıtlama olmayan geçiş serbest olmalı");
+
+  // Geri al, sonra normal zincirden ilerleyip review'a getir.
+  await request(app).put(`/api/projects/TRADE/issues/${issueKey}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ status: "prog" });
+  await request(app).put(`/api/projects/TRADE/issues/${issueKey}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ status: "review" });
+
+  // review->test geçişini sadece pmdir yapabilsin diye kısıtla. Workflow
+  // KURALLARINI değiştirmek artık yalnızca pmdir'e ait (Project Admin).
+  const setWf = await request(app)
+    .put("/api/projects/TRADE/workflow")
+    .set("Cookie", mod.cookie).set("X-CSRF-Token", mod.csrf)
+    .send({ transitions: [
+      { from: "backlog", to: "todo" }, { from: "todo", to: "prog" }, { from: "prog", to: "review" },
+      { from: "prog", to: "todo" }, { from: "review", to: "test", allowedRoles: ["pmdir"] },
+      { from: "review", to: "prog" }, { from: "test", to: "done" }, { from: "test", to: "prog" }, { from: "done", to: "prog" },
+    ] });
+  assert.equal(setWf.status, 200);
+
+  // pm rolü artık workflow KURALLARINI değiştiremez (yalnızca pmdir).
+  const pmEditWf = await request(app)
+    .put("/api/projects/TRADE/workflow")
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ transitions: [{ from: "backlog", to: "todo" }] });
+  assert.equal(pmEditWf.status, 403, "workflow kurallarını yalnızca pmdir değiştirebilmeli");
+
+  const pmTry = await request(app)
+    .put(`/api/projects/TRADE/issues/${issueKey}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ status: "test" });
+  assert.equal(pmTry.status, 403, "pm rolü review->test için yetkili değilse reddedilmeli");
+
+  const modTry = await request(app)
+    .put(`/api/projects/TRADE/issues/${issueKey}`)
+    .set("Cookie", mod.cookie).set("X-CSRF-Token", mod.csrf)
+    .send({ status: "test" });
+  assert.equal(modTry.status, 200, "pmdir her zaman override edebilmeli");
+
+  // test->prog geçişini tamamen kapat.
+  await request(app)
+    .put("/api/projects/TRADE/workflow")
+    .set("Cookie", mod.cookie).set("X-CSRF-Token", mod.csrf)
+    .send({ transitions: [{ from: "test", to: "prog", enabled: false }] });
+
+  const disabledTry = await request(app)
+    .put(`/api/projects/TRADE/issues/${issueKey}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ status: "prog" });
+  assert.equal(disabledTry.status, 400, "enabled=false olan geçiş pm için reddedilmeli");
+
+  const disabledModTry = await request(app)
+    .put(`/api/projects/TRADE/issues/${issueKey}`)
+    .set("Cookie", mod.cookie).set("X-CSRF-Token", mod.csrf)
+    .send({ status: "prog" });
+  assert.equal(disabledModTry.status, 200, "pmdir enabled=false olsa bile override edebilmeli");
+
+  // TRADE'in workflow'unu varsayılana geri döndür ki başka testleri etkilemesin.
+  await request(app)
+    .put("/api/projects/TRADE/workflow")
+    .set("Cookie", mod.cookie).set("X-CSRF-Token", mod.csrf)
+    .send({ transitions: [
+      { from: "backlog", to: "todo" }, { from: "todo", to: "prog" }, { from: "prog", to: "review" },
+      { from: "prog", to: "todo" }, { from: "review", to: "test" }, { from: "review", to: "prog" },
+      { from: "test", to: "done" }, { from: "test", to: "prog" }, { from: "done", to: "prog" },
+    ] });
+});
+
 test.after(async () => {
   await pool.end();
 });

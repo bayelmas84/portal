@@ -359,7 +359,8 @@ const SCREENS={
    ["d.appr","Approvals Log","ti-checks"],["d.cr","Change Requests","ti-file-symlink"],
    ["d.meeting","Meeting Notes","ti-notes"],["d.meetingview","Meeting note",null],
    ["d.meetingnew","Yeni toplantı notu",null],
-   ["d.gantt","Gantt Chart","ti-gantt"],["d.roadmap","Roadmap","ti-map"]],
+   ["d.gantt","Gantt Chart","ti-gantt"],["d.roadmap","Roadmap","ti-map"],
+   ["d.projadmin","Project Admin","ti-shield-lock"]],
  documents:[["k.docs","Dokümanlar","ti-book"],["k.queue","Teftiş kuyruğu","ti-stamp"],["k.mail","Gönderilen bildirimler","ti-messages"]],
  announce:[["a.list","Duyurular","ti-speakerphone"]],
  training:[["t.un","Okunmamış","ti-file-alert"],["t.done","Tamamlananlar","ti-file-check"],
@@ -395,7 +396,7 @@ const ACC={
  /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (okuma, yazma, ekleme, silme),
     faz kapısını tek imzayla onaylayabilir. Diğer modüllerde okuma düzeyindedir. */
  pmdir:{delivery:W,"d.my":W,"d.projects":W,"d.board":W,"d.backlog":W,"d.sprint":W,
-  "d.gate":W,"d.gate.approve":W,"d.delete":W,
+  "d.gate":W,"d.gate.approve":W,"d.delete":W,"d.projadmin":W,
   "d.charts":W,"d.exec":W,"d.team":W,"d.docs":W,"d.docview":W,"d.appr":W,"d.cr":W,
   documents:R,"k.docs":R,announce:R,"a.list":R,training:R,"t.un":W,"t.done":W,
   reports:R,"r.list":R,"r.view":R,"r.usage":R,approvals:W,"p.in":W,"p.my":W,"p.done":W,
@@ -477,6 +478,11 @@ const ACC={
 ["pm","pmdir"].forEach(r=>{ACC[r]["d.meeting"]=W;ACC[r]["d.meetingview"]=W;ACC[r]["d.meetingnew"]=W;ACC[r]["d.gantt"]=W;ACC[r]["d.roadmap"]=W;});
 const ROLE={pmdir:"Proje Yönetim Direktörü",admin:"Admin",inspection:"Teftiş",infosec:"Bilgi Güvenliği",control:"İç Kontrol",
  gmy:"Genel Müdür Yardımcısı",opsdir:"Operasyon Direktörü",pm:"Proje Yöneticisi",dev:"Geliştirici",staff:"Personel",ceo:"Genel Müdür"};
+// Proje yönetimi modülünün yetkilendirme ayarları (Project Admin ekranı)
+// yalnızca Proje Yönetim Direktörü'ne aittir — Admin Panel'in genel "Ekran
+// yetkileri" ekranından bile hiçbir role verilemez/kaldırılamaz (server/src/
+// routes/admin.js içindeki LOCKED_ACCESS_KEYS ile birebir aynı liste).
+const LOCKED_ACCESS_KEYS=["d.projadmin"];
 
 let USERS=[
  {u:"ahmet.tera",n:"Ahmet Tera",r:"ceo",c:"#0B1F48",unit:"Portföy Yönetimi",
@@ -1465,6 +1471,34 @@ function versionsOf(pk){
 function componentsOf(pk){
  if(LIVE_BACKEND){if(!(pk in PROJECT_COMPONENTS_LIVE)){PROJECT_COMPONENTS_LIVE[pk]=[];loadComponentsLive(pk);}return PROJECT_COMPONENTS_LIVE[pk];}
  return PROJECT_COMPONENTS_DEMO[pk]||(PROJECT_COMPONENTS_DEMO[pk]=[]);}
+/* Yapılandırılabilir iş akışı (workflow) — durum KÜMESİ sabit kalır
+   (backlog/todo/prog/review/test/done), ama proje bazında hangi
+   geçişlerin kimler tarafından yapılabileceği özelleştirilebilir.
+   TASARIM: bir (from,to) çifti için satır YOKSA geçiş serbesttir
+   (geriye dönük uyumluluk); satır varsa enabled/allowed_roles uygulanır.
+   pmdir/admin her zaman override edebilir (backend ile birebir aynı kural). */
+const DEFAULT_WORKFLOW=[["backlog","todo"],["todo","prog"],["prog","review"],["prog","todo"],
+ ["review","test"],["review","prog"],["test","done"],["test","prog"],["done","prog"]];
+const WORKFLOW_ROLES_CLIENT=["pmdir","pm","dev"];
+const WORKFLOW_ROLE_LABEL={pmdir:"PM Director",pm:"Project Manager",dev:"Developer"};
+let PROJECT_WORKFLOW_LIVE={},PROJECT_WORKFLOW_DEMO={};
+async function loadWorkflowLive(pk){
+ try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/workflow");
+  PROJECT_WORKFLOW_LIVE[pk]=data.items;render();}catch(e){PROJECT_WORKFLOW_LIVE[pk]=[];render();}}
+function workflowOf(pk){
+ if(LIVE_BACKEND){if(!(pk in PROJECT_WORKFLOW_LIVE)){PROJECT_WORKFLOW_LIVE[pk]=[];loadWorkflowLive(pk);}return PROJECT_WORKFLOW_LIVE[pk];}
+ if(!PROJECT_WORKFLOW_DEMO[pk])PROJECT_WORKFLOW_DEMO[pk]=DEFAULT_WORKFLOW.map(([f,t])=>({from_status:f,to_status:t,allowed_roles:[],enabled:true}));
+ return PROJECT_WORKFLOW_DEMO[pk];}
+/* Board/issue panelindeki "Durum değiştir" butonları artık sabit NEXT[]
+   yerine bunu kullanır: mevcut kullanıcı için o projede GERÇEKTEN
+   yapılabilir hedef durumları döner. */
+function effectiveNext(pr,status){
+ const wf=workflowOf(pr.k);
+ const isOverride=S.me.r==="pmdir"||S.me.r==="admin";
+ return wf.filter(t=>t.from_status===status).filter(t=>{
+   if(!t.enabled&&!isOverride)return false;
+   if(t.allowed_roles&&t.allowed_roles.length&&!t.allowed_roles.includes(S.me.r)&&!isOverride)return false;
+   return true;}).map(t=>t.to_status);}
 /* "Sonraki toplantıya aktar" ile taşınan maddeler — LIVE_BACKEND'de bu
    önceden HİÇ çekilmiyordu (yeni toplantı formu her zaman boş açılıyordu).
    Proje seçilince bu kuyruk çekilir ve formun madde listesine, önceki
@@ -2250,7 +2284,7 @@ function screenView(){
     `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">R yalnızca görüntüleme, W ekleme ve değiştirme yetkisidir. Her değişiklik denetim kaydına yazılır.</p>`;}
   MODULES.forEach(mo=>{
    rows+=`<tr><td colspan="${roles.length+1}" style="background:var(--s1);font-size:9.5px;color:var(--tm);letter-spacing:.08em">${mo[1].toUpperCase()}</td></tr>`;
-   [[mo[0],"(modül)"]].concat((SCREENS[mo[0]]||[]).map(x=>[x[0],x[1]])).forEach(([key,label])=>{
+   [[mo[0],"(modül)"]].concat((SCREENS[mo[0]]||[]).map(x=>[x[0],x[1]])).filter(([key])=>!LOCKED_ACCESS_KEYS.includes(key)).forEach(([key,label])=>{
     rows+=`<tr><td style="min-width:150px">${label}<div class="m" style="color:var(--tm)">${key}</div></td>`+
      roles.map(r=>{const val=(ACC[r]||{})[key]||"none";
       const cls=val===W?"ok":val===R?"":"",txt=val===W?"W":val===R?"R":"—";
@@ -2629,6 +2663,22 @@ function screenView(){
    `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Each bar spans from an Epic's creation date to its due date;
     the gold fill shows how much of its work (Stories/Tasks/Bugs) is done. Set a due date on an Epic (from its detail panel)
     to place it on the timeline. Click a bar to open the Epic.</p>`;}
+
+ /* Project Admin: yalnızca Proje Yönetim Direktörü'ne açık. Proje yönetimi
+    modülüyle ilgili yetkilendirme/kural ayarları (bugün: iş akışı kuralları)
+    buradan yönetilir — diğer rollerin bu menüyü hiç görmediği ACC'de garanti
+    altına alınmıştır (yalnızca pmdir'e "d.projadmin" tanımlıdır). */
+ if(v==="d.projadmin"){
+  const p=P();
+  return head("Project Admin",p.k+" — "+p.n,
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
+  `<div class="card" style="max-width:640px">
+    <div style="font-size:13.5px;font-weight:600">Workflow rules</div>
+    <p class="m" style="color:var(--tm);margin-top:6px">Define which status transitions are allowed in this project and which
+     roles may perform each one. Only the Project Management Director can view or change this screen.</p>
+    <div style="display:flex;justify-content:flex-end;margin-top:10px">
+     <button class="b p" data-a="manageWorkflow:${S.proj}">Open workflow editor</button></div></div>
+   <p style="font-size:11.5px;color:var(--tm);margin-top:12px">More project-wide administration settings will appear here over time.</p>`;}
 
  /* ---- reports ---- */
 
@@ -4142,7 +4192,7 @@ function dialogView(){
     <div style="display:flex;justify-content:flex-end;margin-top:6px">
      <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
    ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
-    <div style="display:flex;gap:7px;flex-wrap:wrap">${(NEXT[i.st]||[]).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
+    <div style="display:flex;gap:7px;flex-wrap:wrap">${effectiveNext(p,i.st).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
    <div class="lbl" style="margin-top:12px">Time Tracking</div>
    ${(()=>{const spent=(worklogs||[]).reduce((s,w)=>s+w.time_spent_minutes,0);
      const orig=i.origEst,rem=i.remEst;
@@ -4235,6 +4285,36 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px">
     <button class="b" data-a="dlgClose">Cancel</button>
     <button class="b p" data-a="wipLimitsSave:${d.pi}">Save</button></div>`);}
+ if(d.type==="workflow"){
+  const pr=PROJ[d.pi];
+  const rows=f.workflowRows||(f.workflowRows=workflowOf(pr.k).map(t=>({...t})));
+  const statuses=Object.keys(FLOW);
+  return wrap(`<div style="display:flex;align-items:center;gap:9px">
+    <div style="font-size:15px;flex:1">Workflow — ${pr.k}</div>
+    <button class="b s" data-a="dlgClose" style="padding:4px 9px">✕</button></div>
+   <p class="m" style="color:var(--tm);margin-top:6px">Control which status changes are allowed and who can make them.
+    If no role is checked, anyone with Board write access can do it. Any transition NOT listed below stays unrestricted.
+    PM Director can always override, even a disabled transition.</p>
+   ${rows.map((t,idx)=>`<div class="card" style="padding:8px 10px;margin-bottom:6px">
+     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:12.5px;font-weight:600;flex:1">${FLOW[t.from_status]} → ${FLOW[t.to_status]}</span>
+      <span class="m" style="color:var(--tm)">enabled</span>
+      <button class="sw ${t.enabled?"on":""}" data-a="wfToggleEnabled:${idx}"><i></i></button>
+      <button class="b s d" data-a="wfRemoveRow:${idx}">Remove</button></div>
+     <div style="display:flex;gap:14px;margin-top:7px;flex-wrap:wrap">
+      ${WORKFLOW_ROLES_CLIENT.map(r=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer">
+        <input type="checkbox" data-a="wfToggleRole:${idx}:${r}" ${(t.allowed_roles||[]).includes(r)?"checked":""}>${WORKFLOW_ROLE_LABEL[r]}</label>`).join("")}</div></div>`).join("")
+     ||`<p class="m" style="color:var(--tm)">No transitions configured — every status change is unrestricted.</p>`}
+   <div class="lbl" style="margin-top:14px">Add a transition</div>
+   <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+    <select id="fWfFrom" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     ${statuses.map(s=>`<option value="${s}">${FLOW[s]}</option>`).join("")}</select>
+    <select id="fWfTo" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     ${statuses.map(s=>`<option value="${s}">${FLOW[s]}</option>`).join("")}</select>
+    <button class="b s" data-a="wfAddRow">Add</button></div>
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px">
+    <button class="b" data-a="dlgClose">Cancel</button>
+    <button class="b p" data-a="wfSave:${d.pi}">Save</button></div>`);}
  if(d.type==="gantt"){
   return wrap(`<div style="font-size:15px">Gantt görevi ekle — ${P().k}</div>
    <div class="lbl" style="margin-top:11px">GÖREV ADI</div><input id="fGName" value="${esc(f.name||"")}">
@@ -4700,6 +4780,7 @@ app.addEventListener("click",async ev=>{
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null});render();return;}
  if(k==="cycle"){const r=p[1],key=p[2];
   if(r===S.me.r){toast("Kendi rolünüzün yetkilerini değiştiremezsiniz — görevler ayrılığı gereği başka bir yönetici yapmalı.",1);return;}
+  if(LOCKED_ACCESS_KEYS.includes(key)){toast("Bu ekranın yetkisi sabittir, buradan değiştirilemez.",1);return;}
   if(LIVE_BACKEND){
    const cur=(ACCESS_LIVE[r]||{})[key]||"none";
    const nx=cur==="none"?R:cur===R?W:"none";
@@ -5152,6 +5233,29 @@ app.addEventListener("click",async ev=>{
    catch(e){toast(e.message,1);}
    return;}
   pr.wip=limits;S.dlg=null;toast("WIP limits saved.");render();return;}
+ if(k==="manageWorkflow"){if(S.me.r!=="pmdir"){toast("Yalnızca Proje Yönetim Direktörü iş akışını değiştirebilir.",1);return;}
+  const pi=+p[1];S.f={};S.dlg={type:"workflow",pi};render();return;}
+ if(k==="wfToggleEnabled"){const idx=+p[1];S.f.workflowRows[idx].enabled=!S.f.workflowRows[idx].enabled;render();return;}
+ if(k==="wfToggleRole"){const idx=+p[1],role=p[2];const row=S.f.workflowRows[idx];
+  row.allowed_roles=row.allowed_roles||[];
+  if(row.allowed_roles.includes(role))row.allowed_roles=row.allowed_roles.filter(r=>r!==role);
+  else row.allowed_roles=[...row.allowed_roles,role];
+  render();return;}
+ if(k==="wfRemoveRow"){const idx=+p[1];S.f.workflowRows.splice(idx,1);render();return;}
+ if(k==="wfAddRow"){const from=document.getElementById("fWfFrom").value,to=document.getElementById("fWfTo").value;
+  if(from===to){toast("From and To must be different.",1);return;}
+  if(S.f.workflowRows.some(t=>t.from_status===from&&t.to_status===to)){toast("This transition is already listed.",1);return;}
+  S.f.workflowRows.push({from_status:from,to_status:to,allowed_roles:[],enabled:true});render();return;}
+ if(k==="wfSave"){if(S.me.r!=="pmdir"){toast("Yalnızca Proje Yönetim Direktörü iş akışını değiştirebilir.",1);return;}
+  const pi=+p[1],pr=PROJ[pi],pk=pr.k;
+  const transitions=S.f.workflowRows.map(t=>({from:t.from_status,to:t.to_status,allowedRoles:t.allowed_roles,enabled:t.enabled}));
+  if(LIVE_BACKEND){
+   try{const res=await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/workflow",{transitions});
+    PROJECT_WORKFLOW_LIVE[pk]=res.items;S.dlg=null;S.f={};toast("Workflow saved.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  PROJECT_WORKFLOW_DEMO[pk]=S.f.workflowRows.map(t=>({...t}));
+  S.dlg=null;S.f={};toast("Workflow saved.");render();return;}
  if(k==="versionCreate"){const pi=+p[1],pk=PROJ[pi].k;
   const inp=document.getElementById("fNewVersionName");
   const name=(inp&&inp.value||"").trim();

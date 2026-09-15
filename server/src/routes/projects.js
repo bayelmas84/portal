@@ -97,6 +97,22 @@ async function ensureMandatoryTeam(projectK) {
   }
 }
 
+// Bugüne kadar frontend'de sabit kodlu olan durum zinciri — yeni bir
+// proje oluşturulduğunda varsayılan (kısıtlamasız) iş akışı olarak atanır.
+const DEFAULT_WORKFLOW_TRANSITIONS = [
+  ["backlog", "todo"], ["todo", "prog"], ["prog", "review"], ["prog", "todo"],
+  ["review", "test"], ["review", "prog"], ["test", "done"], ["test", "prog"], ["done", "prog"],
+];
+async function seedDefaultWorkflow(projectK) {
+  for (const [from, to] of DEFAULT_WORKFLOW_TRANSITIONS) {
+    await query(
+      `INSERT INTO project_workflow_transitions (project_k, from_status, to_status)
+       VALUES ($1,$2,$3) ON CONFLICT (project_k, from_status, to_status) DO NOTHING`,
+      [projectK, from, to]
+    );
+  }
+}
+
 router.get("/", requireRead("d.team"), async (req, res, next) => {
   try {
     const { rows } = await query("SELECT * FROM projects ORDER BY k");
@@ -129,6 +145,7 @@ router.post("/", requireWrite("d.board"), async (req, res, next) => {
       return proj.rows[0];
     });
     await ensureMandatoryTeam(k);
+    await seedDefaultWorkflow(k);
     await audit(`Proje oluşturuldu: ${k} — ${name.trim()}`, req.user.username);
     res.status(201).json({ item: result });
   } catch (e) {
@@ -151,6 +168,33 @@ function sanitizeLabels(labels) {
     if (out.length >= 10) break;
   }
   return out;
+}
+
+// Bir yorum metninde geçen "@kullanici.adi" işaretlemelerini bulur ve
+// GERÇEKTEN VAR OLAN aktif kullanıcı adlarıyla eşleştirir (uydurma/kısmi
+// eşleşmeler mail göndermez). Kendi kendini etiketleme çağıran tarafta
+// (recipients içinden çıkarılarak) elenir.
+async function extractMentionedUsernames(text) {
+  const candidates = [...new Set((String(text || "").match(/@([a-zA-Z0-9_.]+)/g) || []).map((m) => m.slice(1)))];
+  if (!candidates.length) return [];
+  const { rows } = await query("SELECT username FROM users WHERE username = ANY($1::text[]) AND active", [candidates]);
+  return rows.map((r) => r.username);
+}
+
+// Bir konu için "participant" listesi: reporter (created_by), assignee ve
+// o konuda daha önce yorum yazmış olan herkes (etiketlenenler hariç,
+// çağıran tarafta ayrıca elenir). Bildirim e-postalarının kime gideceğini
+// belirler.
+async function participantsOf(projectK, issueKey, issue) {
+  const set = new Set();
+  if (issue.created_by) set.add(issue.created_by);
+  if (issue.assignee_username) set.add(issue.assignee_username);
+  const commenters = await query(
+    "SELECT DISTINCT author_username FROM project_issue_comments WHERE project_k=$1 AND issue_key=$2",
+    [projectK, issueKey]
+  );
+  commenters.rows.forEach((r) => set.add(r.author_username));
+  return set;
 }
 
 // Fix Version / Component: labels'tan farklı olarak SERBEST METİN DEĞİL —
@@ -524,6 +568,25 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     if (status && !["backlog", "todo", "prog", "review", "test", "done"].includes(status)) {
       return res.status(400).json({ error: "Geçersiz durum." });
     }
+    // İş akışı (workflow) kontrolü: bu (from,to) çifti için PROJEDE
+    // TANIMLANMIŞ bir kısıtlama satırı varsa uygulanır. Tanımlı bir satır
+    // yoksa geçiş serbesttir (geriye dönük uyumluluk — bkz. migration 037).
+    if (status && status !== issue.status) {
+      const wf = await query(
+        "SELECT allowed_roles, enabled FROM project_workflow_transitions WHERE project_k=$1 AND from_status=$2 AND to_status=$3",
+        [req.params.k, issue.status, status]
+      );
+      if (wf.rowCount) {
+        const { allowed_roles: allowedRoles, enabled } = wf.rows[0];
+        const isOverride = req.user.role === "pmdir" || req.user.role === "admin";
+        if (!enabled && !isOverride) {
+          return res.status(400).json({ error: `${issue.status} -> ${status} geçişi bu proje için devre dışı bırakılmış.` });
+        }
+        if (allowedRoles && allowedRoles.length && !allowedRoles.includes(req.user.role) && !isOverride) {
+          return res.status(403).json({ error: `${issue.status} -> ${status} geçişini yapma yetkiniz yok.` });
+        }
+      }
+    }
     if (assigneeUsername) {
       const inTeam = await query(
         "SELECT 1 FROM project_team WHERE project_k=$1 AND username=$2",
@@ -611,10 +674,33 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
       }
     }
     res.json({ ok: true });
+
+    // Atama bildirimi: assignee GERÇEKTEN değiştiyse (ve yeni biri atandıysa,
+    // boşa alma değilse) yeni atanan kişiye e-posta gider. Yanıt zaten
+    // gönderildi, bu adım kullanıcıyı bekletmez.
+    if (assigneeUsername !== undefined && assigneeUsername && assigneeUsername !== issue.assignee_username) {
+      (async () => {
+        try {
+          const [assignee, assigner] = await Promise.all([
+            query("SELECT email FROM users WHERE username=$1", [assigneeUsername]),
+            query("SELECT name FROM users WHERE username=$1", [req.user.username]),
+          ]);
+          if (assignee.rows[0]) {
+            const assignerName = assigner.rows[0] ? assigner.rows[0].name : req.user.username;
+            await sendMail(
+              assignee.rows[0].email,
+              `${req.params.issueKey} size atandı`,
+              `${req.params.issueKey} — ${title !== undefined ? title.trim() : issue.title}\n\nBu konu size atandı. Atayan: ${assignerName}`
+            );
+          }
+        } catch (mailErr) {
+          await audit(`Atama bildirimi gönderilemedi (${req.params.k}/${req.params.issueKey}): ${mailErr.message}`, "sistem", false);
+        }
+      })();
+    }
   } catch (e) { next(e); }
 });
 
-// --------------------------- Konu ekleri (dokümanlar) ---------------------------
 router.get("/:k/issues/:issueKey/attachments", requireRead("d.board"), async (req, res, next) => {
   try {
     const { rows } = await query(
@@ -703,7 +789,7 @@ router.post("/:k/issues/:issueKey/comments", requireWrite("d.board"), async (req
     const body = (req.body && req.body.body || "").trim();
     if (!body) return res.status(400).json({ error: "Yorum boş olamaz." });
     const issue = await query(
-      "SELECT issue_key FROM project_issues WHERE project_k=$1 AND issue_key=$2",
+      "SELECT issue_key, title, created_by, assignee_username FROM project_issues WHERE project_k=$1 AND issue_key=$2",
       [req.params.k, req.params.issueKey]
     );
     if (!issue.rowCount) return res.status(404).json({ error: "Konu bulunamadı." });
@@ -714,9 +800,46 @@ router.post("/:k/issues/:issueKey/comments", requireWrite("d.board"), async (req
       [req.params.k, req.params.issueKey, req.user.username, body]
     );
     const author = await query("SELECT name FROM users WHERE username=$1", [req.user.username]);
-    res.status(201).json({ item: { ...rows[0], author_name: author.rows[0] ? author.rows[0].name : req.user.username } });
+    const authorName = author.rows[0] ? author.rows[0].name : req.user.username;
+    res.status(201).json({ item: { ...rows[0], author_name: authorName } });
+
+    // Bildirimler: reporter + assignee + o konuda daha önce yorum yazmış
+    // herkese ("participant") yeni yorum e-postası; @kullanici.adi ile
+    // etiketlenenlere ayrı, daha spesifik bir e-posta. Aynı kişi hem
+    // participant hem mention olabilir — mükerrer göndermemek için
+    // mention alıcıları genel listeden çıkarılır. Yanıt zaten
+    // gönderildiği için bu adım kullanıcıyı bekletmez (fire-and-forget).
+    (async () => {
+      try {
+        const iss = issue.rows[0];
+        const mentioned = await extractMentionedUsernames(body);
+        const participants = await participantsOf(req.params.k, req.params.issueKey, iss);
+        participants.delete(req.user.username);
+        mentioned.forEach((u) => participants.delete(u));
+        const usersToNotify = await query(
+          "SELECT username, email FROM users WHERE username = ANY($1::text[]) AND active",
+          [[...participants]]
+        );
+        const commentSubject = `${req.params.issueKey} — yeni bir yorum eklendi`;
+        const commentText = `${req.params.issueKey} — ${iss.title}\n\nYorumu yazan: ${authorName}\n\n"${body}"`;
+        for (const u of usersToNotify.rows) await sendMail(u.email, commentSubject, commentText);
+
+        if (mentioned.length) {
+          const mentionedUsers = await query(
+            "SELECT username, email FROM users WHERE username = ANY($1::text[]) AND active AND username<>$2",
+            [mentioned, req.user.username]
+          );
+          const mentionSubject = `${req.params.issueKey} içinde sizden bahsedildi`;
+          const mentionText = `${authorName}, ${req.params.issueKey} — ${iss.title} üzerindeki bir yorumda sizden bahsetti:\n\n"${body}"`;
+          for (const u of mentionedUsers.rows) await sendMail(u.email, mentionSubject, mentionText);
+        }
+      } catch (mailErr) {
+        await audit(`Yorum bildirimi gönderilemedi (${req.params.k}/${req.params.issueKey}): ${mailErr.message}`, "sistem", false);
+      }
+    })();
   } catch (e) { next(e); }
 });
+
 
 router.put("/:k/issues/:issueKey/comments/:id", requireWrite("d.board"), async (req, res, next) => {
   try {
@@ -1082,6 +1205,57 @@ router.put("/:k/wip-limits", requireWrite("d.board"), async (req, res, next) => 
     const { rows } = await query("UPDATE projects SET wip_limits=$1 WHERE k=$2 RETURNING wip_limits", [JSON.stringify(limits), req.params.k]);
     if (!rows.length) return res.status(404).json({ error: "Proje bulunamadı." });
     res.json({ wipLimits: rows[0].wip_limits });
+  } catch (e) { next(e); }
+});
+
+// ------------------------------ İş akışı (workflow) ------------------------------
+const WORKFLOW_STATUSES = ["backlog", "todo", "prog", "review", "test", "done"];
+// Yalnızca bu roller Board üzerinde durum değiştirebiliyor (d.board:W) —
+// bu yüzden geçiş bazlı rol kısıtlaması yalnızca bunlar arasından seçilir.
+const WORKFLOW_ROLES = ["pmdir", "pm", "dev"];
+router.get("/:k/workflow", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "SELECT * FROM project_workflow_transitions WHERE project_k=$1 ORDER BY from_status, to_status",
+      [req.params.k]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.put("/:k/workflow", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    // İş akışı KURALLARINI değiştirmek (kim hangi geçişi yapabilir) yalnızca
+    // Proje Yönetim Direktörü'ne aittir — bir geçişi FİİLEN kullanırken
+    // devreye giren pmdir/admin "override" kuralından farklı bir kısıtlama.
+    if (req.user.role !== "pmdir") {
+      return res.status(403).json({ error: "İş akışı kurallarını yalnızca Proje Yönetim Direktörü değiştirebilir." });
+    }
+    const transitions = (req.body && req.body.transitions) || [];
+    if (!Array.isArray(transitions)) return res.status(400).json({ error: "Geçersiz istek." });
+    const clean = [];
+    for (const t of transitions) {
+      if (!WORKFLOW_STATUSES.includes(t.from) || !WORKFLOW_STATUSES.includes(t.to) || t.from === t.to) {
+        return res.status(400).json({ error: `Geçersiz geçiş: ${t.from} -> ${t.to}` });
+      }
+      const roles = Array.isArray(t.allowedRoles) ? t.allowedRoles.filter((r) => WORKFLOW_ROLES.includes(r)) : [];
+      clean.push({ from: t.from, to: t.to, roles, enabled: t.enabled !== false });
+    }
+    await withTransaction(async (client) => {
+      await client.query("DELETE FROM project_workflow_transitions WHERE project_k=$1", [req.params.k]);
+      for (const t of clean) {
+        await client.query(
+          `INSERT INTO project_workflow_transitions (project_k, from_status, to_status, allowed_roles, enabled)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [req.params.k, t.from, t.to, t.roles, t.enabled]
+        );
+      }
+    });
+    const { rows } = await query(
+      "SELECT * FROM project_workflow_transitions WHERE project_k=$1 ORDER BY from_status, to_status",
+      [req.params.k]
+    );
+    res.json({ items: rows });
   } catch (e) { next(e); }
 });
 
