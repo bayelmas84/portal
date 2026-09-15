@@ -845,8 +845,44 @@ async function loadIssueLinksLive(pk,key){
   const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/links");
   ISSUE_LINKS_LIVE[pk+"::"+key]=data.items;render();
  }catch(e){/* sessiz geç */}}
+/* Konu geçmişi (kim, ne zaman, ne değiştirdi) — canlı backend'de
+   GET .../history uç noktasından, demo modda bellek-içi bir dizi
+   üzerinden tutulur. Panelin en altında "History" bölümünde gösterilir. */
+let ISSUE_HISTORY_LIVE={};
+async function loadIssueHistoryLive(pk,key){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/history");
+  ISSUE_HISTORY_LIVE[pk+"::"+key]=data.items;render();
+ }catch(e){/* sessiz geç */}}
+let ISSUE_HISTORY_DEMO=[];
+function pushDemoHistory(pk,key,message){
+ ISSUE_HISTORY_DEMO.unshift({id:"h"+(ISSUE_HISTORY_DEMO.length+1),pk,issue_key:key,
+  user_name:S.me.n,message,created_at:now()});}
+function demoHistoryFor(pk,key){
+ return ISSUE_HISTORY_DEMO.filter(h=>h.pk===pk&&h.issue_key===key);}
 let ISSUE_LINKS_DEMO=[];
 let nextIssueLink=1;
+/* Backend'deki deriveSubjectPrefix/nextKeyForPrefix/formatKeyAsLabel ile
+   BİREBİR aynı mantık — demo modda da toplantıdan üretilen Epic/Task'lar
+   konuya özel önek+sayaçtan (örn. MOBİL1, MOBİL2, ...) key almalı; aksi
+   halde canlı backend ile demo mod arasında (kullanıcının fark ettiği gibi)
+   farklı davranış oluşur. */
+function deriveSubjectPrefixDemo(text){
+ const s=String(text||"").trim();if(!s)return null;
+ const firstWord=s.split(/[\s\-_/,.]+/)[0]||"";
+ const lettersOnly=firstWord.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü]/g,"");
+ if(!lettersOnly)return null;
+ return lettersOnly.toLocaleUpperCase("tr-TR").slice(0,12);}
+function formatKeyAsLabelDemo(key){
+ return key.replace(/([A-Za-zÇĞİÖŞÜçğıöşü]+)(\d+)$/,"$1 $2");}
+function nextKeyForPrefixDemo(mp,prefix){
+ const re=new RegExp("^"+prefix.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(\\d+)$");
+ let max=0;
+ mp.items.forEach(i=>{const m=re.exec(i.key);if(m)max=Math.max(max,parseInt(m[1],10));});
+ return prefix+(max+1);}
+function nextKeyDashDemo(mp){
+ const nums=mp.items.map(i=>+String(i.key).split("-")[1]||0);
+ return mp.k+"-"+((nums.length?Math.max.apply(null,nums):0)+1);}
 const LINK_INVERSE_LABEL={blocks:"is blocked by",clones:"is cloned by",duplicates:"is duplicated by",relates:"relates to"};
 const LINK_FORWARD_LABEL={blocks:"blocks",clones:"clones",duplicates:"duplicates",relates:"relates to"};
 function demoLinksFor(pk,key){
@@ -2537,7 +2573,8 @@ function screenView(){
     <b>Group Director</b> and <b>Executive Vice President</b> titles only. Your title: ${esc(S.me.title)}.</p></div>`;
   if(LIVE_BACKEND&&PROJ.some(p=>!p.itemsLoaded))
    return head("Executive Summary","")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
-  const rows=PROJ.map(p=>({p,mt:metrics(p)}));
+  const baseProjects=S.projAll?PROJ:[P()];
+  const rows=baseProjects.map(p=>({p,mt:metrics(p)}));
   const tot={pts:rows.reduce((a,r)=>a+r.mt.pts,0),done:rows.reduce((a,r)=>a+r.mt.donePts,0),
    bugs:rows.reduce((a,r)=>a+r.mt.bugs,0),
    late:rows.filter(r=>r.p.health==="Delayed").length,risk:rows.filter(r=>r.p.health==="At risk").length};
@@ -2559,9 +2596,10 @@ function screenView(){
    return true;});
   const FLABEL={delayed:"Delayed projects",risk:"Projects at risk",bugs:"Projects with open bugs",
    attention:"Projects behind schedule",ontrack:"Projects on track"};
-  return head("Executive Summary",PROJ.length+" projects · portfolio view",pill("restricted","wr"))+
+  return head("Executive Summary",baseProjects.length+(S.projAll?" projects":" project")+" · portfolio view",
+   `<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">${projSelectHTML(PROJ,true)}${pill("restricted","wr")}</div>`)+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
-   ${[["Projects",PROJ.length,null],["Portfolio progress",tot.pct+"%",null],
+   ${[["Projects",baseProjects.length,null],["Portfolio progress",tot.pct+"%",null],
       ["Story points",tot.done+" / "+tot.pts,null],["Delayed",tot.late,"delayed"],
       ["At risk",tot.risk,"risk"],["On track",rows.filter(r=>r.p.health==="On track").length,"ontrack"],
       ["Open bugs",tot.bugs,"bugs"]].map(x=>
@@ -3715,7 +3753,11 @@ function dialogView(){
   const attKey=p.k+"::"+i.key;
   const atts=LIVE_BACKEND?(ISSUE_ATTACH_LIVE[attKey]||null):null;
   const links=LIVE_BACKEND?(ISSUE_LINKS_LIVE[attKey]||null):demoLinksFor(p.k,i.key);
-  const otherIssues=(p.items||[]).filter(x=>x.key!==i.key);
+  const linkProjectK=S.f.linkProject||p.k;
+  const linkProject=PROJ.find(x=>x.k===linkProjectK)||p;
+  const linkCandidates=(linkProject.items||[])
+   .filter(x=>!(linkProject.k===p.k&&x.key===i.key))
+   .filter(x=>x.st!=="done");
   return wrapSide(`<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
     <span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span>
     <span class="m" style="color:var(--ta)">${i.key}</span><span style="flex:1"></span>${pill(FLOW[i.st],"")}
@@ -3770,14 +3812,18 @@ function dialogView(){
       ${lk.otherStatus?pill(FLOW[lk.otherStatus]||lk.otherStatus):""}
       ${cw("d.board")?`<button class="b s d" data-a="issueLinkDel:${d.pi}:${i.key}:${lk.id}" title="Kaldır">✕</button>`:""}</div>`).join("")
     :`<p class="m" style="color:var(--tm);margin:4px 0 0">No linked issues.</p>`}
-   ${cw("d.board")&&otherIssues.length?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
     <select id="fLinkType" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
      <option value="" ${!f.linkType?"selected":""}>Select relationship…</option>
      ${["blocks","clones","duplicates","relates"].map(t=>`<option value="${t}" ${f.linkType===t?"selected":""}>${LINK_FORWARD_LABEL[t]}</option>`).join("")}</select>
-    <select id="fLinkTarget" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px;flex:1;min-width:140px">
-     <option value="" ${!f.linkTarget?"selected":""}>Select issue…</option>
-     ${otherIssues.map(x=>`<option value="${x.key}" ${f.linkTarget===x.key?"selected":""}>${x.key} — ${esc(String(x.t).slice(0,32))}</option>`).join("")}</select>
-    <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
+    <select id="fLinkProject" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     ${PROJ.map(x=>`<option value="${x.k}" ${x.k===linkProjectK?"selected":""}>${esc(x.k)} — ${esc(x.n)}</option>`).join("")}</select></div>
+    <input id="fLinkSearch" placeholder="Search by key or title…" style="margin-top:6px;width:100%">
+    <select id="fLinkTarget" style="width:100%;margin-top:6px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     <option value="">Select issue… (${linkCandidates.length} open in ${esc(linkProject.k)})</option>
+     ${linkCandidates.map(x=>`<option value="${x.key}" ${f.linkTarget===x.key?"selected":""}>${x.key} — ${esc(String(x.t).slice(0,40))}</option>`).join("")}</select>
+    <div style="display:flex;justify-content:flex-end;margin-top:6px">
+     <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
    ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">${(NEXT[i.st]||[]).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
@@ -3977,6 +4023,19 @@ function afterRender(){
  if(fidlabel)fidlabel.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();
   const btn=[...app.querySelectorAll("[data-a]")].find(x=>x.dataset.a.startsWith("issueLabelAdd:"));
   if(btn)btn.click();}};
+ const flType=document.getElementById("fLinkType");
+ if(flType)flType.onchange=e=>{S.f.linkType=e.target.value||null;};
+ const flProject=document.getElementById("fLinkProject");
+ if(flProject)flProject.onchange=e=>{S.f.linkProject=e.target.value||null;S.f.linkTarget=null;render();};
+ const flTarget=document.getElementById("fLinkTarget");
+ if(flTarget)flTarget.onchange=e=>{S.f.linkTarget=e.target.value||null;};
+ const flSearch=document.getElementById("fLinkSearch");
+ if(flSearch)flSearch.oninput=e=>{
+  // Tam render() TETİKLEMEZ (arama kutusundaki focus/imleç kaybolmasın diye) —
+  // yalnızca hedef select'in seçeneklerini DOM üzerinde gizler/gösterir.
+  const q=e.target.value.toLowerCase();
+  const sel=document.getElementById("fLinkTarget");
+  if(sel)[...sel.options].forEach(o=>{if(!o.value)return;o.hidden=!o.textContent.toLowerCase().includes(q);});};
  [["dUrl","url"],["dBase","baseDn"],["dBind","bindDn"],["dFilter","filter"]].forEach(([id,key])=>{
   const el=document.getElementById(id);
   if(el)el.oninput=e=>{S.dirF=S.dirF||{};S.dirF[key]=e.target.value;};});
@@ -4443,7 +4502,7 @@ app.addEventListener("click",async ev=>{
  if(k==="scr"){if(!shown(p[1])){toast("Bu ekran kullanım dışı.",1);return;}
   clearInterval(S.timer);S.scr=p[1];
   // Proje-seçimli ekranlara her girişte varsayılan: All Projects
-  if(["d.backlog","d.board","d.sprint","d.gate","d.charts","d.team","d.docs","d.appr","d.cr"].includes(p[1]))S.projAll=true;
+  if(["d.backlog","d.board","d.sprint","d.gate","d.charts","d.team","d.docs","d.appr","d.cr","d.exec"].includes(p[1]))S.projAll=true;
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null,filter:""});render();return;}
  if(k==="filter"){S.filter=p[1]||"";render();return;}
  if(k==="proj"){S.proj=+p[1];render();return;}
@@ -4561,34 +4620,49 @@ app.addEventListener("click",async ev=>{
    }catch(e){toast("Kaydedilemedi: "+e.message,1);}
    return;}
   const m={id:nextMeeting++,projKey:f.projKey,projOther:subject,
-   title:(f.title||"").trim()||(f.projKey==="OTHER"?subject:"Toplantı Notu"),
+   title:"placeholder", // aşağıda gerçek başlık (subject-türetilmiş ya da özel) atanacak
    date:f.date,time:f.time||"",participants:[...(f.parts||[])],notes:(f.notes||"").trim(),
    items:(f.items||[]).map(it=>({id:it.id,text:it.text,status:"open",carriedFrom:!!it.carried,
     assignee:it.assignee,due:it.due||null,linkedIssueKey:null})),
    by:S.me.n,at:now()};
+  // Konu anahtarı öneki: özel başlık varsa ondan, yoksa gerçek projenin
+  // adından, o da yoksa "Diğer" konu metninden türetilir — backend'deki
+  // POST /meetings ile BİREBİR aynı öncelik sırası.
+  let subjectSource=(f.title||"").trim();
+  if(!subjectSource&&pr)subjectSource=pr.n;
+  if(!subjectSource)subjectSource=subject||"";
+  const subjectPrefix=deriveSubjectPrefixDemo(subjectSource);
+  const explicitTitle=(f.title||"").trim()||(f.projKey==="OTHER"?subject:"")||null;
   // Gündem maddeleri "Toplantı" projesinde bu toplantıya özel bir Epic'in
   // altına Task olarak açılır — doğrudan seçilen kişiye atanır ve backlog'a
   // düşer (board'a alınmaz). Demo modda da canlı backend ile birebir aynı
   // davranış sergilenir.
+  let mp=null,meetingTitle=explicitTitle;
   if(m.items.length){
-   let mp=PROJ.find(x=>x.k==="TOPLANTI");
+   mp=PROJ.find(x=>x.k==="TOPLANTI");
    if(!mp){mp={k:"TOPLANTI",n:"Toplantı",m:"Kanban",lead:S.me.n,health:"On track",hc:"#3B6D11",
     unitName:null,start:null,target:null,timePct:null,burndown:null,velocityHist:[],sprint:null,gate:null,items:[]};
     PROJ.push(mp);}
    TEAM.TOPLANTI=TEAM.TOPLANTI||[];
    [...new Set(m.items.map(it=>it.assignee).filter(Boolean))].forEach(n=>{
     if(!TEAM.TOPLANTI.some(x=>x.n===n))TEAM.TOPLANTI.push({n,r:"Katılımcı"});});
-   const nextKey=()=>{const nums=mp.items.map(i=>+String(i.key).split("-")[1]||0);
-    return mp.k+"-"+((nums.length?Math.max.apply(null,nums):0)+1);};
-   const epicKey=nextKey();
-   mp.items.push({key:epicKey,ty:"Epic",t:m.title,st:"backlog",pri:"Medium",pts:0,as:null,parent:null,
+   // Özel bir başlık/konu verilmemişse, toplantının görünen adı da Epic'in
+   // anahtarından türetilir ("MOBİL1" -> "MOBİL 1") — canlı backend ile aynı.
+   if(!meetingTitle&&subjectPrefix){
+    const previewKey=nextKeyForPrefixDemo(mp,subjectPrefix);
+    meetingTitle=formatKeyAsLabelDemo(previewKey);}
+   if(!meetingTitle)meetingTitle="Toplantı Notu";
+   const epicKey=subjectPrefix?nextKeyForPrefixDemo(mp,subjectPrefix):nextKeyDashDemo(mp);
+   mp.items.push({key:epicKey,ty:"Epic",t:meetingTitle,st:"backlog",pri:"Medium",pts:0,as:null,parent:null,
     desc:m.notes,rep:S.me.n,at:now(),labels:[],due:null});
    m.items.forEach(it=>{
-    const taskKey=nextKey();
+    const taskKey=subjectPrefix?nextKeyForPrefixDemo(mp,subjectPrefix):nextKeyDashDemo(mp);
     mp.items.push({key:taskKey,ty:"Task",t:it.text,st:"backlog",pri:"Medium",pts:0,as:it.assignee||null,
      parent:epicKey,desc:"",rep:S.me.n,at:now(),labels:[],due:it.due||null});
     it.linkedIssueKey=taskKey;});
   }
+  if(!meetingTitle)meetingTitle="Toplantı Notu";
+  m.title=meetingTitle;
   MEETINGS.unshift(m);if(f.projKey!=="OTHER")CARRY[f.projKey]=[];
   const to=[...new Set((m.participants||[]).map(mailOf))];
   const sent=to.filter(addr=>mail(addr,m.title+" — "+(pr?pr.k:subject)+" toplantı notu paylaşıldı"));
