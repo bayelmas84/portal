@@ -944,6 +944,27 @@ let ISSUE_COMMENTS_DEMO=[],nextIssueComment=1;
 function demoCommentsFor(pk,key){
  return ISSUE_COMMENTS_DEMO.filter(c=>c.pk===pk&&c.issue_key===key);}
 function canModerateComments(){return S.me.r==="pmdir"||S.me.r==="admin";}
+/* Zaman takibi (Time tracking / Worklog) — Jira'daki gibi Original/
+   Remaining Estimate (dakika olarak saklanır, arayüzde saat gösterilir)
+   ve worklog kaydı. Yorumlarla aynı yetki kuralı: yalnızca yazan kişi
+   kendi kaydını siler, pmdir/admin moderasyon amacıyla herkesinkini
+   silebilir. */
+let ISSUE_WORKLOGS_LIVE={};
+async function loadIssueWorklogsLive(pk,key){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/worklogs");
+  ISSUE_WORKLOGS_LIVE[pk+"::"+key]=data.items;render();
+ }catch(e){/* sessiz geç */}}
+let ISSUE_WORKLOGS_DEMO=[],nextWorklogId=1;
+function demoWorklogsFor(pk,key){
+ return ISSUE_WORKLOGS_DEMO.filter(w=>w.pk===pk&&w.issue_key===key)
+  .sort((a,b)=>(b.work_date+b.created_at).localeCompare(a.work_date+a.created_at));}
+function fmtMinutes(m){
+ if(m===null||m===undefined)return "—";
+ const h=Math.floor(m/60),mm=m%60;
+ if(h&&mm)return h+"h "+mm+"m";
+ if(h)return h+"h";
+ return mm+"m";}
 let ISSUE_LINKS_DEMO=[];
 let nextIssueLink=1;
 /* Backend'deki deriveSubjectPrefix/nextKeyForPrefix/formatKeyAsLabel ile
@@ -1167,6 +1188,7 @@ async function loadIssuesLive(k){
    rep:it.created_by?nameOf(it.created_by):null,at:String(it.created_at||"").slice(0,16).replace("T"," "),
    upd:String(it.updated_at||"").slice(0,16).replace("T"," "),labels:it.labels||[],
    fixVersions:it.fix_versions||[],components:it.components||[],
+   origEst:it.original_estimate_minutes,remEst:it.remaining_estimate_minutes,
    due:it.due_date?String(it.due_date).slice(0,10):null}));
   proj.itemsLoaded=true;
  }catch(e){toast("Konular yüklenemedi: "+e.message,1);}
@@ -3984,6 +4006,7 @@ function dialogView(){
   const atts=LIVE_BACKEND?(ISSUE_ATTACH_LIVE[attKey]||null):null;
   const links=LIVE_BACKEND?(ISSUE_LINKS_LIVE[attKey]||null):demoLinksFor(p.k,i.key);
   const comments=LIVE_BACKEND?(ISSUE_COMMENTS_LIVE[attKey]||null):demoCommentsFor(p.k,i.key);
+  const worklogs=LIVE_BACKEND?(ISSUE_WORKLOGS_LIVE[attKey]||null):demoWorklogsFor(p.k,i.key);
   const linkProjectK=S.f.linkProject||p.k;
   const linkProject=PROJ.find(x=>x.k===linkProjectK)||p;
   const linkCandidates=(linkProject.items||[])
@@ -4077,6 +4100,39 @@ function dialogView(){
      <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
    ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">${(NEXT[i.st]||[]).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
+   <div class="lbl" style="margin-top:12px">Time Tracking</div>
+   ${(()=>{const spent=(worklogs||[]).reduce((s,w)=>s+w.time_spent_minutes,0);
+     const orig=i.origEst,rem=i.remEst;
+     const barTotal=Math.max(orig||0,spent+(rem||0),1);
+     const spentPct=Math.min(100,Math.round(spent/barTotal*100));
+     const remPct=rem?Math.min(100-spentPct,Math.round(rem/barTotal*100)):0;
+     return `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:6px">
+      <span>Original: <b>${fmtMinutes(orig)}</b></span>
+      <span>Remaining: <b>${fmtMinutes(rem)}</b></span>
+      <span>Logged: <b>${fmtMinutes(spent)}</b></span></div>
+     <div style="height:7px;border-radius:4px;background:var(--s2);overflow:hidden;display:flex">
+      <div style="width:${spentPct}%;background:var(--ta)"></div>
+      <div style="width:${remPct}%;background:var(--bd)"></div></div>`;})()}
+   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+     <span class="m" style="color:var(--tm)">Original (h)</span>
+     <input id="fEstOrig" type="number" min="0" step="0.5" value="${i.origEst!=null?(i.origEst/60):""}" style="max-width:80px">
+     <span class="m" style="color:var(--tm)">Remaining (h)</span>
+     <input id="fEstRem" type="number" min="0" step="0.5" value="${i.remEst!=null?(i.remEst/60):""}" style="max-width:80px">
+     <button class="b s" data-a="issueEstSave:${d.pi}:${i.key}">Save</button></div>`:""}
+   <div style="margin-top:8px">
+    ${(worklogs||[]).map(w=>{const isOwner=w.author_username===S.me.u;const canDelete=isOwner||canModerateComments();
+      return `<div class="card" style="padding:7px 10px;margin-bottom:5px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+       <span style="font-size:12px;font-weight:600">${fmtMinutes(w.time_spent_minutes)}</span>
+       <span class="m" style="color:var(--tm)">${esc(w.author_name||w.author_username)} · ${String(w.work_date).slice(0,10)}</span>
+       ${w.comment?`<span class="m" style="color:var(--t2)">— ${esc(w.comment)}</span>`:""}
+       <span style="flex:1"></span>
+       ${canDelete?`<span style="cursor:pointer;color:var(--tm)" data-a="worklogDelete:${d.pi}:${i.key}:${w.id}">✕</span>`:""}</div>`;}).join("")
+    ||(worklogs===null?`<p class="m" style="color:var(--tm)">Loading…</p>`:`<p class="m" style="color:var(--tm)">No work logged yet.</p>`)}
+   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
+     <input id="fWorklogHours" type="number" min="0" step="0.25" placeholder="hours" style="max-width:90px">
+     <input id="fWorklogDate" type="date" value="${now().slice(0,10)}" style="max-width:150px">
+     <input id="fWorklogComment" placeholder="what did you work on? (optional)" style="flex:1;min-width:160px">
+     <button class="b s p" data-a="worklogAdd:${d.pi}:${i.key}">Log work</button></div>`:""}
    <div class="lbl" style="margin-top:12px">Comments${comments?" ("+comments.length+")":""}</div>
    ${comments===null?`<p class="m" style="color:var(--tm)">Loading…</p>`:
     (comments.map(c=>{
@@ -5344,7 +5400,8 @@ app.addEventListener("click",async ev=>{
    delete ISSUE_ATTACH_LIVE[pk+"::"+key];loadIssueAttachmentsLive(pk,key);
    delete ISSUE_LINKS_LIVE[pk+"::"+key];loadIssueLinksLive(pk,key);
    delete ISSUE_HISTORY_LIVE[pk+"::"+key];loadIssueHistoryLive(pk,key);
-   delete ISSUE_COMMENTS_LIVE[pk+"::"+key];loadIssueCommentsLive(pk,key);}
+   delete ISSUE_COMMENTS_LIVE[pk+"::"+key];loadIssueCommentsLive(pk,key);
+   delete ISSUE_WORKLOGS_LIVE[pk+"::"+key];loadIssueWorklogsLive(pk,key);}
   return;}
  if(k==="issueAttAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailDoc");const file=inp&&inp.files&&inp.files[0];
@@ -5519,6 +5576,45 @@ app.addEventListener("click",async ev=>{
    return;}
   ISSUE_COMMENTS_DEMO=ISSUE_COMMENTS_DEMO.filter(x=>!(String(x.id)===String(commentId)&&x.pk===pk&&x.issue_key===key));
   toast("Yorum silindi.");render();return;}
+ if(k==="issueEstSave"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const origH=document.getElementById("fEstOrig").value,remH=document.getElementById("fEstRem").value;
+  const origMin=origH===""?null:Math.round(parseFloat(origH)*60);
+  const remMin=remH===""?null:Math.round(parseFloat(remH)*60);
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),
+     {originalEstimateMinutes:origMin,remainingEstimateMinutes:remMin});
+    it.origEst=origMin;it.remEst=remMin;toast("Estimates saved.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  it.origEst=origMin;it.remEst=remMin;toast("Estimates saved.");render();return;}
+ if(k==="worklogAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const hoursInp=document.getElementById("fWorklogHours"),dateInp=document.getElementById("fWorklogDate"),commentInp=document.getElementById("fWorklogComment");
+  const hours=parseFloat(hoursInp&&hoursInp.value);
+  if(!hours||hours<=0){toast("Enter a positive number of hours.",1);return;}
+  const timeSpentMinutes=Math.round(hours*60);
+  const workDate=(dateInp&&dateInp.value)||now().slice(0,10);
+  const comment=(commentInp&&commentInp.value||"").trim();
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  if(LIVE_BACKEND){
+   try{await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/worklogs",
+     {timeSpentMinutes,workDate,comment});
+    if(it.remEst!=null)it.remEst=Math.max(0,it.remEst-timeSpentMinutes);
+    await loadIssueWorklogsLive(pk,key);toast("Work logged.");}
+   catch(e){toast(e.message,1);}
+   return;}
+  ISSUE_WORKLOGS_DEMO.push({id:nextWorklogId++,pk,issue_key:key,author_username:S.me.u,author_name:S.me.n,
+   time_spent_minutes:timeSpentMinutes,work_date:workDate,comment,created_at:now()});
+  if(it.remEst!=null)it.remEst=Math.max(0,it.remEst-timeSpentMinutes);
+  toast("Work logged.");render();return;}
+ if(k==="worklogDelete"){const pi=+p[1],key=p[2],wid=p[3],pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/worklogs/"+wid);
+    await loadIssueWorklogsLive(pk,key);toast("Worklog removed.");}
+   catch(e){toast(e.message,1);}
+   return;}
+  ISSUE_WORKLOGS_DEMO=ISSUE_WORKLOGS_DEMO.filter(x=>!(String(x.id)===String(wid)&&x.pk===pk&&x.issue_key===key));
+  toast("Worklog removed.");render();return;}
  if(k==="move"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]),from=it.st,to=p[3];
   if(to==="done"){const reason=issueCloseBlockReason(pr,it);

@@ -520,7 +520,7 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     const { rows } = await query("SELECT * FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
     const issue = rows[0];
     if (!issue) return res.status(404).json({ error: "Konu bulunamadı." });
-    const { status, assigneeUsername, priority, storyPoints, title, description, inSprint, labels, dueDate, fixVersions, components } = req.body || {};
+    const { status, assigneeUsername, priority, storyPoints, title, description, inSprint, labels, dueDate, fixVersions, components, originalEstimateMinutes, remainingEstimateMinutes } = req.body || {};
     if (status && !["backlog", "todo", "prog", "review", "test", "done"].includes(status)) {
       return res.status(400).json({ error: "Geçersiz durum." });
     }
@@ -571,6 +571,14 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     if (components !== undefined) { fields.push(`components=$${i++}`); values.push(await sanitizeComponentRefs(req.params.k, components)); }
     if (dueDate !== undefined) { fields.push(`due_date=$${i++}`); values.push(dueDate || null); }
     if (inSprint !== undefined) { fields.push(`in_sprint=$${i++}`); values.push(!!inSprint); }
+    if (originalEstimateMinutes !== undefined) {
+      const n = originalEstimateMinutes === null ? null : Math.max(0, parseInt(originalEstimateMinutes, 10) || 0);
+      fields.push(`original_estimate_minutes=$${i++}`); values.push(n);
+    }
+    if (remainingEstimateMinutes !== undefined) {
+      const n = remainingEstimateMinutes === null ? null : Math.max(0, parseInt(remainingEstimateMinutes, 10) || 0);
+      fields.push(`remaining_estimate_minutes=$${i++}`); values.push(n);
+    }
     if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });
     const changes = describeIssueChanges(issue, { status, assigneeUsername, priority, storyPoints, title, dueDate, labels });
     fields.push(`updated_at=now()`);
@@ -745,6 +753,65 @@ router.delete("/:k/issues/:issueKey/comments/:id", requireWrite("d.board"), asyn
       return res.status(403).json({ error: "Bu yorumu silme yetkiniz yok." });
     }
     await query("DELETE FROM project_issue_comments WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// -------------------------------- Zaman takibi (worklog) --------------------------------
+router.get("/:k/issues/:issueKey/worklogs", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT w.*, u.name AS author_name FROM project_issue_worklogs w
+         LEFT JOIN users u ON u.username=w.author_username
+        WHERE w.project_k=$1 AND w.issue_key=$2 ORDER BY w.work_date DESC, w.created_at DESC`,
+      [req.params.k, req.params.issueKey]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/issues/:issueKey/worklogs", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const timeSpentMinutes = parseInt((req.body && req.body.timeSpentMinutes), 10);
+    if (!Number.isFinite(timeSpentMinutes) || timeSpentMinutes <= 0) {
+      return res.status(400).json({ error: "Harcanan süre pozitif bir sayı (dakika) olmalı." });
+    }
+    const workDate = (req.body && req.body.workDate) || new Date().toISOString().slice(0, 10);
+    const comment = ((req.body && req.body.comment) || "").trim().slice(0, 500);
+    const issue = await query("SELECT remaining_estimate_minutes FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
+    if (!issue.rowCount) return res.status(404).json({ error: "Konu bulunamadı." });
+    const result = await withTransaction(async (client) => {
+      const ins = await client.query(
+        `INSERT INTO project_issue_worklogs (project_k, issue_key, author_username, time_spent_minutes, work_date, comment)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [req.params.k, req.params.issueKey, req.user.username, timeSpentMinutes, workDate, comment]
+      );
+      // Jira'nın varsayılan davranışı: kalan tahmin tanımlıysa, loglanan süre
+      // kadar otomatik azaltılır (0'ın altına inmez).
+      const remaining = issue.rows[0].remaining_estimate_minutes;
+      if (remaining !== null && remaining !== undefined) {
+        const newRemaining = Math.max(0, remaining - timeSpentMinutes);
+        await client.query("UPDATE project_issues SET remaining_estimate_minutes=$1 WHERE project_k=$2 AND issue_key=$3", [newRemaining, req.params.k, req.params.issueKey]);
+      }
+      return ins.rows[0];
+    });
+    const author = await query("SELECT name FROM users WHERE username=$1", [req.user.username]);
+    res.status(201).json({ item: { ...result, author_name: author.rows[0] ? author.rows[0].name : req.user.username } });
+  } catch (e) { next(e); }
+});
+
+router.delete("/:k/issues/:issueKey/worklogs/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const existing = await query(
+      "SELECT * FROM project_issue_worklogs WHERE id=$1 AND project_k=$2 AND issue_key=$3",
+      [req.params.id, req.params.k, req.params.issueKey]
+    );
+    if (!existing.rowCount) return res.status(404).json({ error: "Zaman kaydı bulunamadı." });
+    const isModerator = req.user.role === "pmdir" || req.user.role === "admin";
+    if (existing.rows[0].author_username !== req.user.username && !isModerator) {
+      return res.status(403).json({ error: "Bu zaman kaydını silme yetkiniz yok." });
+    }
+    await query("DELETE FROM project_issue_worklogs WHERE id=$1", [req.params.id]);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

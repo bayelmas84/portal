@@ -523,6 +523,66 @@ test("WIP limitleri: geçerli değerler kaydedilir, geçersiz (negatif) değer r
   assert.deepEqual(clear.body.wipLimits, {});
 });
 
+test("Zaman takibi: estimate atama, worklog eklendiğinde remaining otomatik düşer (0'ın altına inmez), yetki kontrolü", async () => {
+  const pm = await login("tolga.firat");
+  const other = await login("mert.balkan");
+  const mod = await login("bayram.elmas");
+
+  const issue = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Time Test Epic ${Date.now()}` });
+  const issueKey = issue.body.item.issue_key;
+
+  const setEst = await request(app)
+    .put(`/api/projects/TRADE/issues/${issueKey}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ originalEstimateMinutes: 480, remainingEstimateMinutes: 480 });
+  assert.equal(setEst.status, 200);
+
+  const log1 = await request(app)
+    .post(`/api/projects/TRADE/issues/${issueKey}/worklogs`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ timeSpentMinutes: 120, comment: "test oturumu" });
+  assert.equal(log1.status, 201);
+  const worklogId = log1.body.item.id;
+
+  let list = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  let found = list.body.items.find((i) => i.issue_key === issueKey);
+  assert.equal(found.remaining_estimate_minutes, 360, "120 dk loglandıktan sonra 480-120=360 olmalı");
+
+  const log2 = await request(app)
+    .post(`/api/projects/TRADE/issues/${issueKey}/worklogs`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ timeSpentMinutes: 1000 });
+  assert.equal(log2.status, 201);
+  list = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  found = list.body.items.find((i) => i.issue_key === issueKey);
+  assert.equal(found.remaining_estimate_minutes, 0, "remaining 0'ın altına inmemeli");
+
+  // Negatif/geçersiz süre reddedilmeli.
+  const invalidLog = await request(app)
+    .post(`/api/projects/TRADE/issues/${issueKey}/worklogs`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ timeSpentMinutes: -5 });
+  assert.equal(invalidLog.status, 400);
+
+  const worklogs = await request(app).get(`/api/projects/TRADE/issues/${issueKey}/worklogs`).set("Cookie", pm.cookie);
+  assert.equal(worklogs.body.items.length, 2);
+
+  // Yalnızca yazan kişi (ya da moderatör) silebilir.
+  const deleteByOther = await request(app)
+    .delete(`/api/projects/TRADE/issues/${issueKey}/worklogs/${worklogId}`)
+    .set("Cookie", other.cookie).set("X-CSRF-Token", other.csrf);
+  assert.equal(deleteByOther.status, 403);
+
+  const deleteByModerator = await request(app)
+    .delete(`/api/projects/TRADE/issues/${issueKey}/worklogs/${worklogId}`)
+    .set("Cookie", mod.cookie).set("X-CSRF-Token", mod.csrf);
+  assert.equal(deleteByModerator.status, 200);
+
+  const worklogsAfter = await request(app).get(`/api/projects/TRADE/issues/${issueKey}/worklogs`).set("Cookie", pm.cookie);
+  assert.equal(worklogsAfter.body.items.length, 1);
+});
+
 test.after(async () => {
   await pool.end();
 });
