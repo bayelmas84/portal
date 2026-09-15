@@ -493,6 +493,36 @@ test("Versions & Components: oluşturma, konuya atama (geçersiz değerler eleni
   assert.deepEqual(found3.components, [], "bileşen silinince konudaki referans da temizlenmeli");
 });
 
+test("WIP limitleri: geçerli değerler kaydedilir, geçersiz (negatif) değer reddedilir, proje listesinde görünür", async () => {
+  const pm = await login("tolga.firat");
+
+  const setLimits = await request(app)
+    .put("/api/projects/TRADE/wip-limits")
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ prog: 4, review: 2 });
+  assert.equal(setLimits.status, 200);
+  assert.deepEqual(setLimits.body.wipLimits, { prog: 4, review: 2 });
+
+  const invalid = await request(app)
+    .put("/api/projects/TRADE/wip-limits")
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ prog: -1 });
+  assert.equal(invalid.status, 400);
+
+  const list = await request(app).get("/api/projects").set("Cookie", pm.cookie);
+  const proj = list.body.items.find((p) => p.k === "TRADE");
+  assert.deepEqual(proj.wip_limits, { prog: 4, review: 2 });
+
+  // Limiti kaldırmak (boş obje): "todo" ve "test" hiç gönderilmediği için
+  // zaten yoktu; şimdi tamamen boş gönderelim ve hepsi temizlensin.
+  const clear = await request(app)
+    .put("/api/projects/TRADE/wip-limits")
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({});
+  assert.equal(clear.status, 200);
+  assert.deepEqual(clear.body.wipLimits, {});
+});
+
 test.after(async () => {
   await pool.end();
 });

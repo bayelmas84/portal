@@ -625,12 +625,23 @@ const itemByKey=(p,k)=>(p.items||[]).find(i=>i.key===k);
    (Epic'e ya da atanan kişiye göre gruplandığında) aynı fonksiyon
    kullanılır. draggable=true iken sürükle-bırak (data-drop/data-key)
    etkinleştirilir; All Projects modunda ya da salt-okunur ekranlarda
-   false geçilerek yalnızca tıklanabilir kartlar gösterilir. */
-function renderBoardCols(cols,items,pi,draggable){
+   false geçilerek yalnızca tıklanabilir kartlar gösterilir.
+   wipLimits: {todo,prog,review,test} -> limit (proje ayarı).
+   fullCounts: o sütunun projedeki TOPLAM (tüm swimlane'ler dahil) konu
+   sayısı — swimlane açıkken her satırın kendi alt-sayımı yerine WIP
+   ihlali bu toplam üzerinden değerlendirilir (Jira'nın davranışına
+   uygun: limit sütunun bütününe uygulanır, tek bir swimlane'e değil). */
+function renderBoardCols(cols,items,pi,draggable,wipLimits,fullCounts){
+ wipLimits=wipLimits||{};
  return `<div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr))">
   ${cols.map(st=>{const list=items.filter(i=>i.st===st);
-   return `<div class="col" ${draggable?`data-drop="${st}"`:""}><div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--tm);
-    letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px"><span>${FLOW[st]}</span><span class="m">${list.length}</span></div>
+   const limit=wipLimits[st],total=fullCounts?(fullCounts[st]||0):list.length,over=limit&&total>limit;
+   return `<div class="col" ${draggable?`data-drop="${st}"`:""} ${over?`style="outline:1.5px solid var(--er-fg);outline-offset:-1.5px"`:""}>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:9.5px;color:var(--tm);
+     letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">
+     <span>${FLOW[st]}${limit?`<span class="m" style="color:${over?"var(--er-fg)":"var(--tm)"};letter-spacing:normal;text-transform:none"> · limit ${limit}</span>`:""}</span>
+     <span class="m" style="${over?"color:var(--er-fg);font-weight:700":""}">${list.length}</span></div>
+    ${over?`<p style="font-size:10px;color:var(--er-fg);margin:0 0 6px">Over WIP limit — finish work here before starting more.</p>`:""}
     ${list.map(i=>`<div class="ic" style="border-left-color:${TYC[i.ty]}" data-a="issue:${pi}:${i.key}"
      ${draggable?`draggable="true" data-key="${i.key}"`:""}>
      <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
@@ -1134,6 +1145,7 @@ function mapProjectLive(p){
   gate:p.gate_name?{n:p.gate_name,need:p.gate_required,
    sign:(p.gate_signoffs||[]).map(s=>({n:s.name||s.username,r:s.title||"",at:(s.at||"").replace("T"," ").slice(0,16)})),
    crit:(p.gate_criteria||[]).map(c=>[c.text,c.done?1:0])}:null,
+  wip:p.wip_limits||{},
   itemsLoaded:existing?existing.itemsLoaded:false,
   items:existing?existing.items:[]};}
 async function loadProjectsLive(){
@@ -1897,9 +1909,14 @@ function screenView(){
   const swimBy=S.swimlaneBy||"none";
   const visible=p.items.filter(pass);
   const draggable=cw("d.board");
+  const wip=p.wip||{};
+  // WIP ihlali her zaman PROJENİN TÜM konuları üzerinden değerlendirilir
+  // (onlyMine/swimlane filtresinden bağımsız) — "Only my issues" açıkken
+  // dahi ekip, sütunun gerçekten dolu olduğunu görebilmeli.
+  const fullCounts={};cols.forEach(st=>{fullCounts[st]=p.items.filter(i=>i.st===st).length;});
   let boardHtml;
   if(swimBy==="none"){
-   boardHtml=renderBoardCols(cols,visible,S.proj,draggable);
+   boardHtml=renderBoardCols(cols,visible,S.proj,draggable,wip,fullCounts);
   }else{
    const groups=new Map();
    visible.forEach(i=>{
@@ -1910,7 +1927,7 @@ function screenView(){
     groups.get(key).items.push(i);});
    boardHtml=[...groups.values()].map(g=>`<div style="margin-bottom:16px">
     <div class="lbl" style="margin-bottom:6px">${esc(g.label)} <span class="m" style="color:var(--tm)">(${g.items.length})</span></div>
-    ${renderBoardCols(cols,g.items,S.proj,draggable)}</div>`).join("")
+    ${renderBoardCols(cols,g.items,S.proj,draggable,wip,fullCounts)}</div>`).join("")
     ||`<p class="m" style="color:var(--tm)">No issues match this filter.</p>`;}
   return head("Board",p.n+" · "+p.m+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
@@ -1919,7 +1936,8 @@ function screenView(){
      <option value="epic" ${swimBy==="epic"?"selected":""}>Group by Epic</option>
      <option value="assignee" ${swimBy==="assignee"?"selected":""}>Group by Assignee</option></select>
     <button class="b s ${S.onlyMine?"p":""}" data-a="onlyMine">Only my issues</button>
-    ${cw("d.board")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.board")+
+    ${cw("d.board")?`<button class="b s" data-a="manageWip:${S.proj}">WIP limits</button>
+    <button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.board")+
   `<div class="boardwrap">${boardHtml}</div>
    <p style="font-size:11.5px;color:var(--tm);margin-top:11px">The gold avatar marks issues assigned to you.
     Drag a card between columns to change its status, or open it to use the transition buttons.
@@ -4105,6 +4123,19 @@ function dialogView(){
     <input id="fNewComponentName" placeholder="Component name (e.g. Payments)" style="flex:1">
     <button class="b s p" data-a="componentCreate:${d.pi}">Add</button></div>
    <div style="display:flex;justify-content:flex-end;margin-top:15px"><button class="b p" data-a="dlgClose">Close</button></div>`);}
+ if(d.type==="wipLimits"){
+  const pr=PROJ[d.pi],wip=pr.wip||{},cols=["todo","prog","review","test"];
+  const labels={todo:"To Do",prog:"In Progress",review:"In Review",test:"In Testing"};
+  return wrap(`<div style="display:flex;align-items:center;gap:9px">
+    <div style="font-size:15px;flex:1">WIP Limits — ${pr.k}</div>
+    <button class="b s" data-a="dlgClose" style="padding:4px 9px">✕</button></div>
+   <p class="m" style="color:var(--tm);margin-top:6px">Set a maximum number of issues per column. Leave blank for no limit. "Done" has no limit.</p>
+   ${cols.map(st=>`<div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+     <span style="width:90px;font-size:12.5px">${labels[st]}</span>
+     <input id="fWip_${st}" type="number" min="1" value="${wip[st]||""}" placeholder="no limit" style="max-width:120px"></div>`).join("")}
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px">
+    <button class="b" data-a="dlgClose">Cancel</button>
+    <button class="b p" data-a="wipLimitsSave:${d.pi}">Save</button></div>`);}
  if(d.type==="gantt"){
   return wrap(`<div style="font-size:15px">Gantt görevi ekle — ${P().k}</div>
    <div class="lbl" style="margin-top:11px">GÖREV ADI</div><input id="fGName" value="${esc(f.name||"")}">
@@ -5008,6 +5039,20 @@ app.addEventListener("click",async ev=>{
  /* -------------------------------- Gantt Chart ------------------------------- */
  if(k==="ganttAdd"){S.f={progress:0};S.dlg={type:"gantt"};render();return;}
  if(k==="manageVC"){const pi=+p[1];S.dlg={type:"versionsComponents",pi};render();return;}
+ if(k==="manageWip"){const pi=+p[1];S.dlg={type:"wipLimits",pi};render();return;}
+ if(k==="wipLimitsSave"){const pi=+p[1],pr=PROJ[pi],pk=pr.k;
+  const cols=["todo","prog","review","test"];
+  const limits={};
+  for(const st of cols){
+   const inp=document.getElementById("fWip_"+st);
+   const v=inp&&inp.value.trim();
+   if(v)limits[st]=parseInt(v,10);}
+  if(LIVE_BACKEND){
+   try{const res=await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/wip-limits",limits);
+    pr.wip=res.wipLimits;S.dlg=null;toast("WIP limits saved.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  pr.wip=limits;S.dlg=null;toast("WIP limits saved.");render();return;}
  if(k==="versionCreate"){const pi=+p[1],pk=PROJ[pi].k;
   const inp=document.getElementById("fNewVersionName");
   const name=(inp&&inp.value||"").trim();

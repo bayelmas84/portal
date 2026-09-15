@@ -999,6 +999,25 @@ router.put("/:k/gate", requireWrite("d.gate"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// WIP (work-in-progress) limitleri: {todo,prog,review,test} -> pozitif tam
+// sayı ya da null ("limit yok"). "done" sütununa limit uygulanmaz.
+const WIP_COLUMNS = ["todo", "prog", "review", "test"];
+router.put("/:k/wip-limits", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const limits = {};
+    for (const col of WIP_COLUMNS) {
+      if (body[col] === null || body[col] === undefined || body[col] === "") continue;
+      const n = parseInt(body[col], 10);
+      if (!Number.isFinite(n) || n < 1) return res.status(400).json({ error: `${col} için geçersiz limit.` });
+      limits[col] = n;
+    }
+    const { rows } = await query("UPDATE projects SET wip_limits=$1 WHERE k=$2 RETURNING wip_limits", [JSON.stringify(limits), req.params.k]);
+    if (!rows.length) return res.status(404).json({ error: "Proje bulunamadı." });
+    res.json({ wipLimits: rows[0].wip_limits });
+  } catch (e) { next(e); }
+});
+
 router.post("/:k/gate/criteria/:idx/toggle", requireWrite("d.board"), async (req, res, next) => {
   try {
     const proj = await query("SELECT gate_criteria FROM projects WHERE k=$1", [req.params.k]);
