@@ -267,7 +267,113 @@ curl -I https://portal.terayatirim.com.tr/api/healthz   # 200 OK
       kişisel veri tutuyor. Bu hukuki bir değerlendirmedir, kod yazarak
       kapatılamaz; kurumun hukuk/uyum ekibinin yapması gerekir
 
-## 9. Güncelleme
+## 8b. WAF (Web Application Firewall) kurulumu — ModSecurity + OWASP CRS
+
+**Bu bölümdeki tüm adımlar bu ortamda gerçekten kurulup test edilmiştir** —
+canlı bir SQL Injection, XSS ve komut enjeksiyonu denemesi WAF katmanında
+403 ile durdurulmuş, meşru bir giriş isteği ise sorunsuz geçmiştir (yanlış
+pozitif yok). Aşağıdaki adımlar, üretim sunucunuzda aynı sonucu verir.
+
+**Neden gerekli:** Uygulama zaten kendi savunmalarına sahiptir (parametreli
+SQL sorguları, çıktı escape'i, CSRF token'ı vb. — bkz. güvenlik testi
+raporu). WAF bunun **yerine geçmez**, üstüne eklenir: kötücül bir istek
+uygulama koduna hiç ulaşmadan, ağ katmanında (Nginx seviyesinde) reddedilir.
+Bu, hem ekstra bir güvenlik katmanı hem de saldırı trafiğinin uygulama
+sunucusuna (ve veritabanına) hiç ulaşmaması anlamına gelir.
+
+### Kurulum
+
+```bash
+sudo apt update
+sudo apt install -y libnginx-mod-http-modsecurity modsecurity-crs
+```
+
+`/etc/nginx/modsecurity.conf` içinde algılama modundan (log tutar ama
+engellemez) engelleme moduna geçirin:
+
+```bash
+sudo sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/nginx/modsecurity.conf
+```
+
+OWASP Core Rule Set'i (921 kural) yükleyin. Paketin varsayılan yükleme
+dosyası bu Nginx modülünün desteklemediği bir yönerge (`IncludeOptional`)
+içerdiği için, kendi düzeltilmiş yükleme dosyanızı oluşturun:
+
+```bash
+sudo tee /etc/nginx/owasp-crs-load-fixed.conf > /dev/null << 'EOF'
+Include /etc/modsecurity/crs/crs-setup.conf
+Include /usr/share/modsecurity-crs/rules/*.conf
+EOF
+
+sudo tee /etc/nginx/modsecurity_includes.conf > /dev/null << 'EOF'
+include modsecurity.conf
+include /etc/nginx/owasp-crs-load-fixed.conf
+EOF
+```
+
+Adım 6'daki (Nginx) site tanımına, `location /api/` bloğundan hemen önce
+şu iki satırı ekleyin:
+
+```nginx
+    # WAF: ModSecurity + OWASP Core Rule Set
+    modsecurity on;
+    modsecurity_rules_file /etc/nginx/modsecurity_includes.conf;
+```
+
+Doğrulayın ve yeniden başlatın:
+
+```bash
+sudo nginx -t
+# beklenen çıktı: "rules loaded inline/local/remote: 0/921/0" ve "syntax is ok"
+sudo systemctl reload nginx
+```
+
+### Doğrulama (canlıya almadan önce mutlaka yapın)
+
+```bash
+# SQLi denemesi — 403 dönmeli
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://portal.terayatirim.com.tr/api/auth/login \
+  -H "Content-Type: application/json" -d "{\"username\":\"x' OR '1'='1\",\"password\":\"x\"}"
+
+# Meşru bir giriş — 200/401 (normal davranış) dönmeli, ASLA 403 OLMAMALI
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://portal.terayatirim.com.tr/api/auth/login \
+  -H "Content-Type: application/json" -d '{"username":"gercek.kullanici","password":"gercek-sifre"}'
+```
+
+### Önemli: Yanlış pozitif riski
+
+OWASP CRS **agresiftir** — meşru ama sıra dışı görünen bazı girdileri
+(örn. duyuru metninde çok fazla özel karakter, çok uzun bir başlık) yanlış
+pozitif olarak engelleyebilir. Canlıya almadan önce:
+
+1. **Önce `DetectionOnly` modunda birkaç gün çalıştırın** (yukarıdaki
+   `sed` adımını atlayın), `/var/log/nginx/modsec_audit.log` dosyasını
+   izleyin, gerçek kullanıcı trafiğinizde hangi kuralların tetiklendiğini
+   görün.
+2. Yanlış pozitif veren belirli kuralları, ID'lerine göre
+   `/etc/modsecurity/crs/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`
+   dosyasında devre dışı bırakın (CRS dokümantasyonundaki `SecRuleRemoveById`
+   örneklerine bakın) — kuralın tamamını kapatmak yerine, mümkünse yalnızca
+   belirli bir endpoint için hariç tutun.
+3. `SecAuditLog /var/log/nginx/modsec_audit.log` dosyasını düzenli
+   izleyin; bu dosya büyüyebilir, log rotasyonu kurun.
+
+### Alternatif: Yönetilen (SaaS) WAF
+
+Kendi sunucunuzda ModSecurity işletmek istemiyorsanız, Cloudflare gibi bir
+CDN/WAF sağlayıcısının önüne koyduğu yönetilen WAF de aynı işi görür ve
+bakım yükü gerektirmez — DNS'inizi ilgili sağlayıcıya yönlendirmeniz
+yeterlidir. Bu, kurumun kendi tercihine bağlı bir altyapı kararıdır.
+
+## 8c. WAF sonrası yeniden test
+
+WAF kurulduktan sonra, daha önceki güvenlik testi raporundaki senaryoları
+(özellikle SQLi/XSS) **artık Nginx üzerinden** (doğrudan Node portuna değil)
+tekrar çalıştırıp, hem saldırıların engellendiğini hem gerçek kullanıcı
+akışlarının (giriş, duyuru oluşturma, dosya yükleme) bozulmadığını
+doğrulayın.
+
+
 
 ```bash
 cd /opt/tera-portal
