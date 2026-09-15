@@ -9,6 +9,25 @@ const { Client } = require("ldapts");
 const { query } = require("../db");
 const { decryptSecret } = require("../lib/crypto");
 
+// GÜVENLİK: LDAP Injection (CWE-90, RFC 4515). Kullanıcı adı bir arama
+// filtresine yerleştirilmeden önce ESCAPE edilmezse, "*", "(", ")" gibi
+// karakterler filtrenin mantığını değiştirebilir — örn. bir kullanıcı adı
+// yerine joker karakter içeren bir girdi, İSTENMEYEN bir dizin girdisiyle
+// (başka bir kullanıcıyla) eşleşmeye ve dolayısıyla kimlik taklidine yol
+// açabilir. RFC 4515'in belirttiği özel karakterler escape edilir.
+function escapeLdapFilterValue(v) {
+  return String(v).replace(/[\\*()\0]/g, (c) => {
+    switch (c) {
+      case "\\": return "\\5c";
+      case "*": return "\\2a";
+      case "(": return "\\28";
+      case ")": return "\\29";
+      case "\0": return "\\00";
+      default: return c;
+    }
+  });
+}
+
 async function getDirectorySettings() {
   const { rows } = await query("SELECT * FROM directory_settings WHERE id = 1");
   return rows[0];
@@ -29,7 +48,7 @@ async function verifyAgainstDirectory(username, password) {
   const bindPassword = decryptSecret(dir.bind_password_encrypted);
   try {
     await client.bind(dir.bind_dn, bindPassword);
-    const filter = dir.user_filter.replace("{username}", username);
+    const filter = dir.user_filter.replace("{username}", escapeLdapFilterValue(username));
     const { searchEntries } = await client.search(dir.base_dn, {
       scope: "sub",
       filter,
@@ -68,4 +87,4 @@ async function testDirectoryConnection() {
   }
 }
 
-module.exports = { getDirectorySettings, verifyAgainstDirectory, testDirectoryConnection };
+module.exports = { getDirectorySettings, verifyAgainstDirectory, testDirectoryConnection, escapeLdapFilterValue };
