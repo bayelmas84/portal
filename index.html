@@ -227,7 +227,10 @@ textarea{min-height:74px;resize:vertical}
    2560px+) hem kutu hem yazılar orantısız kocaman görünürdü. Küçük ekranlarda
    (900-1300px) panel biraz küçük kalabilir ama bu, büyük ekranda "dev" görünen
    bir form olmasından çok daha az kötü bir taviz. */
-.login-panel{position:absolute;top:30.2%;left:59.42%;width:min(34.44%,460px)}
+.login-panel{position:absolute;top:30.2%;left:59.42%;width:min(34.44%,460px);
+ max-height:min(67vh,620px);overflow-y:auto;padding-right:6px}
+.login-panel::-webkit-scrollbar{width:6px}
+.login-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:6px}
 .login-panel h2{margin:0;font-size:24px;line-height:1.25;font-weight:600;letter-spacing:-.01em;color:#fff}
 .login-panel .login-hint{margin:10px 0 24px;font-size:13.5px;line-height:1.4;color:#9FB0CE}
 .login-panel .field{display:block;margin-bottom:18px}
@@ -261,7 +264,8 @@ textarea{min-height:74px;resize:vertical}
  .login{justify-content:flex-start;padding-bottom:26px;height:auto;min-height:100vh;overflow-y:auto}
  .login-stage{width:100vw;height:auto;aspect-ratio:1482 / 1061;container-type:normal}
  .hero{object-fit:contain}
- .login-panel{position:static;transform:none;width:min(100%,390px);margin:22px auto 0;padding:0 20px}
+ .login-panel{position:static;transform:none;width:min(100%,390px);margin:22px auto 0;padding:0 20px;
+  max-height:none;overflow-y:visible}
  .login-panel h2{font-size:22px}
  .login-panel .login-hint{margin:7px 0 22px;font-size:13px}
  .login-panel .field{margin-bottom:15px}
@@ -3764,6 +3768,15 @@ function render(){
    +dialogView()+toastView();afterRender();return;}
  if(S.view==="login"){app.innerHTML=loginView();
   const i=document.getElementById("lu");if(i){i.oninput=e=>{S.u=e.target.value;};i.focus();}
+  /* Enter tuşuyla giriş: gerçek kullanıcı adı/parola alanlarında Enter'a basmak
+     "Giriş yap" butonuna tıklamakla aynı etkiyi yaratır (standart form davranışı).
+     Bu, hızlı demo hesap butonlarının (fill:N) OTOMATİK giriş yapmasından farklıdır —
+     o sadece prototipteki test kolaylığıdır, gerçek alanlara yazarken devreye girmez. */
+  const lp=document.getElementById("lp");
+  const submitOnEnter=e=>{if(e.key==="Enter"){e.preventDefault();
+   const btn=app.querySelector('[data-a="signin"]');if(btn)btn.click();}};
+  if(i)i.onkeydown=submitOnEnter;
+  if(lp)lp.onkeydown=submitOnEnter;
   return;}
  const mod=MODULES.find(m=>m[0]===S.mod),scr=(SCREENS[S.mod]||[]).find(s=>s[0]===S.scr);
  const pending=inbox().length;
