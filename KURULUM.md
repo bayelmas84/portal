@@ -52,7 +52,81 @@ Admin Panel > Dizin (AD) Ayarları ekranındaki tek bir anahtarla seçilir:
 
 ---
 
-## 1. Sunucu gereksinimleri
+---
+
+## 0b. Docker ile kurulum (alternatif — önerilir)
+
+**Docker nedir, ne işe yarar:** Uygulamanızı (Node.js sürümü, sistem
+kütüphaneleri, PostgreSQL, Nginx dahil) tek bir "konteyner imajı" içine
+paketleyen bir teknolojidir. Aşağıdaki bölüm 1-9'daki manuel adımların
+(Node kurulumu, PostgreSQL kurulumu, sistem servis dosyası yazma vb.)
+büyük kısmını ortadan kaldırır.
+
+**Bu projeye somut faydaları:**
+- **"Benim sunucumda çalışmıyor" sorunu ortadan kalkar** — geliştirme
+  ortamında test edilen Node/PostgreSQL sürümü, üretimde de birebir aynıdır.
+- **Kurulum bir komuta iner**: `docker compose up -d` — Node kurulumu,
+  PostgreSQL kurulumu, sistemd servis dosyası yazma gibi adımların yerini alır.
+- **İzolasyon**: Portal'ın bağımlılıkları, sunucudaki diğer uygulamalardan
+  ayrıdır; paket çakışması riski olmaz.
+- **Kolay geri alma**: Yeni sürüm sorun çıkarırsa, önceki imaja saniyeler
+  içinde dönülür.
+- **Veritabanı hâlâ kalıcıdır**: PostgreSQL verisi bir Docker "volume"unda
+  tutulur, konteyner yeniden başlasa/güncellense de veri kaybolmaz.
+
+**Dürüst olarak belirtmem gereken sınırlar:**
+- Docker, uygulamanın *kendi* güvenlik açıklarını kapatmaz — bu depodaki
+  güvenlik sertleştirmesi (parametreli sorgular, CSRF, WAF vb.) hâlâ gereklidir.
+- Ekstra bir soyutlama katmanıdır; bir sorunu debug ederken bazen
+  "konteyner içinde mi, dışında mı" ayrımı yapmanız gerekir.
+- PostgreSQL'i konteynerde çalıştırmak, yedekleme stratejinizi (volume
+  yedekleme) ayrıca kurmanızı gerektirir — "kurulup unutulacak" bir şey değildir.
+
+Bu depoda `Dockerfile`, `docker-compose.yml` ve `docker/nginx.conf` dosyaları
+**hazır ve sözdizimi doğrulanmış** olarak bulunur (bu geliştirme ortamında
+Docker Hub'a ağ erişimi kısıtlı olduğu için `docker compose up` ile tam
+entegrasyon testi yapılamadı — bunu kendi sunucunuzda mutlaka doğrulayın).
+
+### Adımlar
+
+```bash
+# 1) Docker ve Compose eklentisini kurun (Ubuntu):
+curl -fsSL https://get.docker.com | sudo sh
+sudo apt install -y docker-compose-plugin
+
+# 2) .env dosyasını hazırlayın (bkz. .env.example — DB_PASSWORD ve
+#    APP_ENCRYPTION_KEY mutlaka doldurulmalı):
+cp .env.example .env
+nano .env
+
+# 3) Yapılandırmayı doğrulayın (imaj indirmeden sözdizimi kontrolü):
+docker compose config
+
+# 4) Derleyip ayağa kaldırın (ilk çalıştırmada migration otomatik uygulanır):
+docker compose up -d --build
+
+# 5) Sağlık kontrolü:
+curl http://localhost/api/healthz
+# beklenen: {"ok":true}
+
+# 6) İLK KURULUMDA BİR KEZ: örnek/test kullanıcıları seed etmek isterseniz
+#    (üretimde GENELLİKLE İSTENMEZ, gerçek kullanıcıları admin panelinden
+#    kendiniz oluşturmanız önerilir):
+docker compose exec app node server/src/seed.js
+```
+
+Loglar: `docker compose logs -f app`. Durdurmak: `docker compose down`
+(veriyi de silmek isterseniz `docker compose down -v` — **dikkat, bu
+PostgreSQL volume'unu da siler**).
+
+WAF (bölüm 8b) bu Docker kurulumuna dahil değildir; ModSecurity'yi
+`docker/nginx.conf` yerine kendi sunucunuzdaki Nginx'e (bölüm 8b'deki
+adımlarla) kurmanız veya `nginx:alpine` yerine ModSecurity içeren bir imaj
+kullanmanız gerekir.
+
+---
+
+
 
 - Ubuntu 22.04 / RHEL 9, en az 2 vCPU, 4 GB RAM, 20 GB disk
 - DNS kaydı + TLS sertifikası (Let's Encrypt veya kurumsal CA)

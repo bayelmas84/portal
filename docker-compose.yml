@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tera_portal
+      POSTGRES_USER: tera_portal
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env dosyasinda tanimli olmali}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tera_portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: tera_portal
+      DB_USER: tera_portal
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env dosyasinda tanimli olmali}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?openssl rand -base64 32 ile uretin}
+      APP_URL: ${APP_URL:-https://portal.terayatirim.com.tr}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      TRUST_PROXY: "true"
+      NETWORK_ALLOWED_CIDRS: ${NETWORK_ALLOWED_CIDRS:-}
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-8}
+    # Konteyner her acilista once migration calisir (idempotent, guvenli),
+    # sonra uygulama baslar. Seed BILEREK burada yer almaz — o sadece
+    # ilk kurulumda elle bir kez calistirilir (asagidaki README notuna bakin).
+    command: sh -c "node server/src/migrate.js && node server/src/index.js"
+    volumes:
+      - uploads:/var/lib/tera-portal/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8080/api/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  uploads:
