@@ -338,6 +338,32 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
       );
       if (!inTeam.rowCount) return res.status(400).json({ error: "Atanacak kişi bu projenin ekibinde değil." });
     }
+    if (status === "done" && issue.status !== "done") {
+      // 1) Doğrudan alt kayıtları (Epic->Story/Task/Bug, Story->Task/Bug)
+      //    henüz DONE değilse üst kayıt kapatılamaz.
+      const openChildren = await query(
+        "SELECT issue_key FROM project_issues WHERE project_k=$1 AND parent_key=$2 AND status<>'done'",
+        [req.params.k, req.params.issueKey]
+      );
+      if (openChildren.rowCount) {
+        return res.status(400).json({
+          error: `${openChildren.rowCount} alt kayıt henüz tamamlanmadığı için bu konu kapatılamaz: ${openChildren.rows.map((r) => r.issue_key).join(", ")}`,
+        });
+      }
+      // 2) Bu konuyu "blocks" eden (yani bu konunun "blocked by" ilişkisinde
+      //    olduğu) başka bir konu henüz DONE değilse kapatılamaz.
+      const blockers = await query(
+        `SELECT l.source_key, pi.status FROM project_issue_links l
+           JOIN project_issues pi ON pi.project_k=l.project_k AND pi.issue_key=l.source_key
+          WHERE l.project_k=$1 AND l.link_type='blocks' AND l.target_key=$2 AND pi.status<>'done'`,
+        [req.params.k, req.params.issueKey]
+      );
+      if (blockers.rowCount) {
+        return res.status(400).json({
+          error: `Bu konu ${blockers.rows.map((r) => r.source_key).join(", ")} tarafından bloklandığı için kapatılamaz.`,
+        });
+      }
+    }
     const fields = [];
     const values = [];
     let i = 1;

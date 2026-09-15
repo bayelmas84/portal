@@ -950,6 +950,31 @@ function demoLinksFor(pk,key){
   const other=p&&itemByKey(p,otherKey);
   return {id:l.id,label:l.source===key?LINK_FORWARD_LABEL[l.type]:LINK_INVERSE_LABEL[l.type],
    otherKey,otherTitle:other?other.t:"(silinmiş)",otherType:other?other.ty:"",otherStatus:other?other.st:""};});}
+/* Bir konu Done'a taşınmadan önce iki kural kontrol edilir (backend'deki
+   PUT /:k/issues ile BİREBİR aynı mantık, sadece client tarafında anında
+   geri bildirim vermek için):
+   1) Doğrudan alt kayıtları (Epic->Story/Task/Bug, Story->Task/Bug) henüz
+      DONE değilse kapatılamaz.
+   2) Bu konuyu "blocks" eden (yani bu konunun "blocked by" olduğu) başka
+      bir konu henüz DONE değilse kapatılamaz. Canlı backend'de bu ilişki
+      verisi her zaman client'ta önbelleğe alınmış olmayabilir (yalnızca
+      panel açıldığında yüklenir); önbellekte yoksa kontrol atlanır ve
+      nihai karar sunucudaki aynı kurala bırakılır (hata mesajı aynı
+      şekilde gösterilir).
+   Dönüş: null (kapatılabilir) ya da kullanıcıya gösterilecek hata metni. */
+function issueCloseBlockReason(pr,it){
+ const openChildren=childrenOf(pr,it.key).filter(c=>c.st!=="done");
+ if(openChildren.length)return openChildren.length+" child item(s) still open: "+openChildren.map(c=>c.key).join(", ");
+ let blockingKeys=null;
+ if(LIVE_BACKEND){
+  const cached=ISSUE_LINKS_LIVE[pr.k+"::"+it.key];
+  if(cached)blockingKeys=cached.filter(l=>l.label==="is blocked by"&&l.otherStatus!=="done").map(l=>l.otherKey);
+ }else{
+  blockingKeys=ISSUE_LINKS_DEMO.filter(l=>l.pk===pr.k&&l.type==="blocks"&&l.target===it.key)
+   .map(l=>l.source).filter(k=>{const o=itemByKey(pr,k);return o&&o.st!=="done";});
+ }
+ if(blockingKeys&&blockingKeys.length)return "blocked by "+blockingKeys.join(", ");
+ return null;}
 let USERS_LIVE=null,USERS_LIVE_LOADING=false;
 async function loadUsersLive(){
  USERS_LIVE_LOADING=true;
@@ -4235,9 +4260,10 @@ app.addEventListener("drop",e=>{
  const pr=P(),it=itemByKey(pr,S.drag),to=col.dataset.drop;
  S.drag=null;
  if(!it||it.st===to)return render();
- /* Alt kayıtları kapanmadan üst kayıt Done'a taşınamaz. */
- if(to==="done"){const open=childrenOf(pr,it.key).filter(c=>c.st!=="done");
-  if(open.length){toast(it.key+" cannot be closed: "+open.length+" child item(s) still open.",1);return;}}
+ /* Alt kayıtlar açıkken ya da bloklayan bir konu henüz DONE değilken
+    üst/bloklanan kayıt Done'a taşınamaz. */
+ if(to==="done"){const reason=issueCloseBlockReason(pr,it);
+  if(reason){toast(it.key+" cannot be closed: "+reason+".",1);return;}}
  const from=it.st;it.st=to;render();
  if(LIVE_BACKEND){
   api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(it.key),{status:to})
@@ -5135,6 +5161,8 @@ app.addEventListener("click",async ev=>{
   toast("İlişki kaldırıldı.");render();return;}
  if(k==="move"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]),from=it.st,to=p[3];
+  if(to==="done"){const reason=issueCloseBlockReason(pr,it);
+   if(reason){toast(it.key+" cannot be closed: "+reason+".",1);return;}}
   it.st=to;S.dlg=null;toast(p[2]+" · "+FLOW[to]);render();
   if(LIVE_BACKEND){
    try{await api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(p[2]),{status:to});}

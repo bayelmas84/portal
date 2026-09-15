@@ -262,6 +262,97 @@ test("SMTP: sunucu/gönderen olmadan test isteği reddedilir", async () => {
   assert.equal(typeof res.body.ok, "boolean");
 });
 
+test("Kapatma kuralı: açık alt kaydı olan Epic/Story DONE yapılamaz", async () => {
+  const pm = await login("tolga.firat");
+  const epic = await request(app)
+    .post("/api/projects/TRADE/issues")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Close Rule Epic ${Date.now()}` });
+  assert.equal(epic.status, 201);
+  const epicKey = epic.body.item.issue_key;
+
+  const story = await request(app)
+    .post("/api/projects/TRADE/issues")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Story", title: `Close Rule Story ${Date.now()}`, parentKey: epicKey });
+  assert.equal(story.status, 201);
+  const storyKey = story.body.item.issue_key;
+
+  const closeEpic = await request(app)
+    .put(`/api/projects/TRADE/issues/${epicKey}`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ status: "done" });
+  assert.equal(closeEpic.status, 400, "açık Story varken Epic kapatılamamalı");
+  assert.match(closeEpic.body.error, new RegExp(storyKey));
+
+  const closeStory = await request(app)
+    .put(`/api/projects/TRADE/issues/${storyKey}`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ status: "done" });
+  assert.equal(closeStory.status, 200, "alt kaydı olmayan Story serbestçe kapatılabilmeli");
+
+  const closeEpicAgain = await request(app)
+    .put(`/api/projects/TRADE/issues/${epicKey}`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ status: "done" });
+  assert.equal(closeEpicAgain.status, 200, "Story kapandıktan sonra Epic kapatılabilmeli");
+});
+
+test("Kapatma kuralı: 'blocked by' ilişkisindeki konu, bloklayan konu DONE olmadan kapatılamaz", async () => {
+  const pm = await login("tolga.firat");
+  const epic = await request(app)
+    .post("/api/projects/TRADE/issues")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Block Rule Epic ${Date.now()}` });
+  const epicKey = epic.body.item.issue_key;
+  const storyA = await request(app)
+    .post("/api/projects/TRADE/issues")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Story", title: `Blocker Story A ${Date.now()}`, parentKey: epicKey });
+  const storyB = await request(app)
+    .post("/api/projects/TRADE/issues")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Story", title: `Blocked Story B ${Date.now()}`, parentKey: epicKey });
+  const keyA = storyA.body.item.issue_key, keyB = storyB.body.item.issue_key;
+
+  const link = await request(app)
+    .post(`/api/projects/TRADE/issues/${keyA}/links`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ linkType: "blocks", targetKey: keyB });
+  assert.equal(link.status, 201);
+
+  const closeB = await request(app)
+    .put(`/api/projects/TRADE/issues/${keyB}`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ status: "done" });
+  assert.equal(closeB.status, 400, "bloklanan konu, bloklayan DONE olmadan kapatılamamalı");
+  assert.match(closeB.body.error, new RegExp(keyA));
+
+  const closeA = await request(app)
+    .put(`/api/projects/TRADE/issues/${keyA}`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ status: "done" });
+  assert.equal(closeA.status, 200);
+
+  const closeBAgain = await request(app)
+    .put(`/api/projects/TRADE/issues/${keyB}`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ status: "done" });
+  assert.equal(closeBAgain.status, 200, "bloklayan konu DONE olduktan sonra bloklanan da kapatılabilmeli");
+});
+
 test.after(async () => {
   await pool.end();
 });
