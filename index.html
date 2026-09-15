@@ -1122,6 +1122,7 @@ async function loadIssuesLive(k){
    assigneeUsername:it.assignee_username,parent:it.parent_key,inSprint:it.in_sprint,desc:it.description||"",
    rep:it.created_by?nameOf(it.created_by):null,at:String(it.created_at||"").slice(0,16).replace("T"," "),
    upd:String(it.updated_at||"").slice(0,16).replace("T"," "),labels:it.labels||[],
+   fixVersions:it.fix_versions||[],components:it.components||[],
    due:it.due_date?String(it.due_date).slice(0,10):null}));
   proj.itemsLoaded=true;
  }catch(e){toast("Konular yüklenemedi: "+e.message,1);}
@@ -1380,6 +1381,24 @@ async function loadCRCacheLive(projK){
 function crsAllOf(k){
  if(LIVE_BACKEND){if(!(k in CR_CACHE_LIVE)){CR_CACHE_LIVE[k]=[];loadCRCacheLive(k);}return CR_CACHE_LIVE[k];}
  return crsOf(k);}
+/* Fix Version / Component: labels'tan farklı olarak serbest metin değil,
+   proje bazlı yönetilen (sabit) listeler. Canlı backend'de GET/POST/PUT/
+   DELETE /:k/versions ve /:k/components uç noktaları, demo modda proje
+   koduna göre anahtarlanmış bellek-içi diziler üzerinden aynı davranış. */
+let PROJECT_VERSIONS_LIVE={},PROJECT_COMPONENTS_LIVE={};
+let PROJECT_VERSIONS_DEMO={},PROJECT_COMPONENTS_DEMO={},nextVersionId=1,nextComponentId=1;
+async function loadVersionsLive(pk){
+ try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/versions");
+  PROJECT_VERSIONS_LIVE[pk]=data.items;render();}catch(e){PROJECT_VERSIONS_LIVE[pk]=[];render();}}
+async function loadComponentsLive(pk){
+ try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/components");
+  PROJECT_COMPONENTS_LIVE[pk]=data.items;render();}catch(e){PROJECT_COMPONENTS_LIVE[pk]=[];render();}}
+function versionsOf(pk){
+ if(LIVE_BACKEND){if(!(pk in PROJECT_VERSIONS_LIVE)){PROJECT_VERSIONS_LIVE[pk]=[];loadVersionsLive(pk);}return PROJECT_VERSIONS_LIVE[pk];}
+ return PROJECT_VERSIONS_DEMO[pk]||(PROJECT_VERSIONS_DEMO[pk]=[]);}
+function componentsOf(pk){
+ if(LIVE_BACKEND){if(!(pk in PROJECT_COMPONENTS_LIVE)){PROJECT_COMPONENTS_LIVE[pk]=[];loadComponentsLive(pk);}return PROJECT_COMPONENTS_LIVE[pk];}
+ return PROJECT_COMPONENTS_DEMO[pk]||(PROJECT_COMPONENTS_DEMO[pk]=[]);}
 /* "Sonraki toplantıya aktar" ile taşınan maddeler — LIVE_BACKEND'de bu
    önceden HİÇ çekilmiyordu (yeni toplantı formu her zaman boş açılıyordu).
    Proje seçilince bu kuyruk çekilir ve formun madde listesine, önceki
@@ -1886,7 +1905,8 @@ function screenView(){
   const canRank=cw("d.backlog");
   return head("Backlog",p.n+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
-    ${cw("d.backlog")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
+    ${cw("d.backlog")?`<button class="b s" data-a="manageVC:${S.proj}">Versions & Components</button>
+    <button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
    table(["Type","Key","Title","SP",""],p.items.filter(i=>i.st==="backlog").map(i=>`<tr
     ${canRank?`draggable="true" data-key="${i.key}" data-rank-target="${i.key}" style="cursor:grab"`:""}>
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
@@ -3943,6 +3963,26 @@ function dialogView(){
    ${cw("d.board")?`<div style="display:flex;gap:6px;margin-top:6px">
     <input id="fIssueDetailLabel" placeholder="add label…" style="flex:1;font-size:12px;padding:6px 9px">
     <button class="b s" data-a="issueLabelAdd:${d.pi}:${i.key}">Add</button></div>`:""}
+   <div class="lbl" style="margin-top:10px">Fix Versions</div>
+   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
+    ${(i.fixVersions||[]).map(vn=>`<span class="pl">${esc(vn)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueVersionDel:${d.pi}:${i.key}:${encodeURIComponent(vn)}">✕</span>`:""}</span>`).join("")}
+    ${!(i.fixVersions||[]).length?`<span class="m" style="color:var(--tm)">No fix versions.</span>`:""}</div>
+   ${cw("d.board")?(()=>{const avail=versionsOf(p.k).filter(v=>!(i.fixVersions||[]).includes(v.name));
+     return avail.length?`<div style="display:flex;gap:6px;margin-top:6px">
+      <select id="fIssueDetailVersion" style="flex:1;font-size:12px;padding:6px 9px">
+       ${avail.map(v=>`<option value="${esc(v.name)}">${esc(v.name)}${v.released?" (released)":""}</option>`).join("")}</select>
+      <button class="b s" data-a="issueVersionAdd:${d.pi}:${i.key}">Add</button></div>`
+     :`<p class="m" style="color:var(--tm);margin-top:4px">No versions defined yet — manage them from the Backlog screen.</p>`;})():""}
+   <div class="lbl" style="margin-top:10px">Components</div>
+   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
+    ${(i.components||[]).map(cn=>`<span class="pl">${esc(cn)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueComponentDel:${d.pi}:${i.key}:${encodeURIComponent(cn)}">✕</span>`:""}</span>`).join("")}
+    ${!(i.components||[]).length?`<span class="m" style="color:var(--tm)">No components.</span>`:""}</div>
+   ${cw("d.board")?(()=>{const avail=componentsOf(p.k).filter(c=>!(i.components||[]).includes(c.name));
+     return avail.length?`<div style="display:flex;gap:6px;margin-top:6px">
+      <select id="fIssueDetailComponent" style="flex:1;font-size:12px;padding:6px 9px">
+       ${avail.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join("")}</select>
+      <button class="b s" data-a="issueComponentAdd:${d.pi}:${i.key}">Add</button></div>`
+     :`<p class="m" style="color:var(--tm);margin-top:4px">No components defined yet — manage them from the Backlog screen.</p>`;})():""}
    ${i.desc?`<div class="lbl" style="margin-top:12px">Description</div>
     <div class="card" style="margin-top:6px;font-size:12.5px;white-space:pre-wrap">${esc(i.desc)}</div>`:""}
    <div class="lbl" style="margin-top:12px">Documents</div>
@@ -4003,6 +4043,28 @@ function dialogView(){
      <button class="b s p" data-a="commentAdd:${d.pi}:${i.key}">Comment</button></div>`}
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
     <button class="b" data-a="openProj:${d.pi}">Board'a git</button><button class="b p" data-a="dlgClose">Kapat</button></div>`);}
+ if(d.type==="versionsComponents"){
+  const pr=PROJ[d.pi];
+  const versions=versionsOf(pr.k),components=componentsOf(pr.k);
+  return wrap(`<div style="display:flex;align-items:center;gap:9px">
+    <div style="font-size:15px;flex:1">Versions & Components — ${pr.k}</div>
+    <button class="b s" data-a="dlgClose" style="padding:4px 9px">✕</button></div>
+   <div class="lbl" style="margin-top:12px">Versions</div>
+   ${versions.map(v=>`<div class="card" style="padding:8px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+     <span style="flex:1;font-size:12.5px">${esc(v.name)}${v.released?" "+pill("released","ok"):""}${v.description?` <span class="m" style="color:var(--tm)">— ${esc(v.description)}</span>`:""}</span>
+     ${!v.released?`<button class="b s" data-a="versionRelease:${d.pi}:${v.id}">Mark released</button>`:""}
+     <button class="b s d" data-a="versionDelete:${d.pi}:${v.id}">Delete</button></div>`).join("")||`<p class="m" style="color:var(--tm)">No versions yet.</p>`}
+   <div style="display:flex;gap:6px;margin-top:6px">
+    <input id="fNewVersionName" placeholder="Version name (e.g. 2.1)" style="flex:1">
+    <button class="b s p" data-a="versionCreate:${d.pi}">Add</button></div>
+   <div class="lbl" style="margin-top:16px">Components</div>
+   ${components.map(c=>`<div class="card" style="padding:8px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:center">
+     <span style="flex:1;font-size:12.5px">${esc(c.name)}</span>
+     <button class="b s d" data-a="componentDelete:${d.pi}:${c.id}">Delete</button></div>`).join("")||`<p class="m" style="color:var(--tm)">No components yet.</p>`}
+   <div style="display:flex;gap:6px;margin-top:6px">
+    <input id="fNewComponentName" placeholder="Component name (e.g. Payments)" style="flex:1">
+    <button class="b s p" data-a="componentCreate:${d.pi}">Add</button></div>
+   <div style="display:flex;justify-content:flex-end;margin-top:15px"><button class="b p" data-a="dlgClose">Close</button></div>`);}
  if(d.type==="gantt"){
   return wrap(`<div style="font-size:15px">Gantt görevi ekle — ${P().k}</div>
    <div class="lbl" style="margin-top:11px">GÖREV ADI</div><input id="fGName" value="${esc(f.name||"")}">
@@ -4903,6 +4965,65 @@ app.addEventListener("click",async ev=>{
 
  /* -------------------------------- Gantt Chart ------------------------------- */
  if(k==="ganttAdd"){S.f={progress:0};S.dlg={type:"gantt"};render();return;}
+ if(k==="manageVC"){const pi=+p[1];S.dlg={type:"versionsComponents",pi};render();return;}
+ if(k==="versionCreate"){const pi=+p[1],pk=PROJ[pi].k;
+  const inp=document.getElementById("fNewVersionName");
+  const name=(inp&&inp.value||"").trim();
+  if(!name){toast("Sürüm adı boş olamaz.",1);return;}
+  if(LIVE_BACKEND){
+   try{await api("POST","/api/projects/"+encodeURIComponent(pk)+"/versions",{name});
+    await loadVersionsLive(pk);toast("Sürüm eklendi.");}
+   catch(e){toast(e.message,1);}
+   return;}
+  const list=versionsOf(pk);
+  if(list.some(v=>v.name===name)){toast("Bu isimde bir sürüm zaten var.",1);return;}
+  list.push({id:nextVersionId++,project_k:pk,name,description:"",release_date:null,released:false,archived:false});
+  toast("Sürüm eklendi.");render();return;}
+ if(k==="versionRelease"){const pi=+p[1],id=p[2],pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/versions/"+id,{released:true});
+    await loadVersionsLive(pk);toast("Sürüm yayınlandı olarak işaretlendi.");}
+   catch(e){toast(e.message,1);}
+   return;}
+  const v=versionsOf(pk).find(x=>String(x.id)===String(id));if(v)v.released=true;
+  toast("Sürüm yayınlandı olarak işaretlendi.");render();return;}
+ if(k==="versionDelete"){const pi=+p[1],id=p[2],pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/versions/"+id);
+    delete PROJECT_VERSIONS_LIVE[pk];await loadVersionsLive(pk);
+    // Bu projenin yüklü konularındaki referansları da temizle.
+    (PROJ[pi].items||[]).forEach(it=>{if(it.fixVersions)it.fixVersions=it.fixVersions.filter(Boolean);});
+    toast("Sürüm silindi.");}
+   catch(e){toast(e.message,1);}
+   return;}
+  const list=versionsOf(pk),v=list.find(x=>String(x.id)===String(id));
+  if(v){PROJECT_VERSIONS_DEMO[pk]=list.filter(x=>x!==v);
+   (PROJ[pi].items||[]).forEach(it=>{if(it.fixVersions)it.fixVersions=it.fixVersions.filter(n=>n!==v.name);});}
+  toast("Sürüm silindi.");render();return;}
+ if(k==="componentCreate"){const pi=+p[1],pk=PROJ[pi].k;
+  const inp=document.getElementById("fNewComponentName");
+  const name=(inp&&inp.value||"").trim();
+  if(!name){toast("Bileşen adı boş olamaz.",1);return;}
+  if(LIVE_BACKEND){
+   try{await api("POST","/api/projects/"+encodeURIComponent(pk)+"/components",{name});
+    await loadComponentsLive(pk);toast("Bileşen eklendi.");}
+   catch(e){toast(e.message,1);}
+   return;}
+  const list=componentsOf(pk);
+  if(list.some(c=>c.name===name)){toast("Bu isimde bir bileşen zaten var.",1);return;}
+  list.push({id:nextComponentId++,project_k:pk,name,default_assignee_username:null});
+  toast("Bileşen eklendi.");render();return;}
+ if(k==="componentDelete"){const pi=+p[1],id=p[2],pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/components/"+id);
+    delete PROJECT_COMPONENTS_LIVE[pk];await loadComponentsLive(pk);
+    toast("Bileşen silindi.");}
+   catch(e){toast(e.message,1);}
+   return;}
+  const list=componentsOf(pk),c=list.find(x=>String(x.id)===String(id));
+  if(c){PROJECT_COMPONENTS_DEMO[pk]=list.filter(x=>x!==c);
+   (PROJ[pi].items||[]).forEach(it=>{if(it.components)it.components=it.components.filter(n=>n!==c.name);});}
+  toast("Bileşen silindi.");render();return;}
  if(k==="gProg"){S.f.progress=+p[1];render();return;}
  if(k==="ganttSave"){
   if(LIVE_BACKEND){
@@ -5205,6 +5326,48 @@ app.addEventListener("click",async ev=>{
    catch(e){toast(e.message,1);}
    return;}
   it.labels=newLabels;audit("Etiket kaldırıldı: "+key+" -> "+lb);render();return;}
+ if(k==="issueVersionAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const sel=document.getElementById("fIssueDetailVersion");
+  const v=sel&&sel.value;if(!v)return;
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  const cur=it.fixVersions||[];if(cur.includes(v))return;
+  const next=[...cur,v];
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{fixVersions:next});
+    it.fixVersions=next;render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  it.fixVersions=next;audit("Fix version eklendi: "+key+" -> "+v);render();return;}
+ if(k==="issueVersionDel"){const pi=+p[1],key=p[2],v=decodeURIComponent(p[3]),pk=PROJ[pi].k;
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  const next=(it.fixVersions||[]).filter(x=>x!==v);
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{fixVersions:next});
+    it.fixVersions=next;render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  it.fixVersions=next;audit("Fix version kaldırıldı: "+key+" -> "+v);render();return;}
+ if(k==="issueComponentAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const sel=document.getElementById("fIssueDetailComponent");
+  const v=sel&&sel.value;if(!v)return;
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  const cur=it.components||[];if(cur.includes(v))return;
+  const next=[...cur,v];
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{components:next});
+    it.components=next;render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  it.components=next;audit("Bileşen eklendi: "+key+" -> "+v);render();return;}
+ if(k==="issueComponentDel"){const pi=+p[1],key=p[2],v=decodeURIComponent(p[3]),pk=PROJ[pi].k;
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  const next=(it.components||[]).filter(x=>x!==v);
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{components:next});
+    it.components=next;render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  it.components=next;audit("Bileşen kaldırıldı: "+key+" -> "+v);render();return;}
  if(k==="issueLinkAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const linkType=S.f.linkType||"",targetKey=S.f.linkTarget||"";
   if(!linkType||!targetKey){toast("Hem ilişki türü hem konu seçilmelidir.",1);return;}

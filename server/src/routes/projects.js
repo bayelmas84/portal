@@ -153,6 +153,165 @@ function sanitizeLabels(labels) {
   return out;
 }
 
+// Fix Version / Component: labels'tan farklı olarak SERBEST METİN DEĞİL —
+// yalnızca o projede tanımlı (project_versions / project_components)
+// isimler kabul edilir; listede olmayanlar sessizce elenir.
+async function sanitizeVersionRefs(projectK, names) {
+  if (!Array.isArray(names) || !names.length) return [];
+  const { rows } = await query(
+    "SELECT name FROM project_versions WHERE project_k=$1 AND name = ANY($2::text[])",
+    [projectK, names]
+  );
+  return [...new Set(rows.map((r) => r.name))];
+}
+async function sanitizeComponentRefs(projectK, names) {
+  if (!Array.isArray(names) || !names.length) return [];
+  const { rows } = await query(
+    "SELECT name FROM project_components WHERE project_k=$1 AND name = ANY($2::text[])",
+    [projectK, names]
+  );
+  return [...new Set(rows.map((r) => r.name))];
+}
+
+// --------------------------------- Versions ---------------------------------
+router.get("/:k/versions", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "SELECT * FROM project_versions WHERE project_k=$1 ORDER BY release_date NULLS LAST, name",
+      [req.params.k]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/versions", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const name = ((req.body && req.body.name) || "").trim().slice(0, 50);
+    if (!name) return res.status(400).json({ error: "Sürüm adı zorunlu." });
+    const description = ((req.body && req.body.description) || "").trim().slice(0, 500);
+    const releaseDate = (req.body && req.body.releaseDate) || null;
+    const { rows } = await query(
+      "INSERT INTO project_versions (project_k, name, description, release_date) VALUES ($1,$2,$3,$4) RETURNING *",
+      [req.params.k, name, description, releaseDate]
+    );
+    res.status(201).json({ item: rows[0] });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Bu isimde bir sürüm zaten var." });
+    next(e);
+  }
+});
+
+router.put("/:k/versions/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const existing = await query("SELECT * FROM project_versions WHERE id=$1 AND project_k=$2", [req.params.id, req.params.k]);
+    if (!existing.rowCount) return res.status(404).json({ error: "Sürüm bulunamadı." });
+    const b = req.body || {};
+    const fields = [], values = [];
+    let i = 1;
+    if (b.name !== undefined) { fields.push(`name=$${i++}`); values.push(String(b.name).trim().slice(0, 50)); }
+    if (b.description !== undefined) { fields.push(`description=$${i++}`); values.push(String(b.description).trim().slice(0, 500)); }
+    if (b.releaseDate !== undefined) { fields.push(`release_date=$${i++}`); values.push(b.releaseDate || null); }
+    if (b.released !== undefined) { fields.push(`released=$${i++}`); values.push(!!b.released); }
+    if (b.archived !== undefined) { fields.push(`archived=$${i++}`); values.push(!!b.archived); }
+    if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });
+    values.push(req.params.id, req.params.k);
+    const { rows } = await query(
+      `UPDATE project_versions SET ${fields.join(", ")} WHERE id=$${i++} AND project_k=$${i} RETURNING *`,
+      values
+    );
+    // İsim değiştiyse, bu sürümü kullanan konulardaki referanslar da güncellenir.
+    if (b.name !== undefined && b.name !== existing.rows[0].name) {
+      await query(
+        "UPDATE project_issues SET fix_versions = array_replace(fix_versions, $1, $2) WHERE project_k=$3",
+        [existing.rows[0].name, rows[0].name, req.params.k]
+      );
+    }
+    res.json({ item: rows[0] });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Bu isimde bir sürüm zaten var." });
+    next(e);
+  }
+});
+
+router.delete("/:k/versions/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query("DELETE FROM project_versions WHERE id=$1 AND project_k=$2 RETURNING name", [req.params.id, req.params.k]);
+    if (!rows.length) return res.status(404).json({ error: "Sürüm bulunamadı." });
+    await query("UPDATE project_issues SET fix_versions = array_remove(fix_versions, $1) WHERE project_k=$2", [rows[0].name, req.params.k]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// -------------------------------- Components --------------------------------
+router.get("/:k/components", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT c.*, u.name AS default_assignee_name FROM project_components c
+         LEFT JOIN users u ON u.username=c.default_assignee_username
+        WHERE c.project_k=$1 ORDER BY c.name`,
+      [req.params.k]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/components", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const name = ((req.body && req.body.name) || "").trim().slice(0, 50);
+    if (!name) return res.status(400).json({ error: "Bileşen adı zorunlu." });
+    const defaultAssignee = (req.body && req.body.defaultAssigneeUsername) || null;
+    if (defaultAssignee) {
+      const inTeam = await query("SELECT 1 FROM project_team WHERE project_k=$1 AND username=$2", [req.params.k, defaultAssignee]);
+      if (!inTeam.rowCount) return res.status(400).json({ error: "Varsayılan atanacak kişi bu projenin ekibinde değil." });
+    }
+    const { rows } = await query(
+      "INSERT INTO project_components (project_k, name, default_assignee_username) VALUES ($1,$2,$3) RETURNING *",
+      [req.params.k, name, defaultAssignee]
+    );
+    res.status(201).json({ item: rows[0] });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Bu isimde bir bileşen zaten var." });
+    next(e);
+  }
+});
+
+router.put("/:k/components/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const existing = await query("SELECT * FROM project_components WHERE id=$1 AND project_k=$2", [req.params.id, req.params.k]);
+    if (!existing.rowCount) return res.status(404).json({ error: "Bileşen bulunamadı." });
+    const b = req.body || {};
+    const fields = [], values = [];
+    let i = 1;
+    if (b.name !== undefined) { fields.push(`name=$${i++}`); values.push(String(b.name).trim().slice(0, 50)); }
+    if (b.defaultAssigneeUsername !== undefined) { fields.push(`default_assignee_username=$${i++}`); values.push(b.defaultAssigneeUsername || null); }
+    if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });
+    values.push(req.params.id, req.params.k);
+    const { rows } = await query(
+      `UPDATE project_components SET ${fields.join(", ")} WHERE id=$${i++} AND project_k=$${i} RETURNING *`,
+      values
+    );
+    if (b.name !== undefined && b.name !== existing.rows[0].name) {
+      await query(
+        "UPDATE project_issues SET components = array_replace(components, $1, $2) WHERE project_k=$3",
+        [existing.rows[0].name, rows[0].name, req.params.k]
+      );
+    }
+    res.json({ item: rows[0] });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Bu isimde bir bileşen zaten var." });
+    next(e);
+  }
+});
+
+router.delete("/:k/components/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query("DELETE FROM project_components WHERE id=$1 AND project_k=$2 RETURNING name", [req.params.id, req.params.k]);
+    if (!rows.length) return res.status(404).json({ error: "Bileşen bulunamadı." });
+    await query("UPDATE project_issues SET components = array_remove(components, $1) WHERE project_k=$2", [rows[0].name, req.params.k]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 // ------------------------------- Konular (issue tracker) -------------------------------
 const ISSUE_PARENT_OF = { Epic: null, Story: "Epic", Task: "Story", Bug: "Story" };
 
@@ -361,7 +520,7 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     const { rows } = await query("SELECT * FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
     const issue = rows[0];
     if (!issue) return res.status(404).json({ error: "Konu bulunamadı." });
-    const { status, assigneeUsername, priority, storyPoints, title, description, inSprint, labels, dueDate } = req.body || {};
+    const { status, assigneeUsername, priority, storyPoints, title, description, inSprint, labels, dueDate, fixVersions, components } = req.body || {};
     if (status && !["backlog", "todo", "prog", "review", "test", "done"].includes(status)) {
       return res.status(400).json({ error: "Geçersiz durum." });
     }
@@ -408,6 +567,8 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     if (title !== undefined) { fields.push(`title=$${i++}`); values.push(title.trim()); }
     if (description !== undefined) { fields.push(`description=$${i++}`); values.push(description.trim()); }
     if (labels !== undefined) { fields.push(`labels=$${i++}`); values.push(sanitizeLabels(labels)); }
+    if (fixVersions !== undefined) { fields.push(`fix_versions=$${i++}`); values.push(await sanitizeVersionRefs(req.params.k, fixVersions)); }
+    if (components !== undefined) { fields.push(`components=$${i++}`); values.push(await sanitizeComponentRefs(req.params.k, components)); }
     if (dueDate !== undefined) { fields.push(`due_date=$${i++}`); values.push(dueDate || null); }
     if (inSprint !== undefined) { fields.push(`in_sprint=$${i++}`); values.push(!!inSprint); }
     if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });

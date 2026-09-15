@@ -441,6 +441,58 @@ test("Konu sıralaması (rank): yeni konu en sona eklenir, sürükle-bırak ile 
   assert.ok(ranks2[keyB] < ranks2[keyA], "B artık A'nın önünde olmalı");
 });
 
+test("Versions & Components: oluşturma, konuya atama (geçersiz değerler elenir), yeniden adlandırma ve silme referansları günceller", async () => {
+  const pm = await login("tolga.firat");
+  const vName = `V-${Date.now()}`;
+  const cName = `C-${Date.now()}`;
+
+  const vCreate = await request(app).post("/api/projects/TRADE/versions").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ name: vName, description: "test sürümü" });
+  assert.equal(vCreate.status, 201);
+  const versionId = vCreate.body.item.id;
+
+  const cCreate = await request(app).post("/api/projects/TRADE/components").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ name: cName });
+  assert.equal(cCreate.status, 201);
+  const componentId = cCreate.body.item.id;
+
+  const issue = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `VC Test Epic ${Date.now()}` });
+  const issueKey = issue.body.item.issue_key;
+
+  const assign = await request(app)
+    .put(`/api/projects/TRADE/issues/${issueKey}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ fixVersions: [vName, "OlmayanSurum"], components: [cName, "OlmayanBilesen"] });
+  assert.equal(assign.status, 200);
+
+  const afterAssign = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  const found1 = afterAssign.body.items.find((i) => i.issue_key === issueKey);
+  assert.deepEqual(found1.fix_versions, [vName], "geçersiz sürüm elenmeli");
+  assert.deepEqual(found1.components, [cName], "geçersiz bileşen elenmeli");
+
+  // Yeniden adlandırma: konudaki referans da güncellenmeli.
+  const newVName = vName + "-renamed";
+  const vRename = await request(app)
+    .put(`/api/projects/TRADE/versions/${versionId}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ name: newVName });
+  assert.equal(vRename.status, 200);
+  const afterRename = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  const found2 = afterRename.body.items.find((i) => i.issue_key === issueKey);
+  assert.deepEqual(found2.fix_versions, [newVName], "sürüm adı değişince konudaki referans da güncellenmeli");
+
+  // Silme: konudaki referans temizlenmeli.
+  const vDelete = await request(app).delete(`/api/projects/TRADE/versions/${versionId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(vDelete.status, 200);
+  const cDelete = await request(app).delete(`/api/projects/TRADE/components/${componentId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(cDelete.status, 200);
+  const afterDelete = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  const found3 = afterDelete.body.items.find((i) => i.issue_key === issueKey);
+  assert.deepEqual(found3.fix_versions, [], "sürüm silinince konudaki referans da temizlenmeli");
+  assert.deepEqual(found3.components, [], "bileşen silinince konudaki referans da temizlenmeli");
+});
+
 test.after(async () => {
   await pool.end();
 });
