@@ -3388,6 +3388,9 @@ function dialogView(){
  if(d.type==="rule"){
   const cur=(APPROVAL_RULES_LIVE||[]).find(r=>r.category===d.category)||{};
   return wrap(`<div style="font-size:15px">Kategori: ${esc(d.category)}</div>
+   <div class="lbl" style="margin-top:12px">Kategori adı</div>
+   <input id="fRuleName" value="${esc(f.name!==undefined?f.name:d.category)}">
+   <p class="m" style="color:var(--tm);margin:5px 0 0">Değiştirirseniz bu kategorideki mevcut duyurular da yeni ada taşınır.</p>
    <div class="lbl" style="margin-top:12px">Onaycı</div>
    <input id="fRuleRole" value="${esc(f.role!==undefined?f.role:cur.approver_role||"")}" placeholder="manager veya inspection">
    <p class="m" style="color:var(--tm);margin:7px 0 0">"manager" = talebi açanın yöneticisi; başka bir değer bir rol adı olmalı.</p>
@@ -3396,9 +3399,11 @@ function dialogView(){
    <div class="swrow" style="margin-top:13px"><button class="sw ${(f.active!==undefined?f.active:cur.active)?"on":""}" data-a="ruleToggleActive"><i></i></button>
     <span style="flex:1"><span style="display:block;font-size:12.5px">Aktif</span>
      <span class="m" style="color:var(--tm)">Pasif kategoriler yeni duyuru oluştururken seçilemez.</span></span></div>
-   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
-    <button class="b" data-a="dlgClose">Vazgeç</button>
-    <button class="b p" data-a="ruleSave">Onaya gönder</button></div>`);}
+   <div style="display:flex;justify-content:space-between;gap:9px;margin-top:15px">
+    <button class="b d" data-a="ruleDelete:${encodeURIComponent(d.category)}">Sil</button>
+    <div style="display:flex;gap:9px">
+     <button class="b" data-a="dlgClose">Vazgeç</button>
+     <button class="b p" data-a="ruleSave">Onaya gönder</button></div></div>`);}
  if(d.type==="ruleNew"){
   return wrap(`<div style="font-size:15px">Yeni duyuru kategorisi</div>
    <div class="lbl" style="margin-top:12px">Kategori adı</div>
@@ -4876,9 +4881,11 @@ app.addEventListener("click",async ev=>{
  if(k==="ruleEdit"){S.f={};S.dlg={type:"rule",category:decodeURIComponent(p[1])};render();return;}
  if(k==="ruleToggleActive"){const cur=(APPROVAL_RULES_LIVE||[]).find(r=>r.category===S.dlg.category)||{};S.f.active=!(S.f.active!==undefined?S.f.active:cur.active);render();return;}
  if(k==="ruleSave"){
-  const roleEl=document.getElementById("fRuleRole"),critsEl=document.getElementById("fRuleCrits");
+  const nameEl=document.getElementById("fRuleName"),roleEl=document.getElementById("fRuleRole"),critsEl=document.getElementById("fRuleCrits");
   const cur=(APPROVAL_RULES_LIVE||[]).find(r=>r.category===S.dlg.category)||{};
   const payload={};
+  const nameVal=(nameEl?nameEl.value:S.dlg.category||"").trim();
+  if(nameVal&&nameVal!==S.dlg.category)payload.newCategory=nameVal;
   const roleVal=(roleEl?roleEl.value:cur.approver_role||"").trim();
   if(roleVal&&roleVal!==cur.approver_role)payload.approverRole=roleVal;
   const critsVal=(critsEl?critsEl.value:cur.criticalities||"").trim();
@@ -4886,6 +4893,15 @@ app.addEventListener("click",async ev=>{
   if(S.f.active!==undefined&&S.f.active!==cur.active)payload.active=S.f.active;
   if(!Object.keys(payload).length){toast("Değişiklik yapılmadı.",1);return;}
   try{const data=await api("PUT","/api/admin/approval-rules/"+encodeURIComponent(S.dlg.category),payload);
+   S.dlg=null;toast(data.message||"Onaya gönderildi.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="ruleDelete"){
+  S.dlg={type:"confirm",title:"Kategori silinsin mi?",
+   body:`<b>${esc(decodeURIComponent(p[1]))}</b> kategorisi silinecek. Bu kategoriye ait duyuru varsa işlem reddedilir; bu durumda pasife almanız önerilir. Bu işlem yöneticinizin onayına gider.`,
+   action:"ruleDeleteConfirm:"+p[1],actLabel:"Evet, sil"};render();return;}
+ if(k==="ruleDeleteConfirm"){
+  try{const data=await api("DELETE","/api/admin/approval-rules/"+p[1],{});
    S.dlg=null;toast(data.message||"Onaya gönderildi.");render();}
   catch(e){toast(e.message,1);}
   return;}
