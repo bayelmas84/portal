@@ -359,7 +359,7 @@ const SCREENS={
    ["d.appr","Approvals Log","ti-checks"],["d.cr","Change Requests","ti-file-symlink"],
    ["d.meeting","Meeting Notes","ti-notes"],["d.meetingview","Meeting note",null],
    ["d.meetingnew","Yeni toplantı notu",null],
-   ["d.gantt","Gantt Chart","ti-gantt"]],
+   ["d.gantt","Gantt Chart","ti-gantt"],["d.roadmap","Roadmap","ti-map"]],
  documents:[["k.docs","Dokümanlar","ti-book"],["k.queue","Teftiş kuyruğu","ti-stamp"],["k.mail","Gönderilen bildirimler","ti-messages"]],
  announce:[["a.list","Duyurular","ti-speakerphone"]],
  training:[["t.un","Okunmamış","ti-file-alert"],["t.done","Tamamlananlar","ti-file-check"],
@@ -472,9 +472,9 @@ const ACC={
    Bilgi Güvenliği ekipleri, katılımcı olsun olmasın toplantı notlarını her zaman görebilir
    (canSeeMeeting içinde ayrıca kontrol edilir). Diğer roller menüyü görür; hangi toplantı
    notlarının listelendiği katılımcılık bilgisine göre ayrıca süzülür. */
-["admin","gmy","opsdir","dev","staff"].forEach(r=>{ACC[r]["d.meeting"]=R;ACC[r]["d.meetingview"]=R;ACC[r]["d.gantt"]=R;});
-["inspection","infosec","control"].forEach(r=>{ACC[r]["d.meeting"]=R;ACC[r]["d.meetingview"]=R;});
-["pm","pmdir"].forEach(r=>{ACC[r]["d.meeting"]=W;ACC[r]["d.meetingview"]=W;ACC[r]["d.meetingnew"]=W;ACC[r]["d.gantt"]=W;});
+["admin","gmy","opsdir","dev","staff"].forEach(r=>{ACC[r]["d.meeting"]=R;ACC[r]["d.meetingview"]=R;ACC[r]["d.gantt"]=R;ACC[r]["d.roadmap"]=R;});
+["inspection","infosec","control"].forEach(r=>{ACC[r]["d.meeting"]=R;ACC[r]["d.meetingview"]=R;ACC[r]["d.roadmap"]=R;});
+["pm","pmdir"].forEach(r=>{ACC[r]["d.meeting"]=W;ACC[r]["d.meetingview"]=W;ACC[r]["d.meetingnew"]=W;ACC[r]["d.gantt"]=W;ACC[r]["d.roadmap"]=W;});
 const ROLE={pmdir:"Proje Yönetim Direktörü",admin:"Admin",inspection:"Teftiş",infosec:"Bilgi Güvenliği",control:"İç Kontrol",
  gmy:"Genel Müdür Yardımcısı",opsdir:"Operasyon Direktörü",pm:"Proje Yöneticisi",dev:"Geliştirici",staff:"Personel",ceo:"Genel Müdür"};
 
@@ -2586,6 +2586,49 @@ function screenView(){
    :`<div class="card"><span style="font-size:12.5px;color:var(--tm)">No tasks have been added for this project yet.</span></div>`))+
   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">The Gantt chart can only be prepared by project management roles
     (Project Manager / Project Management Director); the project team and other authorized roles see it read-only.</p>`;}
+
+ if(v==="d.roadmap"){
+  const p=P();
+  if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
+  if(LIVE_BACKEND&&!p.itemsLoaded)return head("Roadmap",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+  const epics=p.items.filter(i=>i.ty==="Epic");
+  const scheduled=epics.filter(e=>e.due);
+  const dates=[];
+  scheduled.forEach(e=>{dates.push(e.at?e.at.slice(0,10):e.due);dates.push(e.due);});
+  const rng=dates.length?{min:dates.reduce((a,b)=>a<b?a:b),max:dates.reduce((a,b)=>a>b?a:b)}:null;
+  const totalDays=rng?Math.max(1,dayDiff(rng.min,rng.max)):1;
+  const progressOf=ep=>{const kids=allDescendants(p,ep.key).filter(k=>k.ty!=="Epic");
+   if(!kids.length)return 0;
+   return Math.round(kids.filter(k=>k.st==="done").length/kids.length*100);};
+  return head("Roadmap",p.n+" · "+p.m+(LIVE_BACKEND?" · live backend":""),
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
+  (!epics.length?`<div class="card"><span style="font-size:12.5px;color:var(--tm)">No epics in this project yet.</span></div>`:
+  `<div class="card" style="overflow:auto">
+    <div style="min-width:640px">
+    ${rng?`<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--tm);margin-bottom:8px">
+      <span>${rng.min}</span><span>${rng.max}</span></div>`:""}
+    ${epics.map(ep=>{
+      const pct=progressOf(ep);
+      const hasDue=!!ep.due;
+      const startD=ep.at?ep.at.slice(0,10):(ep.due||now().slice(0,10));
+      const endD=ep.due||startD;
+      const off=rng&&hasDue?Math.max(0,dayDiff(rng.min,startD)):0;
+      const dur=rng&&hasDue?Math.max(1,dayDiff(startD,endD)):1;
+      const leftPct=(off/totalDays)*100,widthPct=Math.max(2,(dur/totalDays)*100);
+      const versions=(ep.fixVersions||[]).join(", ");
+      return `<div style="display:flex;align-items:center;gap:9px;margin-bottom:${versions?"2px":"10px"};cursor:pointer" data-a="issue:${S.proj}:${ep.key}">
+       <span style="width:170px;font-size:12px;flex-shrink:0" title="${esc(ep.t)}">${ep.key} — ${esc(String(ep.t).slice(0,26))}</span>
+       ${hasDue?`<div style="flex:1;position:relative;height:20px;background:var(--s1);border-radius:6px">
+         <div style="position:absolute;left:${leftPct}%;width:${widthPct}%;height:100%;border-radius:6px;background:${TYC.Epic};overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:var(--gold)"></div></div></div>
+        <span class="m" style="width:100px;color:var(--tm);flex-shrink:0">${startD} → ${endD}</span>`
+       :`<div style="flex:1"></div><span class="m" style="width:100px;color:var(--tm);flex-shrink:0">No due date</span>`}
+       <span class="m" style="width:36px;text-align:right;flex-shrink:0">${pct}%</span></div>
+      ${versions?`<div style="margin:0 0 10px 179px"><span class="m" style="color:var(--tm)">${esc(versions)}</span></div>`:""}`;}).join("")}
+    </div></div>`)+
+   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Each bar spans from an Epic's creation date to its due date;
+    the gold fill shows how much of its work (Stories/Tasks/Bugs) is done. Set a due date on an Epic (from its detail panel)
+    to place it on the timeline. Click a bar to open the Epic.</p>`;}
 
  /* ---- reports ---- */
 
