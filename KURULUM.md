@@ -257,3 +257,25 @@ sudo systemctl restart tera-portal
 | SMTP "Bağlantıyı sına" başarısız | Admin Panel'den girilen sunucu adresi/port yanlış veya ağdan erişilemiyor |
 | 403 "CSRF doğrulaması başarısız" | İstekte `X-CSRF-Token` başlığı eksik/yanlış — giriş yanıtındaki `csrfToken` her istekte gönderilmeli |
 | 429 "Çok fazla başarısız giriş denemesi" | `LOGIN_MAX_ATTEMPTS` aşıldı, 15 dakika sonra tekrar deneyin |
+
+### Acil durum: tüm adminler 2FA'dan kilitlendi
+
+Normal kurtarma yolu, bir adminin BAŞKA bir admini uygulama içinden sıfırlamasıdır
+(Admin Panel > Kullanıcılar > "2FA sıfırla"). Ama TÜM admin ve Teftiş
+kullanıcıları aynı anda erişimini kaybederse (örn. hepsinin e-postası aynı
+anda kesildi), uygulama içinden çözüm YOKTUR — bu kasıtlıdır, aksi halde 2FA
+anlamsızlaşırdı. Bu durumda IT ekibi, sunucuya doğrudan erişimle (SSH),
+veritabanı üzerinden TEK BİR kullanıcının 2FA'sını manuel sıfırlar:
+
+```bash
+sudo -u postgres psql -d tera_portal -c "
+  UPDATE users SET totp_enabled=false, totp_secret_encrypted=NULL WHERE username='KULLANICI_ADI';
+  DELETE FROM sessions WHERE username='KULLANICI_ADI';
+"
+```
+
+Bu komutu çalıştırma yetkisi olan kişi zaten sunucuya kök erişimine sahip
+olduğu için, bu bir güvenlik açığı değil — fiziksel/altyapı erişimi olan
+birinin son çare olarak başvurduğu, denetim kaydına (audit_log) YANSIMAYAN
+tek istisnai müdahaledir. Bu yüzden erişimi son derece kısıtlı tutulmalı ve
+kullanıldığında ayrıca (örn. IT bilet sistemine) not düşülmelidir.
