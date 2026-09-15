@@ -931,6 +931,16 @@ function demoAutoAdvanceAll(){
    }
    current=nextMtg;
   }});}
+/* Bir Task (TOPLANTI projesinde) DONE olduğunda/DONE'dan geri alındığında,
+   ilgili toplantı maddesinin durumunu da senkronize eder — kullanıcı
+   Board/Backlog'dan işaretlediğinde toplantı notunda ayrıca işaretlemek
+   zorunda kalmasın diye. Backend'deki PUT /:k/issues eşdeğeriyle birebir. */
+function syncMeetingItemFromTaskDemo(projK,issueKey,newStatus,oldStatus){
+ if(projK!=="TOPLANTI"||newStatus===oldStatus)return;
+ MEETINGS.forEach(m=>m.items.forEach(it=>{
+  if(it.linkedIssueKey!==issueKey)return;
+  if(newStatus==="done"&&it.status!=="done"&&it.status!=="cancelled")it.status="done";
+  else if(oldStatus==="done"&&it.status==="done")it.status="open";}));}
 const LINK_INVERSE_LABEL={blocks:"is blocked by",clones:"is cloned by",duplicates:"is duplicated by",relates:"relates to"};
 const LINK_FORWARD_LABEL={blocks:"blocks",clones:"clones",duplicates:"duplicates",relates:"relates to"};
 function demoLinksFor(pk,key){
@@ -4235,6 +4245,7 @@ app.addEventListener("drop",e=>{
    .catch(err=>{it.st=from;toast(err.message,1);render();});
   return;}
  audit("İş durumu sürükle-bırak ile değişti: "+it.key+" "+FLOW[from]+" → "+FLOW[to]);
+ syncMeetingItemFromTaskDemo(pr.k,it.key,to,from);
  toast(it.key+": "+FLOW[from]+" → "+FLOW[to]);});
 /* Dinamik sayıdaki toplantı gündem maddesi satırlarının assignee/due date
    alanları için event delegation (her satır ayrı id yerine data-item-assign /
@@ -5022,11 +5033,11 @@ app.addEventListener("click",async ev=>{
  if(k==="bisave"){BIREP.push({code:"RPT-0"+(nbi++),name:S.f.a,area:S.f.b||"Genel",freq:"günlük",
    path:(S.f.c||"genel/rapor"),st:"gelistirme",owner:S.me.n,opens:0,last:null});
   audit("Yeni rapor taslağı oluşturuldu");S.dlg=null;S.f={};toast("Rapor taslağı oluşturuldu.");return;}
- if(k==="issue"){S.dlg={type:"issue",pi:+p[1],key:p[2]};S.f={};render();
+ if(k==="issue"){const key=dec(p[2]);S.dlg={type:"issue",pi:+p[1],key};S.f={};render();
   if(LIVE_BACKEND){const pk=PROJ[+p[1]].k;
-   delete ISSUE_ATTACH_LIVE[pk+"::"+p[2]];loadIssueAttachmentsLive(pk,p[2]);
-   delete ISSUE_LINKS_LIVE[pk+"::"+p[2]];loadIssueLinksLive(pk,p[2]);
-   delete ISSUE_HISTORY_LIVE[pk+"::"+p[2]];loadIssueHistoryLive(pk,p[2]);}
+   delete ISSUE_ATTACH_LIVE[pk+"::"+key];loadIssueAttachmentsLive(pk,key);
+   delete ISSUE_LINKS_LIVE[pk+"::"+key];loadIssueLinksLive(pk,key);
+   delete ISSUE_HISTORY_LIVE[pk+"::"+key];loadIssueHistoryLive(pk,key);}
   return;}
  if(k==="issueAttAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailDoc");const file=inp&&inp.files&&inp.files[0];
@@ -5127,7 +5138,9 @@ app.addEventListener("click",async ev=>{
   it.st=to;S.dlg=null;toast(p[2]+" · "+FLOW[to]);render();
   if(LIVE_BACKEND){
    try{await api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(p[2]),{status:to});}
-   catch(e){it.st=from;toast(e.message,1);render();}}
+   catch(e){it.st=from;toast(e.message,1);render();}
+   return;}
+  syncMeetingItemFromTaskDemo(pr.k,p[2],to,from);
   return;}
  if(k==="toSprint"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]);

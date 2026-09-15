@@ -158,6 +158,46 @@ test("Toplantı maddesi: haftalık periyodik toplantıda sonraki oluşumun tarih
   assert.equal(stillSameCount, allInSeries.length, "tekrar çağırmak mükerrer toplantı üretmemeli");
 });
 
+test("Toplantı maddesi: bağlı Task Board/Backlog'dan DONE yapılınca ilgili toplantı maddesi de tamamlandı sayılır (ve geri alınabilir)", async () => {
+  const pm = await login("tolga.firat");
+  const uniqueText = `Sync Test Item ${Date.now()}`;
+  const create = await request(app)
+    .post("/api/projects/meetings")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({
+      projectK: "TRADE", date: "2026-12-01", participants: ["mert.balkan"],
+      items: [{ text: uniqueText, assigneeUsername: "mert.balkan" }],
+    });
+  const meetingId = create.body.item.id;
+  const itemsRes = await request(app).get("/api/projects/meetings?project=TRADE").set("Cookie", pm.cookie);
+  const meeting = itemsRes.body.items.find((m) => m.id === meetingId);
+  const linkedKey = meeting.items.find((i) => i.text === uniqueText).linked_issue_key;
+  assert.ok(linkedKey);
+
+  const markDone = await request(app)
+    .put(`/api/projects/TOPLANTI/issues/${encodeURIComponent(linkedKey)}`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ status: "done" });
+  assert.equal(markDone.status, 200);
+
+  const afterDone = await request(app).get("/api/projects/meetings?project=TRADE").set("Cookie", pm.cookie);
+  const itemAfterDone = afterDone.body.items.find((m) => m.id === meetingId).items.find((i) => i.text === uniqueText);
+  assert.equal(itemAfterDone.status, "done", "Task DONE olunca toplantı maddesi de done olmalı");
+
+  const markBack = await request(app)
+    .put(`/api/projects/TOPLANTI/issues/${encodeURIComponent(linkedKey)}`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ status: "prog" });
+  assert.equal(markBack.status, 200);
+
+  const afterRevert = await request(app).get("/api/projects/meetings?project=TRADE").set("Cookie", pm.cookie);
+  const itemAfterRevert = afterRevert.body.items.find((m) => m.id === meetingId).items.find((i) => i.text === uniqueText);
+  assert.equal(itemAfterRevert.status, "open", "Task DONE'dan geri alınınca toplantı maddesi de tekrar open olmalı");
+});
+
 test("Toplantı maddesi: assignee olmadan reddedilir", async () => {
   const pm = await login("tolga.firat");
   const res = await request(app)

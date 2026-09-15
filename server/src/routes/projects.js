@@ -361,6 +361,26 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     if (changes.length) {
       await logIssueHistory(query, req.user.username, req.params.k, req.params.issueKey, changes.join("; "));
     }
+    // Bu konu bir toplantı maddesinden açılmış bir Task ise (TOPLANTI
+    // projesinde, linked_issue_key ile eşleşen bir meeting_item varsa),
+    // durumu buradan senkronize edilir: Task DONE olunca ilgili toplantı
+    // maddesi de tamamlandı sayılır; DONE'dan geri alınırsa madde tekrar
+    // açılır. Böylece Board/Backlog'dan yapılan değişiklik toplantı
+    // notuna da yansır, kullanıcı iki yerde ayrı ayrı işaretlemek
+    // zorunda kalmaz.
+    if (req.params.k === MEETING_PROJECT_K && status !== undefined && status !== issue.status) {
+      if (status === "done") {
+        await query(
+          "UPDATE meeting_items SET status='done' WHERE linked_issue_key=$1 AND status NOT IN ('done','cancelled')",
+          [req.params.issueKey]
+        );
+      } else if (issue.status === "done") {
+        await query(
+          "UPDATE meeting_items SET status='open' WHERE linked_issue_key=$1 AND status='done'",
+          [req.params.issueKey]
+        );
+      }
+    }
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
