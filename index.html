@@ -30,7 +30,7 @@ html.dark .sw.on{background:#2e9d52}
 *{box-sizing:border-box}
 body{margin:0;background:var(--s1);color:var(--t1);
   font-family:"Inter","Segoe UI",system-ui,sans-serif;font-size:13px}
-#app{max-width:1180px;margin:0 auto;min-height:100vh;background:var(--s2)}
+#app{width:100%;min-height:100vh;background:var(--s2)}
 .m{font-family:"SFMono-Regular",Consolas,monospace;font-size:11px}
 .lbl{font-size:9.5px;color:var(--tm);letter-spacing:.09em;text-transform:uppercase;margin:0 0 6px}
 .b{font-size:12px;padding:7px 13px;border-radius:9px;border:1px solid var(--bds);cursor:pointer;
@@ -67,7 +67,7 @@ body{margin:0;background:var(--s1);color:var(--t1);
 .main{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;overflow-y:auto;
  overscroll-behavior:contain}
 .top{display:flex;align-items:center;gap:10px;padding:12px 17px;border-bottom:1px solid var(--bd);background:var(--s1)}
-.body{padding:17px;flex:1}
+.body{padding:17px;flex:1;width:100%;max-width:1680px;margin:0 auto}
 .card{border:1px solid var(--bd);border-radius:12px;padding:13px;background:var(--s2)}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{text-align:left;font-weight:500;color:var(--tm);font-size:9.5px;letter-spacing:.09em;
