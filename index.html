@@ -632,6 +632,16 @@ const issueKeyLink=(pi,key)=>`<a href="javascript:void(0)" class="m" data-a="iss
  style="color:var(--ta);text-decoration:underline;text-underline-offset:2px;cursor:pointer">${esc(key)}</a>`;
 const PRIC={Highest:"#A32D2D",High:"#BA7517",Medium:"#0178BA",Low:"#717B95"};
 const FLOW={backlog:"Backlog",todo:"To Do",prog:"In Progress",review:"In Review",test:"In Testing",done:"Done"};
+/* Toplantı saati seçimi: native <input type="time">'ın step'i tarayıcı
+   seçicisinde her zaman dakika bazında kısıtlama yapmadığı için (bazı
+   tarayıcılarda hâlâ 00-59 arası her dakika gösterilir), yalnızca
+   08:00-20:00 arası 15 dakikalık aralıkları listeleyen bir dropdown
+   kullanılır — böylece 00/15/30/45 dışında bir değer seçilemez.*/
+const TIME_SLOTS_15MIN=(()=>{const out=[];
+ for(let h=8;h<=20;h++)for(let m=0;m<60;m+=15){
+  if(h===20&&m>0)break;
+  out.push(String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"));}
+ return out;})();
 const NEXT={backlog:["todo"],todo:["prog"],prog:["review","todo"],review:["test","prog"],test:["done","prog"],done:["prog"]};
 let CRITS={Yasal:["Kritik","Yüksek"],Genel:["Yüksek","Orta","Düşük"]};
 
@@ -2257,8 +2267,10 @@ function screenView(){
     <div class="lbl" style="margin-top:13px">Meeting date and time</div>
     <div style="display:flex;gap:8px">
      <input id="fMtDate" type="date" value="${esc(f.date||"")}" style="width:170px;flex:none">
-     <input id="fMtTime" type="time" value="${esc(f.time||"")}" min="08:00" max="20:00" step="900" style="width:120px"></div>
-    <p class="m" style="color:var(--tm);margin:5px 0 0">Time: 08:00–20:00, 15-minute steps.</p>
+     <select id="fMtTime" style="width:120px">
+      <option value="" ${!f.time?"selected":""}>No time</option>
+      ${TIME_SLOTS_15MIN.map(t=>`<option value="${t}" ${f.time===t?"selected":""}>${t}</option>`).join("")}</select></div>
+    <p class="m" style="color:var(--tm);margin:5px 0 0">Time: 08:00–20:00, 15-minute steps only.</p>
 
     <div class="lbl" style="margin-top:13px">Title (optional)</div>
     <input id="fMtTitle" value="${esc(f.title||"")}" placeholder="E.g.: Weekly status meeting">
