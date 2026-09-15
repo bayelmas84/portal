@@ -221,9 +221,6 @@ router.post("/users", requireWrite("m.users"), async (req, res, next) => {
     }
     if (!name || !email || !role) return res.status(400).json({ error: "Ad, e-posta ve rol zorunlu." });
     if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
-    // KURAL: "belmas" rolü yalnızca AD'den gelen sistem hesabına aittir, kimseye
-    // sonradan atanamaz (yeni bir kullanıcı bu rolle oluşturulamaz).
-    if (role === "belmas") return res.status(403).json({ error: "belmas rolü başka bir kullanıcıya atanamaz." });
     // AD kapalıyken (yerel parola modu) her kullanıcının bir ilk giriş
     // şifresiyle oluşturulması ZORUNLUDUR — şifresiz hesap oluşturulamaz.
     const dirRow = await query("SELECT active FROM directory_settings WHERE id=1");
@@ -250,9 +247,6 @@ router.post("/users", requireWrite("m.users"), async (req, res, next) => {
 // kalır (aynı ilk-giriş akışı). Mevcut oturumları da sonlandırır.
 router.post("/users/:username/reset-password", requireWrite("m.users"), async (req, res, next) => {
   try {
-    if (req.params.username === "belmas") {
-      return res.status(403).json({ error: "belmas sistem hesabı hiçbir şekilde değiştirilemez." });
-    }
     const dirRow = await query("SELECT active FROM directory_settings WHERE id=1");
     if (dirRow.rows[0] && dirRow.rows[0].active) {
       return res.status(409).json({ error: "AD aktifken şifre bu portalden sıfırlanamaz — AD üzerinden yönetilir." });
@@ -270,14 +264,8 @@ router.post("/users/:username/reset-password", requireWrite("m.users"), async (r
 
 router.put("/users/:username", requireWrite("m.users"), async (req, res, next) => {
   try {
-    // KURAL: "belmas" (AD'den gelen sistem/platform hesabı) kimse tarafından
-    // değiştirilemez — admin dahil. Ne rolü, ne birimi, ne aktiflik durumu.
-    if (req.params.username === "belmas") {
-      return res.status(403).json({ error: "belmas sistem hesabı hiçbir şekilde değiştirilemez." });
-    }
     const { name, email, role, unit, title, managerUsername, active } = req.body || {};
     if (role && !VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
-    if (role === "belmas") return res.status(403).json({ error: "belmas rolü başka bir kullanıcıya atanamaz." });
     if (req.params.username === req.user.username && role && role !== req.user.role) {
       return res.status(409).json({ error: "Kendi rolünüzü değiştiremezsiniz." });
     }
@@ -407,9 +395,6 @@ router.put("/access", requireWrite("m.access"), async (req, res, next) => {
     const { role, screenKey, level } = req.body || {};
     if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
     if (!["none", "read", "write"].includes(level)) return res.status(400).json({ error: "Geçersiz seviye." });
-    // KURAL: "belmas" rolünün yetki matrisi kimse tarafından değiştirilemez —
-    // her zaman DEFAULT_ACCESS'teki sabit haliyle kalır (admin dahil).
-    if (role === "belmas") return res.status(403).json({ error: "belmas rolünün yetkileri değiştirilemez." });
     if (role === "admin" && ["m.access", "m.avail"].includes(screenKey) && level === "none") {
       return res.status(409).json({ error: "Admin rolünün bu ekranlara erişimi kaldırılamaz (kilitlenme riski)." });
     }

@@ -11,10 +11,9 @@ const UNITS = [
 const TITLES = [
   ["CEO", "Genel Müdür"], ["GMY", "Genel Müdür Yardımcısı"], ["GDIR", "Grup Direktörü"],
   ["PYD", "Proje Yönetim Direktörü"],
-  ["DIR", "Direktör"], ["MDR", "Müdür"], ["UZM", "Uzman"], ["SYS", "Sistem Hesabı"],
+  ["DIR", "Direktör"], ["MDR", "Müdür"], ["UZM", "Uzman"],
 ];
 const USERS = [
-  ["belmas", "Belmas (Sistem Hesabı)", "belmas", null, "SYS", null, "#4A4A4A"],
   ["ahmet.tera", "Ahmet Tera", "ceo", "PRT", "CEO", null, "#0B1F48"],
   ["melis.suri", "Melis Suri", "staff", "KNL", "MDR", "deniz.okur", "#8A5A2B"],
   ["leyla.varol", "Leyla Varol", "control", "RSK", "GDIR", "ahmet.tera", "#5B2E8C"],
