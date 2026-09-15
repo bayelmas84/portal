@@ -161,6 +161,11 @@ textarea{min-height:74px;resize:vertical}
 .sheet{background:#fff;color:#1a1a1a;padding:17px 19px;font-size:12px;line-height:1.9;border-radius:6px;
   border:1px solid #ddd;user-select:none}
 .ov{position:fixed;inset:0;background:rgba(9,18,40,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+.ov.side{justify-content:flex-end;align-items:stretch;padding:0}
+.ov.side .dlg{max-width:480px;width:92vw;height:100%;max-height:100%;border-radius:0;
+ border-left:1px solid var(--bd);border-top:none;border-right:none;border-bottom:none;
+ animation:sidein .16s ease-out}
+@keyframes sidein{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
 .dlg{background:var(--s2);border:1px solid var(--bd);border-radius:14px;width:100%;max-width:420px;padding:17px;max-height:88vh;overflow:auto}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;padding:11px 16px;border-radius:11px;
   font-size:12px;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.18);max-width:520px}
@@ -598,8 +603,23 @@ const TYC={Epic:"#7A4FBF",Story:"#0F6E56",Task:"#0178BA",Bug:"#A32D2D"};
 const PARENT_OF={Epic:null,Story:"Epic",Task:"Story",Bug:"Story"};
 const parentsFor=(p,ty)=>{const need=PARENT_OF[ty];
  return need?(p.items||[]).filter(i=>i.ty===need):[];};
+/* Proje seçimi HER YERDE dropdown ile yapılır (Jira'da olduğu gibi tıklanabilir
+   isim listesi yerine); "list" verilirse (örn. yalnızca Waterfall projeleri)
+   sadece o alt küme seçenek olarak sunulur, ama value her zaman PROJ'daki GERÇEK
+   index'tir — böylece S.proj ataması filtrelenmiş listede de doğru çalışır. */
+function projSelectHTML(list){
+ const opts=list||PROJ;
+ return `<select id="projSelectDropdown" class="sel" aria-label="Proje seç"
+   style="padding:7px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12.5px">
+  ${opts.map(x=>{const idx=PROJ.indexOf(x);
+    return `<option value="${idx}" ${idx===S.proj?"selected":""}>${x.k} — ${esc(x.n)}</option>`;}).join("")}
+ </select>`;}
 const itemByKey=(p,k)=>(p.items||[]).find(i=>i.key===k);
 const childrenOf=(p,k)=>(p.items||[]).filter(i=>i.parent===k);
+/* Konu KEY'i her tabloda tıklanabilir bir link olarak gösterilir (Jira'daki gibi);
+   Open butonuna artık gerek yok. */
+const issueKeyLink=(pi,key)=>`<a href="javascript:void(0)" class="m" data-a="issue:${pi}:${encodeURIComponent(key)}"
+ style="color:var(--ta);text-decoration:underline;text-underline-offset:2px;cursor:pointer">${esc(key)}</a>`;
 const PRIC={Highest:"#A32D2D",High:"#BA7517",Medium:"#0178BA",Low:"#717B95"};
 const FLOW={backlog:"Backlog",todo:"To Do",prog:"In Progress",review:"In Review",test:"In Testing",done:"Done"};
 const NEXT={backlog:["todo"],todo:["prog"],prog:["review","todo"],review:["test","prog"],test:["done","prog"],done:["prog"]};
@@ -806,6 +826,26 @@ async function loadIssueAttachmentsLive(pk,key){
   const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/attachments");
   ISSUE_ATTACH_LIVE[pk+"::"+key]=data.items;render();
  }catch(e){/* sessiz geç — panel açıksa boş liste gösterilir */}}
+/* Konu ilişkilendirmeleri (Jira: blocks/clones/duplicates/relates). Canlı backend'de
+   gerçek API'den çekilir; demo modda tek bir bellek-içi dizi üzerinden aynı
+   forward/inverse etiketleme mantığı (server tarafındakiyle birebir) uygulanır. */
+let ISSUE_LINKS_LIVE={};
+async function loadIssueLinksLive(pk,key){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/links");
+  ISSUE_LINKS_LIVE[pk+"::"+key]=data.items;render();
+ }catch(e){/* sessiz geç */}}
+let ISSUE_LINKS_DEMO=[];
+let nextIssueLink=1;
+const LINK_INVERSE_LABEL={blocks:"is blocked by",clones:"is cloned by",duplicates:"is duplicated by",relates:"relates to"};
+const LINK_FORWARD_LABEL={blocks:"blocks",clones:"clones",duplicates:"duplicates",relates:"relates to"};
+function demoLinksFor(pk,key){
+ const p=PROJ.find(x=>x.k===pk);
+ return ISSUE_LINKS_DEMO.filter(l=>l.pk===pk&&(l.source===key||l.target===key)).map(l=>{
+  const otherKey=l.source===key?l.target:l.source;
+  const other=p&&itemByKey(p,otherKey);
+  return {id:l.id,label:l.source===key?LINK_FORWARD_LABEL[l.type]:LINK_INVERSE_LABEL[l.type],
+   otherKey,otherTitle:other?other.t:"(silinmiş)",otherType:other?other.ty:"",otherStatus:other?other.st:""};});}
 let USERS_LIVE=null,USERS_LIVE_LOADING=false;
 async function loadUsersLive(){
  USERS_LIVE_LOADING=true;
@@ -919,7 +959,9 @@ async function loadIssuesLive(k){
   const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
   proj.items=data.items.map(it=>({key:it.issue_key,ty:it.issue_type,t:it.title,st:it.status,
    pri:it.priority,pts:it.story_points,as:it.assignee_username?nameOf(it.assignee_username):null,
-   assigneeUsername:it.assignee_username,parent:it.parent_key,inSprint:it.in_sprint,desc:it.description||""}));
+   assigneeUsername:it.assignee_username,parent:it.parent_key,inSprint:it.in_sprint,desc:it.description||"",
+   rep:it.created_by?nameOf(it.created_by):null,at:String(it.created_at||"").slice(0,16).replace("T"," "),
+   upd:String(it.updated_at||"").slice(0,16).replace("T"," "),labels:it.labels||[]}));
   proj.itemsLoaded=true;
  }catch(e){toast("Konular yüklenemedi: "+e.message,1);}
  render();}
@@ -1548,12 +1590,11 @@ function screenView(){
     <span class="m" style="width:30px;height:30px;border-radius:9px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center">${k}</span>
     <span style="font-size:13px;flex:1">${esc(p.n)}</span>${pill(p.m)}
     <button class="b s" data-a="openProj:${pi}">Board</button></div>
-   ${table(["Type","Key","Summary","Status","Priority","SP",""],byProj[k].map(x=>`<tr>
+   ${table(["Type","Key","Summary","Status","Priority","SP"],byProj[k].map(x=>`<tr>
     <td><span style="color:${TYC[x.i.ty]};font-size:11px">${x.i.ty}</span></td>
-    <td class="m" style="color:var(--ta)">${x.i.key}</td><td>${esc(x.i.t)}</td>
+    <td>${issueKeyLink(x.pi,x.i.key)}</td><td>${esc(x.i.t)}</td>
     <td>${pill(FLOW[x.i.st])}</td><td><span class="m" style="color:${PRIC[x.i.pri]}">${x.i.pri}</span></td>
-    <td class="m">${x.i.pts}</td>
-    <td style="text-align:right"><button class="b s p" data-a="issue:${x.pi}:${x.i.key}">Open</button></td></tr>`).join(""))}</div>`;}).join("")
+    <td class="m">${x.i.pts}</td></tr>`).join(""))}</div>`;}).join("")
   :`<div class="card"><div style="font-size:12.5px">${S.filter?"No open items match this filter.":"No open items are assigned to you."}</div>
     <p style="font-size:12px;color:var(--t2);margin:8px 0 11px;line-height:1.6">You can view all projects, boards, and stage gates from the Projects screen.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1583,7 +1624,7 @@ function screenView(){
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("Board",p.n+" · "+p.m,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
   const pass=i=>!S.onlyMine||i.as===S.me.n;
   return head("Board",p.n+" · "+p.m+(LIVE_BACKEND?" · live backend":""),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}
     <button class="b s ${S.onlyMine?"p":""}" data-a="onlyMine">Only my issues</button>
     ${cw("d.board")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.board")+
   `<div class="boardwrap"><div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr))">
@@ -1609,14 +1650,13 @@ function screenView(){
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("Backlog",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
   return head("Backlog",p.n+(LIVE_BACKEND?" · live backend":""),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
-     `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}
     ${cw("d.backlog")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
    table(["Type","Key","Title","SP",""],p.items.filter(i=>i.st==="backlog").map(i=>`<tr>
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
-    <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td><td class="m">${i.pts}</td>
-    <td style="text-align:right;white-space:nowrap"><button class="b s" data-a="issue:${S.proj}:${i.key}">Open</button>
-    ${cw("d.backlog")?` <button class="b s p" data-a="toSprint:${S.proj}:${i.key}">Add to sprint</button>`:""}</td></tr>`).join("")||
+    <td>${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td><td class="m">${i.pts}</td>
+    <td style="text-align:right;white-space:nowrap">
+    ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${S.proj}:${i.key}">Add to sprint</button>`:""}</td></tr>`).join("")||
     `<tr><td colspan="5" style="color:var(--tm)">Backlog is empty.</td></tr>`);}
 
  if(v==="d.gate"){
@@ -1625,8 +1665,7 @@ function screenView(){
    if(!gated.length)return head("Stage Gates","Phase gates apply to Waterfall projects only"+" · live backend")+
     `<div class="card"><span style="font-size:12px;color:var(--tm)">No Waterfall project defined.</span></div>`;
    const p=gated.some(x=>x.k===P().k)?P():gated[0];
-   const projSel=gated.length>1?`<div style="display:flex;gap:7px">${gated.map(x=>
-    `<button class="b s ${x.k===p.k?"p":""}" data-a="proj:${PROJ.indexOf(x)}">${x.k}</button>`).join("")}</div>`:"";
+   const projSel=gated.length>1?`<div style="display:flex;gap:7px">${projSelectHTML(gated)}</div>`:"";
    if(!p.gate){
     return head("Stage Gates",p.k+" · live backend",projSel)+
      `<div class="card" style="max-width:640px">
@@ -1660,8 +1699,7 @@ function screenView(){
   const p=gated.includes(P())?P():gated[0],g=p.gate;
   const open=g.crit.filter(c=>!c[1]).length,full=g.sign.length>=g.need;
   return head("Stage Gates",p.k+" · phase gate control for Waterfall projects",
-   gated.length>1?`<div style="display:flex;gap:7px">${gated.map(x=>
-    `<button class="b s ${x.k===p.k?"p":""}" data-a="proj:${PROJ.indexOf(x)}">${x.k}</button>`).join("")}</div>`:"")+
+   gated.length>1?`<div style="display:flex;gap:7px">${projSelectHTML(gated)}</div>`:"")+
   `<div class="card" style="max-width:640px;background:var(--ba);border-color:var(--ta);margin-bottom:13px">
    <div style="font-size:12.5px;line-height:1.65;color:var(--ta)"><b>What is a stage gate?</b>
     Moving from one phase to the next is controlled here. The next phase cannot start until every entry
@@ -1737,14 +1775,14 @@ function screenView(){
    const pct=committed?Math.round(done/committed*100):0;
    const openCount=inSprintItems.filter(i=>i.st!=="done").length;
    if(!p.sprint.n){
-    return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
+    return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${projSelectHTML()}</div>`)+
      `<div class="card" style="max-width:520px">
        <div style="font-size:13px;margin-bottom:9px">There is no active sprint right now.</div>
        ${cw("d.board")?`<div class="lbl">GOAL</div><input id="fSpGoal" placeholder="Target for this sprint">
         <div class="lbl" style="margin-top:11px">END DATE</div><input id="fSpEnds" type="date">
         <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b p" data-a="sprintStart">Start sprint</button></div>`
        :`<p class="m" style="color:var(--tm)">Only the project team can start a sprint.</p>`}</div>`;}
-   return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
+   return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${projSelectHTML()}</div>`)+
    `<div class="card" style="max-width:640px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
      <span style="font-size:15px">${esc(p.sprint.n)}</span>${pill("active","ok")}<span style="flex:1"></span>
      ${p.sprint.endsAt?`<span class="m" style="color:var(--t2)">ends: ${p.sprint.endsAt}</span>`:""}</div>
@@ -1763,7 +1801,7 @@ function screenView(){
     ${cw("d.board")?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">To add a new item, use the "Add to sprint" button from the Backlog screen — this also works while the sprint is active.</p>`:""}`;}
   if(!p.sprint)return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">This project does not use sprints (${p.m}).</p>`;
   const sp=p.sprint,pct=Math.round(sp.done/sp.committed*100);
-  return head("Sprint",p.n,`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
+  return head("Sprint",p.n,`<div style="display:flex;gap:7px">${projSelectHTML()}</div>`)+
   `<div class="card" style="max-width:620px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <span style="font-size:15px">${sp.n}</span>${pill("active","ok")}<span style="flex:1"></span>
     <span class="m" style="color:var(--t2)">${sp.left} days left</span></div>
@@ -2128,8 +2166,7 @@ function screenView(){
   const loading=LIVE_BACKEND&&S.ganttLiveProj!==p.k;
   const rng=ganttRange(tasks,p),totalDays=rng?Math.max(1,dayDiff(rng.min,rng.max)):1;
   return head("Gantt Chart",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":" · demo data"),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
-     `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}
     ${canWrite?`<button class="b p" data-a="ganttAdd">Add task</button>`:""}</div>`)+
   (loading?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
   (tasks.length?`<div class="card" style="overflow:auto">
@@ -2163,8 +2200,7 @@ function screenView(){
   const team=LIVE_BACKEND?(S.teamLiveProj===p.k?(S.teamLive||[]):[]):teamOf(p.k);
   const loading=LIVE_BACKEND&&S.teamLiveProj!==p.k;
   return head("Project team",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":" · demo data"),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
-     `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}
     ${cw("d.team")?`<button class="b p" data-a="teamAdd">Add member</button>`:""}</div>`)+
   (loading?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
   table(["Name","Title","Unit","Project role",""],team.map((m,i)=>`<tr>
@@ -2284,8 +2320,7 @@ function screenView(){
     t:titleOf(sg.n),r:sg.r,at:sg.at||"—"}));
   rows.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
   return head("Approvals log",p.k+" — who approved what and when",
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
-     `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}</div>`)+
   table(["Approver","Title","Project role","Approved item","Type","Date"],rows.map(r=>`<tr>
    <td>${esc(r.n)}</td><td style="color:var(--t2)">${esc(r.t||titleOf(r.n))}</td>
    <td>${pill(r.r)}</td><td>${esc(r.item)}</td><td class="m" style="color:var(--tm)">${r.what}</td>
@@ -2300,8 +2335,7 @@ function screenView(){
   const loading=LIVE_BACKEND&&S.crLiveProj!==p.k;
   const ST={taslak:["draft","wr"],onayda:["pending approval","wr"],onaylandi:["approved","ok"],reddedildi:["rejected","er"]};
   return head("Change requests",p.k+" — scope, cost and schedule changes"+(LIVE_BACKEND?" · live backend":" · demo data"),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
-     `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}
     ${cw("d.cr")?`<button class="b p" data-a="crAdd">New request</button>`:""}</div>`)+
   (loading?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
   table(["No","Title","Impact","Raised by","Date","Status","Approvals",""],list.map((c,i)=>{
@@ -2333,7 +2367,7 @@ function screenView(){
    if(!p.itemsLoaded)return head("Project charts",p.k+" — "+p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;}
   const mt=metrics(p);
   return head("Project charts",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":""),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}</div>`)+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:13px">
    ${[["Progress",mt.pct+"%","open"],["Story points",mt.donePts+" / "+mt.pts,"open"],
       ["Issues",mt.done+" / "+mt.items,"all"],["Open bugs",mt.bugs,"bugs"],
@@ -2906,12 +2940,11 @@ function drillPanel(p){
    <span style="font-size:13px">${title}</span>${pill(list.length+" items")}
    ${pill(list.reduce((a,i)=>a+(i.pts||0),0)+" SP")}<span style="flex:1"></span>
    <button class="b s" data-a="drillClose">Close</button></div>
-  ${list.length?table(["Type","Key","Summary","Status","Priority","SP","Assignee",""],list.map(i=>`<tr>
+  ${list.length?table(["Type","Key","Summary","Status","Priority","SP","Assignee"],list.map(i=>`<tr>
     <td style="color:${TYC[i.ty]};font-size:11px">${i.ty}</td>
-    <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td>
+    <td>${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td>
     <td>${pill(FLOW[i.st])}</td><td class="m" style="color:${PRIC[i.pri]}">${i.pri}</td>
-    <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td>
-    <td style="text-align:right"><button class="b s p" data-a="issue:${S.proj}:${i.key}">Open</button></td></tr>`).join(""))
+    <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td></tr>`).join(""))
    :`<span style="font-size:12px;color:var(--tm)">No items match this selection.</span>`}</div>`;
 }
 
@@ -3098,6 +3131,7 @@ function orgChartView(){
 function dialogView(){
  const d=S.dlg;if(!d)return "";const f=S.f;
  const wrap=inner=>`<div class="ov"><div class="dlg">${inner}</div></div>`;
+ const wrapSide=inner=>`<div class="ov side"><div class="dlg">${inner}</div></div>`;
  if(d.type==="ann"){
   const cats=(LIVE_BACKEND&&APPROVAL_RULES_LIVE)?APPROVAL_RULES_LIVE.filter(r=>r.active).map(r=>r.category):["Yasal","Genel"];
   const opts=(LIVE_BACKEND&&APPROVAL_RULES_LIVE)?((APPROVAL_RULES_LIVE.find(r=>r.category===f.cat)||{}).criticalities||"").split(",").filter(Boolean):(CRITS[f.cat]||[]);
@@ -3268,6 +3302,11 @@ function dialogView(){
    <div style="display:flex;gap:6px;flex-wrap:wrap">
     <button class="b s ${!f.as?"p":""}" data-a="iAs:">Unassigned</button>
     ${members.map(m=>`<button class="b s ${f.as===m.n?"p":""}" data-a="iAs:${encodeURIComponent(m.n)}">${esc(m.n.split(" ")[0])}</button>`).join("")}</div>
+   <div class="lbl" style="margin-top:11px">LABELS</div>
+   ${(f.labels||[]).length?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
+    ${(f.labels||[]).map(lb=>`<span class="pl" style="cursor:pointer" data-a="iLabelDel:${encodeURIComponent(lb)}">${esc(lb)} ✕</span>`).join("")}</div>`:""}
+   <div style="display:flex;gap:6px"><input id="fIssueLabel" value="${esc(f.pendingLabel||"")}" placeholder="e.g. backend, ui, urgent" style="flex:1">
+    <button class="b s" data-a="iLabelAdd">Add</button></div>
    ${PARENT_OF[f.ty||"Story"]?`<div class="lbl" style="margin-top:11px">PARENT ${PARENT_OF[f.ty||"Story"].toUpperCase()}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${parentsFor(p,f.ty||"Story").map(i=>
       `<button class="b s ${f.parent===i.key?"p":""}" data-a="iParent:${i.key}">${i.key} · ${esc(String(i.t).slice(0,26))}</button>`).join("")
@@ -3530,16 +3569,35 @@ function dialogView(){
   const kids=childrenOf(p,i.key),par=i.parent?itemByKey(p,i.parent):null;
   const attKey=p.k+"::"+i.key;
   const atts=LIVE_BACKEND?(ISSUE_ATTACH_LIVE[attKey]||null):null;
-  return wrap(`<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+  const links=LIVE_BACKEND?(ISSUE_LINKS_LIVE[attKey]||null):demoLinksFor(p.k,i.key);
+  const otherIssues=(p.items||[]).filter(x=>x.key!==i.key);
+  return wrapSide(`<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
     <span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span>
-    <span class="m" style="color:var(--ta)">${i.key}</span><span style="flex:1"></span>${pill(FLOW[i.st],"")}</div>
+    <span class="m" style="color:var(--ta)">${i.key}</span><span style="flex:1"></span>${pill(FLOW[i.st],"")}
+    <button class="b s" data-a="dlgClose" title="Kapat" style="padding:4px 9px">✕</button></div>
    <div style="font-size:15px;margin:11px 0 13px">${esc(i.t)}</div>
-   ${[["Project",p.k+" · "+esc(p.n)],["Priority",`<span class="m" style="color:${PRIC[i.pri]}">${i.pri}</span>`],
-     ["Story points",i.pts],["Assignee",esc(i.as||"Unassigned")],
+   ${[["Project",p.k+" · "+esc(p.n)],["Assignee",esc(i.as||"Unassigned")],
+     ["Reported by",esc(i.rep||"—")],["Created",esc(i.at||"—")],
+     ...(i.upd?[["Updated",esc(i.upd)]]:[]),
      ["Parent",par?`<span class="m" style="color:var(--ta)">${par.key}</span> · ${esc(par.t)}`:(PARENT_OF[i.ty]?"—":"top level")],
      ["Children",kids.length?kids.map(c=>`<span class="pl">${c.key} ${FLOW[c.st]}</span>`).join(" "):"—"]]
     .map(x=>`<div style="display:flex;gap:11px;margin-bottom:8px">
     <span class="lbl" style="width:88px;margin:0">${x[0]}</span><span style="flex:1;font-size:12.5px">${x[1]}</span></div>`).join("")}
+   <div class="lbl" style="margin-top:4px">Priority</div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${["Highest","High","Medium","Low"].map(x=>
+     cw("d.board")?`<button class="b s ${i.pri===x?"p":""}" data-a="issueSetPri:${d.pi}:${i.key}:${x}">${x}</button>`
+      :(i.pri===x?`<span class="m" style="color:${PRIC[x]}">${x}</span>`:"")).join("")}</div>
+   <div class="lbl" style="margin-top:10px">Story points</div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${[1,2,3,5,8,13].map(x=>
+     cw("d.board")?`<button class="b s ${i.pts===x?"p":""}" data-a="issueSetPts:${d.pi}:${i.key}:${x}">${x}</button>`
+      :(i.pts===x?`<span class="m">${x}</span>`:"")).join("")}</div>
+   <div class="lbl" style="margin-top:10px">Labels</div>
+   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
+    ${(i.labels||[]).map(lb=>`<span class="pl">${esc(lb)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueLabelDel:${d.pi}:${i.key}:${encodeURIComponent(lb)}">✕</span>`:""}</span>`).join("")}
+    ${!(i.labels||[]).length?`<span class="m" style="color:var(--tm)">No labels.</span>`:""}</div>
+   ${cw("d.board")?`<div style="display:flex;gap:6px;margin-top:6px">
+    <input id="fIssueDetailLabel" placeholder="add label…" style="flex:1;font-size:12px;padding:6px 9px">
+    <button class="b s" data-a="issueLabelAdd:${d.pi}:${i.key}">Add</button></div>`:""}
    ${i.desc?`<div class="lbl" style="margin-top:12px">Description</div>
     <div class="card" style="margin-top:6px;font-size:12.5px;white-space:pre-wrap">${esc(i.desc)}</div>`:""}
    <div class="lbl" style="margin-top:12px">Documents</div>
@@ -3554,6 +3612,20 @@ function dialogView(){
    ${LIVE_BACKEND&&cw("d.board")?`<div style="display:flex;gap:7px;align-items:center;margin-top:8px">
     <input type="file" id="fIssueDetailDoc" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="padding:6px;flex:1">
     <button class="b s" data-a="issueAttAdd:${d.pi}:${i.key}">Add</button></div>`:""}
+   <div class="lbl" style="margin-top:12px">Linked issues</div>
+   ${links===null?`<p class="m" style="color:var(--tm);margin:4px 0 0">Loading…</p>`
+    :links.length?links.map(lk=>`<div class="card" style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:8px">
+      <span style="color:var(--tm);white-space:nowrap">${esc(lk.label)}</span>
+      ${issueKeyLink(d.pi,lk.otherKey)}<span style="flex:1;color:var(--t2)">${esc(lk.otherTitle||"")}</span>
+      ${lk.otherStatus?pill(FLOW[lk.otherStatus]||lk.otherStatus):""}
+      ${cw("d.board")?`<button class="b s d" data-a="issueLinkDel:${d.pi}:${i.key}:${lk.id}" title="Kaldır">✕</button>`:""}</div>`).join("")
+    :`<p class="m" style="color:var(--tm);margin:4px 0 0">No linked issues.</p>`}
+   ${cw("d.board")&&otherIssues.length?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+    <select id="fLinkType" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     ${["blocks","clones","duplicates","relates"].map(t=>`<option value="${t}" ${(f.linkType||"blocks")===t?"selected":""}>${LINK_FORWARD_LABEL[t]}</option>`).join("")}</select>
+    <select id="fLinkTarget" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px;flex:1;min-width:140px">
+     ${otherIssues.map(x=>`<option value="${x.key}">${x.key} — ${esc(String(x.t).slice(0,32))}</option>`).join("")}</select>
+    <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
    ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">${(NEXT[i.st]||[]).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
@@ -3734,6 +3806,13 @@ function afterRender(){
   PENDING_ISSUE_FILE=file;S.f.docFile=file.name;render();};
  const fidesc=document.getElementById("fIssueDesc");
  if(fidesc)fidesc.oninput=e=>{S.f.desc=e.target.value;};
+ const filabel=document.getElementById("fIssueLabel");
+ if(filabel){filabel.oninput=e=>{S.f.pendingLabel=e.target.value;};
+  filabel.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();app.querySelector('[data-a="iLabelAdd"]').click();}};}
+ const fidlabel=document.getElementById("fIssueDetailLabel");
+ if(fidlabel)fidlabel.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();
+  const btn=[...app.querySelectorAll("[data-a]")].find(x=>x.dataset.a.startsWith("issueLabelAdd:"));
+  if(btn)btn.click();}};
  [["dUrl","url"],["dBase","baseDn"],["dBind","bindDn"],["dFilter","filter"]].forEach(([id,key])=>{
   const el=document.getElementById(id);
   if(el)el.oninput=e=>{S.dirF=S.dirF||{};S.dirF[key]=e.target.value;};});
@@ -3776,6 +3855,8 @@ function afterRender(){
     try{const data=await api("GET","/api/search?q="+encodeURIComponent(q));S.searchResults=data.items;render();}
     catch(err){/* sessizce yut */}
    },300);};}
+ const psd=document.getElementById("projSelectDropdown");
+ if(psd)psd.onchange=e=>{S.proj=+e.target.value;render();};
  const mtProjSel=document.getElementById("fMtProjSel");
  if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
   S.f.items=S.f.projKey&&S.f.projKey!=="OTHER"
@@ -4195,6 +4276,15 @@ app.addEventListener("click",async ev=>{
  if(k==="iPts"){S.f.pts=+p[1];render();return;}
  if(k==="iAs"){S.f.as=p[1]?decodeURIComponent(p[1]):null;render();return;}
  if(k==="iSt"){S.f.st=p[1];render();return;}
+ if(k==="iLabelAdd"){const inp=document.getElementById("fIssueLabel");
+  const v=(inp?inp.value:"").trim().slice(0,30);
+  if(!v){toast("Etiket boş olamaz.",1);return;}
+  const cur=S.f.labels||[];
+  if(cur.includes(v)){toast("Bu etiket zaten eklendi.",1);return;}
+  if(cur.length>=10){toast("En fazla 10 etiket eklenebilir.",1);return;}
+  S.f.labels=[...cur,v];S.f.pendingLabel="";render();return;}
+ if(k==="iLabelDel"){const v=decodeURIComponent(p[1]);
+  S.f.labels=(S.f.labels||[]).filter(x=>x!==v);render();return;}
  if(k==="issueSave"){
   if(LIVE_BACKEND){
    const pr=P();
@@ -4202,7 +4292,8 @@ app.addEventListener("click",async ev=>{
    try{
     const created=await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/issues",{
      issueType:S.f.ty||"Story",title:S.f.a.trim(),description:(S.f.desc||"").trim(),status:S.f.st||"backlog",
-     priority:S.f.pri||"Medium",storyPoints:S.f.pts||3,assigneeUsername:asUser,parentKey:S.f.parent||null});
+     priority:S.f.pri||"Medium",storyPoints:S.f.pts||3,assigneeUsername:asUser,parentKey:S.f.parent||null,
+     labels:S.f.labels||[]});
     if(PENDING_ISSUE_FILE&&created&&created.item){
      const fd=new FormData();fd.append("file",PENDING_ISSUE_FILE);
      try{await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(created.item.issue_key)+"/attachments",fd,true);}
@@ -4217,7 +4308,7 @@ app.addEventListener("click",async ev=>{
   const key=pr.k+"-"+((nums.length?Math.max.apply(null,nums):0)+1);
   pr.items.push({key,ty:S.f.ty||"Story",t:S.f.a.trim(),st:S.f.st||"backlog",
    pri:S.f.pri||"Medium",pts:S.f.pts||3,as:S.f.as||null,parent:S.f.parent||null,
-   desc:(S.f.desc||"").trim(),doc:S.f.docFile||null});
+   desc:(S.f.desc||"").trim(),doc:S.f.docFile||null,rep:S.me.n,at:now(),labels:S.f.labels||[]});
   audit("İş kalemi oluşturuldu: "+key);PENDING_ISSUE_FILE=null;S.dlg=null;S.f={};
   toast(key+" created in "+(S.f&&S.f.st==="todo"?"To Do":"Backlog")+".");return;}
 
@@ -4570,7 +4661,9 @@ app.addEventListener("click",async ev=>{
    path:(S.f.c||"genel/rapor"),st:"gelistirme",owner:S.me.n,opens:0,last:null});
   audit("Yeni rapor taslağı oluşturuldu");S.dlg=null;S.f={};toast("Rapor taslağı oluşturuldu.");return;}
  if(k==="issue"){S.dlg={type:"issue",pi:+p[1],key:p[2]};render();
-  if(LIVE_BACKEND){const pk=PROJ[+p[1]].k;delete ISSUE_ATTACH_LIVE[pk+"::"+p[2]];loadIssueAttachmentsLive(pk,p[2]);}
+  if(LIVE_BACKEND){const pk=PROJ[+p[1]].k;
+   delete ISSUE_ATTACH_LIVE[pk+"::"+p[2]];loadIssueAttachmentsLive(pk,p[2]);
+   delete ISSUE_LINKS_LIVE[pk+"::"+p[2]];loadIssueLinksLive(pk,p[2]);}
   return;}
  if(k==="issueAttAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailDoc");const file=inp&&inp.files&&inp.files[0];
@@ -4588,6 +4681,71 @@ app.addEventListener("click",async ev=>{
    toast("Doküman kaldırıldı.");await loadIssueAttachmentsLive(pk,key);
   }catch(e){toast(e.message,1);}
   return;}
+ if(k==="issueSetPri"){const pi=+p[1],key=p[2],val=p[3],pk=PROJ[pi].k;
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  const old=it.pri;it.pri=val;render();
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{priority:val});}
+   catch(e){it.pri=old;toast(e.message,1);render();}
+   return;}
+  audit("Öncelik değişti: "+key+" -> "+val);return;}
+ if(k==="issueSetPts"){const pi=+p[1],key=p[2],val=+p[3],pk=PROJ[pi].k;
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  const old=it.pts;it.pts=val;render();
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{storyPoints:val});}
+   catch(e){it.pts=old;toast(e.message,1);render();}
+   return;}
+  audit("Story point değişti: "+key+" -> "+val);return;}
+ if(k==="issueLabelAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const inp=document.getElementById("fIssueDetailLabel");
+  const v=(inp?inp.value:"").trim().slice(0,30);
+  if(!v){toast("Etiket boş olamaz.",1);return;}
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  const cur=it.labels||[];
+  if(cur.includes(v)){toast("Bu etiket zaten eklendi.",1);return;}
+  if(cur.length>=10){toast("En fazla 10 etiket eklenebilir.",1);return;}
+  const newLabels=[...cur,v];
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{labels:newLabels});
+    it.labels=newLabels;render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  it.labels=newLabels;audit("Etiket eklendi: "+key+" -> "+v);render();return;}
+ if(k==="issueLabelDel"){const pi=+p[1],key=p[2],lb=decodeURIComponent(p[3]),pk=PROJ[pi].k;
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  const newLabels=(it.labels||[]).filter(x=>x!==lb);
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{labels:newLabels});
+    it.labels=newLabels;render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  it.labels=newLabels;audit("Etiket kaldırıldı: "+key+" -> "+lb);render();return;}
+ if(k==="issueLinkAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const typeSel=document.getElementById("fLinkType"),targetSel=document.getElementById("fLinkTarget");
+  const linkType=typeSel?typeSel.value:"blocks",targetKey=targetSel?targetSel.value:null;
+  if(!targetKey){toast("Bağlanacak bir konu seçin.",1);return;}
+  S.f.linkType=linkType;
+  if(LIVE_BACKEND){
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/links",
+     {linkType,targetKey});
+    toast("İlişki eklendi.");await loadIssueLinksLive(pk,key);
+   }catch(e){toast(e.message,1);}
+   return;}
+  ISSUE_LINKS_DEMO.push({id:nextIssueLink++,pk,type:linkType,source:key,target:targetKey});
+  audit("Konu ilişkisi eklendi: "+key+" "+linkType+" "+targetKey);
+  toast("İlişki eklendi.");render();return;}
+ if(k==="issueLinkDel"){const pi=+p[1],key=p[2],linkId=p[3],pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{
+    await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/links/"+linkId);
+    toast("İlişki kaldırıldı.");await loadIssueLinksLive(pk,key);
+   }catch(e){toast(e.message,1);}
+   return;}
+  ISSUE_LINKS_DEMO=ISSUE_LINKS_DEMO.filter(l=>!(l.id===+linkId&&l.pk===pk));
+  audit("Konu ilişkisi kaldırıldı: "+key+" (#"+linkId+")");
+  toast("İlişki kaldırıldı.");render();return;}
  if(k==="move"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]),from=it.st,to=p[3];
   it.st=to;S.dlg=null;toast(p[2]+" · "+FLOW[to]);render();

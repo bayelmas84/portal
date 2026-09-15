@@ -137,6 +137,22 @@ router.post("/", requireWrite("d.board"), async (req, res, next) => {
   }
 });
 
+// Serbest metin etiketler: boşluk kırpılır, boşlar atılır, en fazla 10 etiket,
+// her biri en fazla 30 karakter (Jira "labels" alanına benzer, aşırı veriden korunur).
+function sanitizeLabels(labels) {
+  if (!Array.isArray(labels)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of labels) {
+    const s = String(raw || "").trim().slice(0, 30);
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
 // ------------------------------- Konular (issue tracker) -------------------------------
 const ISSUE_PARENT_OF = { Epic: null, Story: "Epic", Task: "Story", Bug: "Story" };
 
@@ -154,7 +170,7 @@ router.get("/:k/issues", requireRead("d.board"), async (req, res, next) => {
 
 router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
   try {
-    const { issueType, title, description, priority, storyPoints, assigneeUsername, parentKey, status } = req.body || {};
+    const { issueType, title, description, priority, storyPoints, assigneeUsername, parentKey, status, labels } = req.body || {};
     if (!["Epic", "Story", "Task", "Bug"].includes(issueType)) return res.status(400).json({ error: "Geçersiz konu tipi." });
     if (!title || !title.trim()) return res.status(400).json({ error: "Başlık zorunlu." });
     const needParent = ISSUE_PARENT_OF[issueType];
@@ -183,10 +199,10 @@ router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
       const issueKey = `${req.params.k}-${seq.rows[0].n + 1}`;
       const ins = await client.query(
         `INSERT INTO project_issues (project_k, issue_key, issue_type, title, description, status, priority, story_points,
-           assignee_username, parent_key, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+           assignee_username, parent_key, created_by, labels)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
         [req.params.k, issueKey, issueType, title.trim(), (description || "").trim(), status || "backlog", priority || "Medium",
-         Number(storyPoints) || 0, assigneeUsername || null, needParent ? parentKey : null, req.user.username]
+         Number(storyPoints) || 0, assigneeUsername || null, needParent ? parentKey : null, req.user.username, sanitizeLabels(labels)]
       );
       return ins.rows[0];
     });
@@ -203,7 +219,7 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     const { rows } = await query("SELECT * FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
     const issue = rows[0];
     if (!issue) return res.status(404).json({ error: "Konu bulunamadı." });
-    const { status, assigneeUsername, priority, storyPoints, title, description, inSprint } = req.body || {};
+    const { status, assigneeUsername, priority, storyPoints, title, description, inSprint, labels } = req.body || {};
     if (status && !["backlog", "todo", "prog", "review", "test", "done"].includes(status)) {
       return res.status(400).json({ error: "Geçersiz durum." });
     }
@@ -223,6 +239,7 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     if (storyPoints !== undefined) { fields.push(`story_points=$${i++}`); values.push(Number(storyPoints) || 0); }
     if (title !== undefined) { fields.push(`title=$${i++}`); values.push(title.trim()); }
     if (description !== undefined) { fields.push(`description=$${i++}`); values.push(description.trim()); }
+    if (labels !== undefined) { fields.push(`labels=$${i++}`); values.push(sanitizeLabels(labels)); }
     if (inSprint !== undefined) { fields.push(`in_sprint=$${i++}`); values.push(!!inSprint); }
     if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });
     fields.push(`updated_at=now()`);
@@ -303,6 +320,76 @@ router.delete("/:k/issues/:issueKey/attachments/:id", requireWrite("d.board"), a
     if (!rows.length) return res.status(404).json({ error: "Doküman bulunamadı." });
     try { fs.unlinkSync(path.join(config.uploadDir, rows[0].stored_name)); } catch (_) { /* dosya zaten yoksa yok say */ }
     await audit(`Konudan doküman kaldırıldı: ${req.params.issueKey} — ${rows[0].file_name}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// ----------------------------- Konu ilişkilendirmeleri (links) -----------------------------
+// Ters yön etiketleri: blocks<->is blocked by, clones<->is cloned by,
+// duplicates<->is duplicated by, relates simetriktir.
+const LINK_INVERSE = { blocks: "is blocked by", clones: "is cloned by", duplicates: "is duplicated by", relates: "relates to" };
+const LINK_FORWARD_LABEL = { blocks: "blocks", clones: "clones", duplicates: "duplicates", relates: "relates to" };
+
+router.get("/:k/issues/:issueKey/links", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT pil.*, pi.title AS other_title, pi.issue_type AS other_type, pi.status AS other_status
+       FROM project_issue_links pil
+       JOIN project_issues pi ON pi.project_k=pil.project_k
+         AND pi.issue_key = (CASE WHEN pil.source_key=$2 THEN pil.target_key ELSE pil.source_key END)
+       WHERE pil.project_k=$1 AND (pil.source_key=$2 OR pil.target_key=$2)
+       ORDER BY pil.created_at`,
+      [req.params.k, req.params.issueKey]
+    );
+    const items = rows.map((r) => ({
+      id: r.id,
+      label: r.source_key === req.params.issueKey ? LINK_FORWARD_LABEL[r.link_type] : LINK_INVERSE[r.link_type],
+      otherKey: r.source_key === req.params.issueKey ? r.target_key : r.source_key,
+      otherTitle: r.other_title,
+      otherType: r.other_type,
+      otherStatus: r.other_status,
+    }));
+    res.json({ items });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/issues/:issueKey/links", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { linkType, targetKey } = req.body || {};
+    if (!["blocks", "clones", "duplicates", "relates"].includes(linkType)) {
+      return res.status(400).json({ error: "Geçersiz ilişki türü." });
+    }
+    if (!targetKey || targetKey === req.params.issueKey) {
+      return res.status(400).json({ error: "Geçerli bir hedef konu seçilmelidir." });
+    }
+    const [src, tgt] = await Promise.all([
+      query("SELECT 1 FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]),
+      query("SELECT 1 FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, targetKey]),
+    ]);
+    if (!src.rowCount) return res.status(404).json({ error: "Kaynak konu bulunamadı." });
+    if (!tgt.rowCount) return res.status(404).json({ error: "Hedef konu bulunamadı." });
+    const { rows } = await query(
+      `INSERT INTO project_issue_links (project_k, link_type, source_key, target_key, created_by)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [req.params.k, linkType, req.params.issueKey, targetKey, req.user.username]
+    );
+    await audit(`Konu ilişkisi eklendi: ${req.params.issueKey} ${linkType} ${targetKey}`, req.user.username);
+    res.status(201).json({ id: rows[0].id });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Bu ilişki zaten mevcut." });
+    next(e);
+  }
+});
+
+router.delete("/:k/issues/:issueKey/links/:linkId", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `DELETE FROM project_issue_links WHERE id=$1 AND project_k=$2
+         AND (source_key=$3 OR target_key=$3) RETURNING id`,
+      [req.params.linkId, req.params.k, req.params.issueKey]
+    );
+    if (!rows.length) return res.status(404).json({ error: "İlişki bulunamadı." });
+    await audit(`Konu ilişkisi kaldırıldı: ${req.params.issueKey} (#${req.params.linkId})`, req.user.username);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
