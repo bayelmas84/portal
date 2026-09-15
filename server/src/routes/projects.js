@@ -1147,7 +1147,18 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
 
       for (const it of items || []) {
         let linkedIssueKey = null;
-        if (epicKey) {
+        let carriedFromMeetingId = null;
+        if (it.carriedQueueId) {
+          // Taşınan madde: yeni bir Task AÇILMAZ, önceki toplantıda zaten
+          // oluşturulmuş Task'ın anahtarı yeniden kullanılır.
+          const cq = await client.query(
+            "SELECT linked_issue_key, from_meeting_id FROM meeting_carry_queue WHERE id=$1 AND project_k=$2",
+            [it.carriedQueueId, projectK]
+          );
+          linkedIssueKey = cq.rows[0] ? cq.rows[0].linked_issue_key : null;
+          carriedFromMeetingId = cq.rows[0] ? cq.rows[0].from_meeting_id : null;
+          await client.query("DELETE FROM meeting_carry_queue WHERE id=$1", [it.carriedQueueId]);
+        } else if (epicKey) {
           const task = await insertIssueRow(client, MEETING_PROJECT_K, {
             issueType: "Task",
             title: it.text,
@@ -1165,11 +1176,8 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
         await client.query(
           `INSERT INTO meeting_items (meeting_id, text, status, carried_from_meeting_id, assignee_username, due_date, linked_issue_key)
            VALUES ($1,$2,'open',$3,$4,$5,$6)`,
-          [m.rows[0].id, it.text, it.carriedFromMeetingId || null, it.assigneeUsername, it.dueDate || null, linkedIssueKey]
+          [m.rows[0].id, it.text, carriedFromMeetingId, it.assigneeUsername, it.dueDate || null, linkedIssueKey]
         );
-      }
-      if (projectK) {
-        await client.query("DELETE FROM meeting_carry_queue WHERE project_k=$1", [projectK]);
       }
       return m.rows[0];
     });
@@ -1199,8 +1207,8 @@ router.post("/meetings/:id/items/:itemId/status", requireWrite("d.meeting"), asy
       const m = await query("SELECT project_k FROM meetings WHERE id=$1", [req.params.id]);
       if (m.rows[0].project_k) {
         await query(
-          "INSERT INTO meeting_carry_queue (project_k, text, from_meeting_id) VALUES ($1,$2,$3)",
-          [m.rows[0].project_k, item.rows[0].text, req.params.id]
+          "INSERT INTO meeting_carry_queue (project_k, text, from_meeting_id, linked_issue_key) VALUES ($1,$2,$3,$4)",
+          [m.rows[0].project_k, item.rows[0].text, req.params.id, item.rows[0].linked_issue_key || null]
         );
       }
     } else {
@@ -1213,7 +1221,17 @@ router.post("/meetings/:id/items/:itemId/status", requireWrite("d.meeting"), asy
 
 router.get("/:k/meetings/carry-queue", requireRead("d.meeting"), async (req, res, next) => {
   try {
-    const { rows } = await query("SELECT * FROM meeting_carry_queue WHERE project_k=$1 ORDER BY created_at", [req.params.k]);
+    // linked_issue_key varsa, ilgili Task'ın güncel assignee/due_date'i de
+    // döndürülür — yeni toplantı formunda bu madde otomatik eklenirken
+    // sorumlu/tarih önceden doldurulabilsin diye.
+    const { rows } = await query(
+      `SELECT cq.*, pi.assignee_username AS linked_assignee_username, pi.due_date AS linked_due_date,
+         pi.status AS linked_status
+       FROM meeting_carry_queue cq
+       LEFT JOIN project_issues pi ON pi.project_k=$2 AND pi.issue_key=cq.linked_issue_key
+       WHERE cq.project_k=$1 ORDER BY cq.created_at`,
+      [req.params.k, MEETING_PROJECT_K]
+    );
     res.json({ items: rows });
   } catch (e) { next(e); }
 });

@@ -1215,7 +1215,8 @@ async function loadMeetingsLive(projFilter){
    title:m.title,date:(m.meeting_date||"").slice(0,10),time:m.meeting_time,notes:m.notes,
    by:(function(){const u=USERS.find(x=>x.u===m.created_by);return u?u.n:m.created_by;})(),at:(m.created_at||"").replace("T"," ").slice(0,16),
    participants:m.participants.map(uname=>{const u=USERS.find(x=>x.u===uname);return u?u.n:uname;}),
-   items:m.items.map(it=>({id:String(it.id),text:it.text,status:it.status,carriedFrom:!!it.carried_from_meeting_id}))}));
+   items:m.items.map(it=>({id:String(it.id),text:it.text,status:it.status,carriedFrom:!!it.carried_from_meeting_id,
+    linkedIssueKey:it.linked_issue_key||null}))}));
  }catch(e){toast("Toplantı notları yüklenemedi: "+e.message,1);S.meetingsLive=[];}
  S.meetingsLiveLoading=null;render();}
 const ANN_STATUS_MAP={yayinda:"yayında",onayda:"onayda",geri_cekildi:"geri çekildi"};
@@ -1275,6 +1276,24 @@ async function loadCRCacheLive(projK){
 function crsAllOf(k){
  if(LIVE_BACKEND){if(!(k in CR_CACHE_LIVE)){CR_CACHE_LIVE[k]=[];loadCRCacheLive(k);}return CR_CACHE_LIVE[k];}
  return crsOf(k);}
+/* "Sonraki toplantıya aktar" ile taşınan maddeler — LIVE_BACKEND'de bu
+   önceden HİÇ çekilmiyordu (yeni toplantı formu her zaman boş açılıyordu).
+   Proje seçilince bu kuyruk çekilir ve formun madde listesine, önceki
+   Task'ın sorumlusu/tarihi önceden doldurulmuş halde eklenir; kaydedilince
+   AYNI Task yeniden kullanılır (mükerrer Task açılmaz). */
+async function loadCarryQueueLive(projK){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(projK)+"/meetings/carry-queue");
+  if(S.f&&S.f.projKey===projK&&S.scr==="d.meetingnew"){
+   const nm=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
+   const carriedItems=data.items.map(c=>({id:"mi"+(nextMeetingItem++),text:c.text,status:"open",carried:true,
+    assignee:c.linked_assignee_username?nm(c.linked_assignee_username):null,
+    due:c.linked_due_date?String(c.linked_due_date).slice(0,10):"",
+    carriedQueueId:c.id}));
+   S.f.items=[...carriedItems,...(S.f.items||[]).filter(it=>!it.carried)];
+   render();
+  }
+ }catch(e){/* sessiz geç */}}
 const DOC_TYPE_TO_CODE={"Proje Kartı":"PK",BRD:"BRD",FRD:"FRD",UAT:"UAT","Go Live":"GL","Risk ve Uyumluluk":"RSK","Kapanış":"KAP"};
 async function loadDocsLive(){
  S.docsLiveLoading=true;
@@ -2217,10 +2236,12 @@ function screenView(){
   const pr=PROJ.find(x=>x.k===m.projKey),canWrite=cw("d.meeting");
   const groups={open:[],done:[],cancelled:[],carried:[]};
   (m.items||[]).forEach(it=>{(groups[it.status]||groups.open).push(it);});
+  const toplantiIdx=PROJ.findIndex(x=>x.k==="TOPLANTI");
   const itemRow=(it,extra)=>`<div class="card" style="padding:8px 11px;margin-bottom:6px;display:flex;gap:9px;align-items:center">
    ${canWrite?`<button class="sw ${it.status==="done"?"on":""}" data-a="mtCheck:${it.id}" title="Mark as done"><i></i></button>`
     :`<span style="width:16px"></span>`}
-   <span style="flex:1;font-size:12.5px">${it.carriedFrom?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}</span>
+   <span style="flex:1;font-size:12.5px">${it.carriedFrom?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}
+    ${it.linkedIssueKey&&toplantiIdx>=0?`<span class="m" style="color:var(--tm)"> · </span>${issueKeyLink(toplantiIdx,it.linkedIssueKey)}`:""}</span>
    ${extra||""}</div>`;
   return head(esc(m.title),(pr?pr.k+" · "+esc(pr.n):"Other"+(m.projOther?" · "+esc(m.projOther):""))+" · "+(m.date||"")+(m.time?" "+m.time:""),
     `<button class="b" data-a="mtClose">Back to list</button>`)+
@@ -2285,26 +2306,27 @@ function screenView(){
 
     <div class="lbl" style="margin-top:14px">Agenda items</div>
     <p class="m" style="color:var(--tm);margin:2px 0 8px">Each item becomes a Task under this meeting's Epic in the "Toplantı" project, assigned directly to the selected person's backlog. Assignee is required; due date is optional.</p>
-    ${items.length?items.map((it,i)=>`<div class="card" style="padding:9px 10px;margin-bottom:6px">
+    ${items.length?items.map((it,i)=>{const showErr=S.f.mtSubmitAttempted&&!it.assignee;
+     return `<div class="card" style="padding:9px 10px;margin-bottom:6px">
      <div style="display:flex;gap:8px;align-items:center">
       <span style="flex:1;font-size:12.5px">${it.carried?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}</span>
       <button class="b s d" data-a="mtRemItem:${i}">Delete</button></div>
      <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
-      <select data-item-assign="${it.id}" style="flex:1;min-width:150px;font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid ${it.assignee?"var(--bd)":"var(--er-fg)"};background:var(--s2);color:var(--t1)">
-       <option value="" ${!it.assignee?"selected":""}>Select assignee… (required)</option>
+      <select data-item-assign="${it.id}" style="flex:1;min-width:150px;font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid ${showErr?"var(--er-fg)":"var(--bd)"};background:var(--s2);color:var(--t1)">
+       <option value="" ${!it.assignee?"selected":""}>Select assignee…</option>
        ${USERS.filter(u=>u.on).map(u=>`<option value="${esc(u.n)}" ${it.assignee===u.n?"selected":""}>${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
       <input type="date" data-item-due="${it.id}" value="${esc(it.due||"")}" title="Due date (optional)"
        style="font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)"></div>
-     ${!it.assignee?`<p class="m" style="color:var(--er-fg);margin:5px 0 0">Assignee required for this item.</p>`:""}</div>`).join("")
+     ${showErr?`<p class="m" style="color:var(--er-fg);margin:5px 0 0">Assignee required for this item.</p>`:""}</div>`;}).join("")
      :`<p class="m" style="color:var(--tm);margin:4px 0">No items added yet.</p>`}
     <div style="display:flex;gap:6px;flex-wrap:wrap">
      <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="New agenda item..." style="flex:2;min-width:160px">
      <select id="fMtNewItemAssignee" style="flex:1;min-width:150px">
-      <option value="" ${!f.newItemAssignee?"selected":""}>Select assignee… (required)</option>
+      <option value="" ${!f.newItemAssignee?"selected":""}>Select assignee…</option>
       ${USERS.filter(u=>u.on).map(u=>`<option value="${esc(u.n)}" ${f.newItemAssignee===u.n?"selected":""}>${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
      <input id="fMtNewItemDue" type="date" value="${esc(f.newItemDue||"")}" title="Due date (optional)" style="width:150px">
      <button class="b s" data-a="mtAddItem">Add</button></div>
-    <p class="m" style="color:var(--tm);margin:6px 0 0">Assignee must be selected before a new item can be added.</p>
+    <p class="m" style="color:var(--tm);margin:6px 0 0">Each new item needs an assignee before it can be added.</p>
 
     <div class="lbl" style="margin-top:13px">Notes</div>
     <textarea id="fMtNotes" placeholder="Free-form notes about the meeting">${esc(f.notes||"")}</textarea>
@@ -4096,9 +4118,11 @@ function afterRender(){
   render();};
  const mtProjSel=document.getElementById("fMtProjSel");
  if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
-  S.f.items=S.f.projKey&&S.f.projKey!=="OTHER"
-   ?(CARRY[S.f.projKey]||[]).map(c=>({id:"mi"+(nextMeetingItem++),text:c.text,status:"open",carried:true,assignee:null,due:""}))
-   :[];
+  if(S.f.projKey&&S.f.projKey!=="OTHER"){
+   if(LIVE_BACKEND){S.f.items=[];loadCarryQueueLive(S.f.projKey);}
+   else S.f.items=(CARRY[S.f.projKey]||[]).map(c=>({id:"mi"+(nextMeetingItem++),text:c.text,status:"open",carried:true,
+    assignee:c.assignee||null,due:c.due||"",linkedIssueKey:c.linkedIssueKey||null}));
+  } else S.f.items=[];
   render();};
  const mtPartSel=document.getElementById("fMtPartSel");
  if(mtPartSel)mtPartSel.onchange=e=>{const n=e.target.value;if(!n)return;
@@ -4183,7 +4207,7 @@ app.addEventListener("click",async ev=>{
  const el=ev.target.closest("[data-a]");if(!el)return;
  const p=el.dataset.a.split(":"),k=p[0],dec=x=>decodeURIComponent(x||"");
 
- if(k==="needFields"){toast("Zorunlu alanlar eksik.",1);return;}
+ if(k==="needFields"){if(S.scr==="d.meetingnew")S.f.mtSubmitAttempted=true;toast("Zorunlu alanlar eksik.",1);render();return;}
  if(k==="needTime"){toast("Bu sayfada 30 saniye tamamlanmadan ilerleyemezsiniz.",1);return;}
  if(k==="needAll"){toast("Yanıtlanmamış soru var.",1);return;}
  if(k==="theme"){S.dark=!S.dark;render();return;}
@@ -4620,7 +4644,7 @@ app.addEventListener("click",async ev=>{
      projectK:f.projKey==="OTHER"?null:f.projKey,otherSubject:subject,
      title:(f.title||"").trim()||undefined,date:f.date,time:f.time||undefined,
      notes:(f.notes||"").trim()||undefined,participants:usernamesOf(f.parts||[]),
-     items:(f.items||[]).map(it=>({text:it.text,carriedFromMeetingId:it.carried?true:undefined,
+     items:(f.items||[]).map(it=>({text:it.text,carriedQueueId:it.carriedQueueId||undefined,
       assigneeUsername:usernamesOf([it.assignee])[0],dueDate:it.due||null}))});
     S.dlg=null;S.f={};S.meetingsLive=null;ISSUE_ATTACH_LIVE={};ISSUE_LINKS_LIVE={};
     await loadProjectsLive(); // "Toplantı" projesi yeni açılmış olabilir, proje listesi tazelenmeli
@@ -4635,7 +4659,7 @@ app.addEventListener("click",async ev=>{
    title:"placeholder", // aşağıda gerçek başlık (subject-türetilmiş ya da özel) atanacak
    date:f.date,time:f.time||"",participants:[...(f.parts||[])],notes:(f.notes||"").trim(),
    items:(f.items||[]).map(it=>({id:it.id,text:it.text,status:"open",carriedFrom:!!it.carried,
-    assignee:it.assignee,due:it.due||null,linkedIssueKey:null})),
+    assignee:it.assignee,due:it.due||null,linkedIssueKey:it.linkedIssueKey||null})),
    by:S.me.n,at:now()};
   // Konu anahtarı öneki: özel başlık varsa ondan, yoksa gerçek projenin
   // adından, o da yoksa "Diğer" konu metninden türetilir — backend'deki
@@ -4668,6 +4692,12 @@ app.addEventListener("click",async ev=>{
    mp.items.push({key:epicKey,ty:"Epic",t:meetingTitle,st:"backlog",pri:"Medium",pts:0,as:null,parent:null,
     desc:m.notes,rep:S.me.n,at:now(),labels:[],due:null});
    m.items.forEach(it=>{
+    if(it.linkedIssueKey){
+     // Taşınan madde: önceki toplantıda zaten bir Task olarak açılmıştı,
+     // mükerrer bir Task AÇILMAZ — aynı anahtar olduğu gibi korunur.
+     const existing=itemByKey(mp,it.linkedIssueKey);
+     if(existing)existing.parent=epicKey; // yeni toplantının Epic'ine "taşınmış" olarak bağlı kalsın
+     return;}
     const taskKey=subjectPrefix?nextKeyForPrefixDemo(mp,subjectPrefix):nextKeyDashDemo(mp);
     mp.items.push({key:taskKey,ty:"Task",t:it.text,st:"backlog",pri:"Medium",pts:0,as:it.assignee||null,
      parent:epicKey,desc:"",rep:S.me.n,at:now(),labels:[],due:it.due||null});
@@ -4675,7 +4705,13 @@ app.addEventListener("click",async ev=>{
   }
   if(!meetingTitle)meetingTitle="Toplantı Notu";
   m.title=meetingTitle;
-  MEETINGS.unshift(m);if(f.projKey!=="OTHER")CARRY[f.projKey]=[];
+  MEETINGS.unshift(m);
+  if(f.projKey!=="OTHER"){
+   // Yalnızca BU toplantıda gerçekten kullanılan taşınmış maddeler kuyruktan
+   // düşer — kullanılmayanlar (varsa) sonraki bir toplantı için kuyrukta kalır.
+   const consumedTexts=new Set((f.items||[]).filter(it=>it.carried).map(it=>it.text));
+   CARRY[f.projKey]=(CARRY[f.projKey]||[]).filter(c=>!consumedTexts.has(c.text));
+  }
   const to=[...new Set((m.participants||[]).map(mailOf))];
   const sent=to.filter(addr=>mail(addr,m.title+" — "+(pr?pr.k:subject)+" toplantı notu paylaşıldı"));
   audit("Toplantı notu oluşturuldu: "+m.title+" ("+(pr?pr.k:"Diğer")+") · bildirim: "+(sent.join(", ")||"gönderilmedi"));
@@ -4714,7 +4750,8 @@ app.addEventListener("click",async ev=>{
    catch(e){toast("Durum güncellenemedi: "+e.message,1);}
    return;}
   const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
-  if(!it)return;it.status="carried";CARRY[m.projKey]=CARRY[m.projKey]||[];CARRY[m.projKey].push({text:it.text});
+  if(!it)return;it.status="carried";CARRY[m.projKey]=CARRY[m.projKey]||[];
+  CARRY[m.projKey].push({text:it.text,linkedIssueKey:it.linkedIssueKey||null,assignee:it.assignee||null,due:it.due||""});
   toast("Madde bir sonraki toplantıya aktarılacak.");render();return;}
  if(k==="mtReopen"){
   if(LIVE_BACKEND){
