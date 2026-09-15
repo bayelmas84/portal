@@ -2488,6 +2488,7 @@ function screenView(){
    <td style="text-align:right;white-space:nowrap">${u.u==="belmas"?`<span class="m" style="color:var(--tm)">değiştirilemez</span>`:cw("m.users")?
     `<button class="b s" data-a="toggle:user:${LIVE_BACKEND?u.u:i}">${u.on?"Pasife al":"Aktif et"}</button>
      <button class="b s" data-a="recEdit:user:${LIVE_BACKEND?u.u:i}">Düzenle</button>
+     ${LIVE_BACKEND&&u.u!==S.me.u?`<button class="b s" data-a="reset2fa:${u.u}">2FA sıfırla</button>`:""}
      ${LIVE_BACKEND?"":`<button class="b s d" data-a="recDel:user:${i}">Sil</button>`}`:""}</td></tr>`).join("")));}
 
  if(v==="m.units"){
@@ -3504,9 +3505,9 @@ function dialogView(){
  if(d.type==="confirm")
   return wrap(`<div style="display:flex;gap:12px">${ic("alert-triangle",20,"color:#a3121c")}
    <div style="flex:1"><div style="font-size:15px">${d.title}</div>
-    <p style="font-size:12.5px;color:var(--t2);line-height:1.6;margin:8px 0 0">${d.text}</p></div></div>
+    <p style="font-size:12.5px;color:var(--t2);line-height:1.6;margin:8px 0 0">${d.text||d.body||""}</p></div></div>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px"><button class="b" data-a="dlgClose">Vazgeç</button>
-    <button class="b d" data-a="${d.act}">Evet, sil</button></div>`);
+    <button class="b d" data-a="${d.act||d.action}">${d.actLabel||"Evet, sil"}</button></div>`);
  return "";}
 
 function validate(){
@@ -3779,6 +3780,14 @@ app.addEventListener("click",async ev=>{
  if(k==="twofaEnableEmailConfirm"){
   const code=(document.getElementById("f2faEmailCode")||{}).value||"";
   try{await api("POST","/api/auth/2fa/enable-email/confirm",{code});TWOFA_STATUS={enabled:true,method:"email",required:TWOFA_STATUS&&TWOFA_STATUS.required};S.dlg=null;toast("2FA etkinleştirildi.");render();}
+  catch(e){toast(e.message,1);}
+  return;}
+ if(k==="reset2fa"){S.dlg={type:"confirm",title:"2FA sıfırlansın mı?",
+   body:`<b>${esc(p[1])}</b> kullanıcısının 2FA'sı sıfırlanacak ve mevcut oturumları sonlandırılacak. Bu işlem yöneticinizin onayına gider.`,
+   action:"reset2faConfirm:"+p[1],actLabel:"Evet, sıfırla"};render();return;}
+ if(k==="reset2faConfirm"){
+  try{const data=await api("POST","/api/admin/users/"+encodeURIComponent(p[1])+"/reset-2fa",{});
+   S.dlg=null;toast(data.message||"Onaya gönderildi.");render();}
   catch(e){toast(e.message,1);}
   return;}
  if(k==="twofaDisable"){
