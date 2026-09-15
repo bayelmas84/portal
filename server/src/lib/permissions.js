@@ -127,7 +127,20 @@ async function canWrite(role, screenKey) {
   return level === "write";
 }
 
+// Proje yönetimi modülünün (d.* + üst modül anahtarı "delivery") yetki
+// DEĞERLERİ değişmez — mevcut role_access kayıtları (ilk kurulumda
+// DEFAULT_ACCESS'ten seed edilmiştir) gerçek erişim kontrolünde
+// kullanılmaya devam eder; yalnızca bu değerlerin Admin Panel üzerinden
+// DEĞİŞTİRİLMESİ engellenir. Böylece mevcut roller (CEO, Geliştirici,
+// Personel vb.) için bugüne kadarki gerçek erişim davranışında hiçbir
+// regresyon oluşmaz — yalnızca admin'in bunu Admin Panel'den değiştirme
+// YOLU kapanır (server/src/routes/admin.js:isLockedAccessKey ile aynı kural).
+const isProjectModuleKey = (key) => key === "delivery" || key.startsWith("d.");
+
 async function setAccess(role, screenKey, level) {
+  if (isProjectModuleKey(screenKey)) {
+    throw new Error("Proje yönetimi modülünün yetkileri Admin Panel üzerinden değiştirilemez; sabittir.");
+  }
   if (level === "none") {
     await query("DELETE FROM role_access WHERE role=$1 AND screen_key=$2", [role, screenKey]);
   } else {
@@ -149,8 +162,20 @@ async function resetAccessToDefault() {
   invalidateCache();
 }
 
+// Admin Panel > Ekran yetkileri (m.access) ekranının okuduğu harita: proje
+// yönetimi modülü buradan TAMAMEN çıkarılır — DEĞERLERİ gerçek erişim
+// kontrolünde aynen kullanılmaya devam etse de, bu ekranda hiç GÖRÜNMEZ ve
+// dolayısıyla değiştirilemez.
 async function getAllAccess() {
-  return loadAccess();
+  const access = await loadAccess();
+  const merged = {};
+  for (const [role, screens] of Object.entries(access)) {
+    merged[role] = {};
+    for (const [key, level] of Object.entries(screens)) {
+      if (!isProjectModuleKey(key)) merged[role][key] = level;
+    }
+  }
+  return merged;
 }
 
 let availCache = null;

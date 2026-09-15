@@ -212,10 +212,14 @@ router.put("/units/:code", requireWrite("m.units"), async (req, res, next) => {
 });
 
 const VALID_ROLES = Object.keys(DEFAULT_ACCESS).concat(["gmy", "opsdir"]).filter((v, i, a) => a.indexOf(v) === i);
-// Proje yönetimi modülünün yetkilendirme ayarları (Project Admin ekranı ve
-// benzerleri) yalnızca Proje Yönetim Direktörü'ne aittir; Admin Panel'in
-// genel "Ekran yetkileri" mekanizması üzerinden dahi değiştirilemez.
-const LOCKED_ACCESS_KEYS = ["d.projadmin"];
+// Proje yönetimi modülünün TAMAMI (her "d." ile başlayan ekran anahtarı:
+// d.board, d.backlog, d.gate, d.team, d.docs, d.gantt, d.roadmap,
+// d.projadmin, ...) Admin Panel'in genel "Ekran yetkileri" mekanizmasından
+// tamamen çıkarılmıştır — sabittir, hiçbir role admin panelinden verilemez/
+// kaldırılamaz. Bu modülün TEK yetkilendirme yeri, yalnızca Proje Yönetim
+// Direktörü'ne açık olan Project Admin ekranıdır (bugün: iş akışı kuralları,
+// project_workflow_transitions üzerinden — ayrı, proje bazlı bir mekanizma).
+const isLockedAccessKey = (key) => typeof key === "string" && (key === "delivery" || key.startsWith("d."));
 
 router.post("/users", requireWrite("m.users"), async (req, res, next) => {
   try {
@@ -405,8 +409,8 @@ router.put("/access", requireWrite("m.access"), async (req, res, next) => {
     // Proje yönetimi modülünün yetkilendirme ayarları (bugün: Project Admin
     // ekranı) yalnızca Proje Yönetim Direktörü'ne aittir — Admin Panel
     // üzerinden bile hiçbir role verilemez/kaldırılamaz.
-    if (LOCKED_ACCESS_KEYS.includes(screenKey)) {
-      return res.status(409).json({ error: "Bu ekranın yetkisi Admin Panel üzerinden değiştirilemez; sabittir." });
+    if (isLockedAccessKey(screenKey)) {
+      return res.status(409).json({ error: "Proje yönetimi modülünün (d.*) yetkileri Admin Panel üzerinden değiştirilemez; sabittir." });
     }
     await requestAdminApproval(req, res, "admin.access", { role, screenKey, level },
       `Ekran yetkisi değişikliği: ${role} / ${screenKey} -> ${level}`);

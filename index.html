@@ -478,11 +478,13 @@ const ACC={
 ["pm","pmdir"].forEach(r=>{ACC[r]["d.meeting"]=W;ACC[r]["d.meetingview"]=W;ACC[r]["d.meetingnew"]=W;ACC[r]["d.gantt"]=W;ACC[r]["d.roadmap"]=W;});
 const ROLE={pmdir:"Proje Yönetim Direktörü",admin:"Admin",inspection:"Teftiş",infosec:"Bilgi Güvenliği",control:"İç Kontrol",
  gmy:"Genel Müdür Yardımcısı",opsdir:"Operasyon Direktörü",pm:"Proje Yöneticisi",dev:"Geliştirici",staff:"Personel",ceo:"Genel Müdür"};
-// Proje yönetimi modülünün yetkilendirme ayarları (Project Admin ekranı)
-// yalnızca Proje Yönetim Direktörü'ne aittir — Admin Panel'in genel "Ekran
-// yetkileri" ekranından bile hiçbir role verilemez/kaldırılamaz (server/src/
-// routes/admin.js içindeki LOCKED_ACCESS_KEYS ile birebir aynı liste).
-const LOCKED_ACCESS_KEYS=["d.projadmin"];
+// Proje yönetimi modülünün TAMAMI (üst modül anahtarı "delivery" + her
+// "d." ile başlayan alt ekran) Admin Panel'in "Ekran yetkileri" (m.access)
+// ekranından tamamen çıkarılmıştır — sabittir, hiçbir yoldan (kendi rolüne
+// bile) admin panelinden değiştirilemez. Bu modülün TEK yetkilendirme
+// yeri, yalnızca Proje Yönetim Direktörü'ne açık olan Project Admin
+// ekranıdır (server/src/routes/admin.js:isLockedAccessKey ile birebir aynı kural).
+const isProjectModuleKey=key=>key==="delivery"||key.startsWith("d.");
 
 let USERS=[
  {u:"ahmet.tera",n:"Ahmet Tera",r:"ceo",c:"#0B1F48",unit:"Portföy Yönetimi",
@@ -1560,7 +1562,11 @@ const inAnyTeam=()=>!!S.me&&PROJ.some(p=>teamOf(p.k).some(m=>
 let MY_ACCESS=null;
 /* Backend'in GERÇEKTEN denetlediği ekran anahtarları (requireRead/requireWrite
    çağrılarından derlenmiştir). Bu listede olmayan anahtarlar (kanban, backlog,
-   raporlar gibi salt demo ekranlar) yerel ACC varsayılanlarını kullanmaya devam eder. */
+   raporlar gibi salt demo ekranlar) yerel ACC varsayılanlarını kullanmaya devam eder.
+   NOT: d.projadmin bilerek burada YOKTUR — o anahtar backend'de hiç
+   denetlenmez (yalnızca frontend ACC'de pmdir'e tanımlıdır) ve Admin
+   Panel'in "Ekran yetkileri" ekranından da bilerek gizlenmiştir/değiştirilemez
+   (bkz. m.access render'ı ve server/src/routes/admin.js:isLockedAccessKey). */
 const BACKEND_MANAGED_KEYS=["announcements","training","d.team","d.docs","d.docview","d.cr",
  "d.gantt","d.meeting","d.meetingview","d.board","d.gate","c.audit","m.users","m.dir","m.smtp","m.brand","m.avail","m.access"];
 async function loadMyAccessLive(){
@@ -2265,7 +2271,10 @@ function screenView(){
     return head("Ekran yetkileri","Hücreye tıklayarak — · R · W arasında geçiş yapın · canlı backend")+
      `<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;}
    const keySet=new Set();roles.forEach(r=>Object.keys(ACCESS_LIVE[r]||{}).forEach(k=>keySet.add(k)));
-   const keys=[...keySet].sort();
+   // Proje yönetimi modülü (d.*) bu ekranda hiç gösterilmez — sabit bir
+   // mekanizmadır, yalnızca pmdir'in Project Admin ekranından (bugün: iş
+   // akışı kuralları) yönetilir; Admin Panel'den değiştirilemez.
+   const keys=[...keySet].filter(k=>!isProjectModuleKey(k)).sort();
    keys.forEach(key=>{
     rows+=`<tr><td style="min-width:150px">${esc(screenLabel(key))}<div class="m" style="color:var(--tm)">${key}</div></td>`+
      roles.map(r=>{const val=(ACCESS_LIVE[r]||{})[key]||"none";
@@ -2283,8 +2292,9 @@ function screenView(){
     table(["Ekran"].concat(roles.map(r=>ROLE[r].split(" ")[0]+(r===S.me.r?" (siz)":""))),rows)+
     `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">R yalnızca görüntüleme, W ekleme ve değiştirme yetkisidir. Her değişiklik denetim kaydına yazılır.</p>`;}
   MODULES.forEach(mo=>{
+   if(isProjectModuleKey(mo[0]))return; // Proje Yönetimi modülü bu ekranda hiç görünmez.
    rows+=`<tr><td colspan="${roles.length+1}" style="background:var(--s1);font-size:9.5px;color:var(--tm);letter-spacing:.08em">${mo[1].toUpperCase()}</td></tr>`;
-   [[mo[0],"(modül)"]].concat((SCREENS[mo[0]]||[]).map(x=>[x[0],x[1]])).filter(([key])=>!LOCKED_ACCESS_KEYS.includes(key)).forEach(([key,label])=>{
+   [[mo[0],"(modül)"]].concat((SCREENS[mo[0]]||[]).map(x=>[x[0],x[1]])).filter(([key])=>!isProjectModuleKey(key)).forEach(([key,label])=>{
     rows+=`<tr><td style="min-width:150px">${label}<div class="m" style="color:var(--tm)">${key}</div></td>`+
      roles.map(r=>{const val=(ACC[r]||{})[key]||"none";
       const cls=val===W?"ok":val===R?"":"",txt=val===W?"W":val===R?"R":"—";
@@ -4780,7 +4790,7 @@ app.addEventListener("click",async ev=>{
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null});render();return;}
  if(k==="cycle"){const r=p[1],key=p[2];
   if(r===S.me.r){toast("Kendi rolünüzün yetkilerini değiştiremezsiniz — görevler ayrılığı gereği başka bir yönetici yapmalı.",1);return;}
-  if(LOCKED_ACCESS_KEYS.includes(key)){toast("Bu ekranın yetkisi sabittir, buradan değiştirilemez.",1);return;}
+  if(isProjectModuleKey(key)){toast("Bu ekranın yetkisi sabittir, buradan değiştirilemez.",1);return;}
   if(LIVE_BACKEND){
    const cur=(ACCESS_LIVE[r]||{})[key]||"none";
    const nx=cur==="none"?R:cur===R?W:"none";
