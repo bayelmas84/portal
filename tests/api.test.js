@@ -77,7 +77,7 @@ test("Toplantı notu: pm oluşturabilir, katılımcı olmayan görmez, Teftiş h
   assert.equal(inspList.body.items.some((m) => m.id === create.body.item.id), true);
 });
 
-test("Toplantı maddesi: tek seferlik (recurrence yok) toplantıda taşınamaz", async () => {
+test("Toplantı maddesi: 'carried' artık manuel olarak ayarlanamaz (yalnızca otomatik/dahili)", async () => {
   const pm = await login("tolga.firat");
   const create = await request(app)
     .post("/api/projects/meetings")
@@ -97,50 +97,65 @@ test("Toplantı maddesi: tek seferlik (recurrence yok) toplantıda taşınamaz",
   assert.equal(carry.status, 400);
 });
 
-test("Toplantı maddesi: haftalık periyodik toplantıda taşınınca sonraki hafta için yeni toplantı açılır, mükerrer Task oluşmaz", async () => {
+test("Toplantı maddesi: haftalık periyodik toplantıda sonraki oluşumun tarihi geçmişse GET /meetings çağrılınca OTOMATİK açılır, hâlâ açık maddeler oraya taşınır, mükerrer Task oluşmaz", async () => {
   const pm = await login("tolga.firat");
-  // Bu testin defalarca çalıştırılması (dev DB sıfırlanmadan) aynı "sonraki
-  // oluşum" toplantısına eski koşulardan kalma aynı metinli maddeler
-  // biriktirebilir; benzersiz bir metin kullanmak testi izole eder.
-  const uniqueText = `Haftalık Devir Maddesi ${Date.now()}`;
-  const uniqueDate = `2026-${String(11 + (Date.now() % 2)).padStart(2, "0")}-06`;
+  // Bu testin defalarca çalıştırılması (dev DB sıfırlanmadan) aynı seriye
+  // eski koşulardan kalma kayıtlar biriktirebilir; benzersiz bir metin ve
+  // "diğer konu" kullanmak testi tamamen izole eder.
+  const uniqueSubject = `CarryAutoTest-${Date.now()}`;
+  const uniqueText = `Otomatik Devir Maddesi ${Date.now()}`;
+  // Bugünden iki hafta önce başlayan haftalık bir seri: otomatik ilerleme
+  // hem "bugüne ulaşma" hem "birden fazla kaçırılan oluşumu zincirleme"
+  // davranışını tek seferde test eder (başlangıç -> +7 gün -> +7 gün = bugün).
+  const today = new Date();
+  const startDate = new Date(today); startDate.setUTCDate(startDate.getUTCDate() - 14);
+  const startDateStr = startDate.toISOString().slice(0, 10);
+  const todayStr = today.toISOString().slice(0, 10);
+
   const create = await request(app)
     .post("/api/projects/meetings")
     .set("Cookie", pm.cookie)
     .set("X-CSRF-Token", pm.csrf)
     .send({
-      projectK: "TRADE", date: uniqueDate, recurrence: "weekly",
+      otherSubject: uniqueSubject, date: startDateStr, recurrence: "weekly",
       participants: ["mert.balkan"], items: [{ text: uniqueText, assigneeUsername: "mert.balkan" }],
     });
   assert.equal(create.status, 201);
   const meetingId = create.body.item.id;
-  const itemsRes = await request(app).get("/api/projects/meetings?project=TRADE").set("Cookie", pm.cookie);
+  const itemsRes = await request(app).get("/api/projects/meetings?project=ALL").set("Cookie", pm.cookie);
   const meeting = itemsRes.body.items.find((m) => m.id === meetingId);
   const originalItem = meeting.items.find((i) => i.text === uniqueText);
-  const itemId = originalItem.id;
   const originalLinkedKey = originalItem.linked_issue_key;
   assert.ok(originalLinkedKey);
+  // NOT: meeting_date 14 gün önce olduğu için, ilk GET çağrısının KENDİSİ
+  // bile zaten otomatik ilerlemeyi tetikler (her GET tetikler) — bu yüzden
+  // burada "henüz taşınmamış" durumu ayrıca gözlemlenemez; asıl doğrulama
+  // aşağıda son oluşumda maddenin doğru şekilde bulunmasıdır.
 
-  const carry = await request(app)
-    .post(`/api/projects/meetings/${meetingId}/items/${itemId}/status`)
-    .set("Cookie", pm.cookie)
-    .set("X-CSRF-Token", pm.csrf)
-    .send({ status: "carried" });
-  assert.equal(carry.status, 200);
-  const expectedNextDate = new Date(uniqueDate + "T00:00:00Z");
-  expectedNextDate.setUTCDate(expectedNextDate.getUTCDate() + 7);
-  assert.equal(carry.body.nextDate, expectedNextDate.toISOString().slice(0, 10));
+  // GET /meetings çağrısının KENDİSİ otomatik ilerlemeyi tetiklemeli.
+  const afterAdvance = await request(app).get("/api/projects/meetings?project=ALL").set("Cookie", pm.cookie);
+  const allInSeries = afterAdvance.body.items.filter((m) => m.project_other_subject === uniqueSubject);
+  // Başlangıç + iki ara oluşum (bugüne kadar) = en az 3 kayıt beklenir.
+  assert.ok(allInSeries.length >= 3, `en az 3 toplantı oluşmalı, ${allInSeries.length} bulundu`);
 
-  const itemsRes2 = await request(app).get("/api/projects/meetings?project=TRADE").set("Cookie", pm.cookie);
-  const nextMeeting = itemsRes2.body.items.find((m) => m.meeting_date.slice(0, 10) === carry.body.nextDate && m.recurrence === "weekly");
-  assert.ok(nextMeeting, "sonraki haftanın toplantısı oluşmalı");
-  const carriedItem = nextMeeting.items.find((i) => i.text === uniqueText);
-  assert.ok(carriedItem, "taşınan madde sonraki toplantıda bulunmalı");
+  const latest = allInSeries.find((m) => m.meeting_date.slice(0, 10) === todayStr);
+  assert.ok(latest, "zincir bugünün tarihine kadar ilerlemeli");
+  const carriedItem = latest.items.find((i) => i.text === uniqueText);
+  assert.ok(carriedItem, "taşınan madde en son oluşumda bulunmalı");
   assert.equal(carriedItem.linked_issue_key, originalLinkedKey, "aynı Task yeniden kullanılmalı, mükerrer açılmamalı");
+  assert.equal(carriedItem.status, "open");
+
+  const origAfter = allInSeries.find((m) => m.id === meetingId).items.find((i) => i.text === uniqueText);
+  assert.equal(origAfter.status, "carried", "orijinal maddenin durumu 'carried' olmalı");
 
   const issuesRes = await request(app).get("/api/projects/TOPLANTI/issues").set("Cookie", pm.cookie);
   const matchingTasks = issuesRes.body.items.filter((i) => i.issue_key === originalLinkedKey);
   assert.equal(matchingTasks.length, 1, "Task tablosunda hâlâ tek kayıt olmalı");
+
+  // Tekrar çağırmak yeni bir "sonraki oluşum" ÜRETMEMELİ (idempotent).
+  const secondCall = await request(app).get("/api/projects/meetings?project=ALL").set("Cookie", pm.cookie);
+  const stillSameCount = secondCall.body.items.filter((m) => m.project_other_subject === uniqueSubject).length;
+  assert.equal(stillSameCount, allInSeries.length, "tekrar çağırmak mükerrer toplantı üretmemeli");
 });
 
 test("Toplantı maddesi: assignee olmadan reddedilir", async () => {

@@ -1064,6 +1064,20 @@ function canSeeMeeting(role, username, participants, createdByWrite) {
 router.get("/meetings", requireRead("d.meeting"), async (req, res, next) => {
   try {
     const projFilter = req.query.project || "ALL";
+    // Kapsamdaki her periyodik SERİ (proje/konu + periyodiklik) için en son
+    // oluşumu bulup bugüne kadar otomatik ilerlet — kullanıcı hiçbir şeye
+    // tıklamadan, sonraki toplantının tarihi geldiğinde kendiliğinden açılır
+    // ve hâlâ açık maddeler oraya taşınır.
+    const seriesRows = await query(
+      `SELECT DISTINCT ON (project_k, project_other_subject, recurrence) *
+       FROM meetings WHERE recurrence IS NOT NULL AND ($1='ALL' OR project_k=$1)
+       ORDER BY project_k, project_other_subject, recurrence, meeting_date DESC`,
+      [projFilter]
+    );
+    for (const s of seriesRows.rows) {
+      await withTransaction((client) => autoAdvanceSeries(client, s));
+    }
+
     const { rows: meetings } = await query(
       `SELECT * FROM meetings WHERE ($1='ALL' OR project_k=$1) ORDER BY meeting_date DESC, id DESC`,
       [projFilter]
@@ -1206,63 +1220,63 @@ function computeNextMeetingDate(dateStr, recurrence) {
   return d.toISOString().slice(0, 10);
 }
 
+// Periyodik bir toplantı serisini BUGÜNE kadar otomatik ilerletir: sonraki
+// oluşumun tarihi gelmiş/geçmişse (ve henüz oluşturulmamışsa) o toplantı
+// otomatik açılır, önceki oluşumda hâlâ AÇIK olan TÜM maddeler (kullanıcı
+// hiçbir şeye tıklamadan) oraya taşınır — yeni Task AÇILMAZ, mevcut Task'ın
+// anahtarı olduğu gibi korunur. Birden fazla oluşum kaçırılmışsa (örn. uygulama
+// haftalarca açılmadıysa) zincirleme olarak hepsi sırayla oluşturulur.
+async function autoAdvanceSeries(client, meeting) {
+  if (!meeting.recurrence) return;
+  const today = new Date().toISOString().slice(0, 10);
+  let current = meeting;
+  let guard = 0;
+  while (guard++ < 52) {
+    const dateStr = current.meeting_date instanceof Date ? current.meeting_date.toISOString().slice(0, 10) : String(current.meeting_date).slice(0, 10);
+    const nextDate = computeNextMeetingDate(dateStr, current.recurrence);
+    if (nextDate > today) break; // sırası henüz gelmedi
+
+    const existing = await client.query(
+      `SELECT * FROM meetings WHERE project_k IS NOT DISTINCT FROM $1 AND project_other_subject IS NOT DISTINCT FROM $2
+         AND recurrence=$3 AND meeting_date=$4`,
+      [current.project_k, current.project_other_subject, current.recurrence, nextDate]
+    );
+    if (existing.rowCount) {
+      current = existing.rows[0];
+      continue;
+    }
+
+    const parts = await client.query("SELECT username FROM meeting_participants WHERE meeting_id=$1", [current.id]);
+    const ins = await client.query(
+      `INSERT INTO meetings (project_k, project_other_subject, title, meeting_date, meeting_time, notes, created_by, recurrence)
+       VALUES ($1,$2,$3,$4,$5,NULL,$6,$7) RETURNING *`,
+      [current.project_k, current.project_other_subject, current.title, nextDate, current.meeting_time, current.created_by, current.recurrence]
+    );
+    const nextMeeting = ins.rows[0];
+    for (const p of parts.rows) {
+      await client.query("INSERT INTO meeting_participants (meeting_id, username) VALUES ($1,$2)", [nextMeeting.id, p.username]);
+    }
+    const openItems = await client.query("SELECT * FROM meeting_items WHERE meeting_id=$1 AND status='open'", [current.id]);
+    for (const it of openItems.rows) {
+      await client.query(
+        `INSERT INTO meeting_items (meeting_id, text, status, assignee_username, due_date, linked_issue_key, carried_from_meeting_id)
+         VALUES ($1,$2,'open',$3,$4,$5,$6)`,
+        [nextMeeting.id, it.text, it.assignee_username, it.due_date, it.linked_issue_key, current.id]
+      );
+      await client.query("UPDATE meeting_items SET status='carried' WHERE id=$1", [it.id]);
+    }
+    current = nextMeeting;
+  }
+}
+
 router.post("/meetings/:id/items/:itemId/status", requireWrite("d.meeting"), async (req, res, next) => {
   try {
-    const { status } = req.body || {}; // 'open' | 'done' | 'cancelled' | 'carried'
-    if (!["open", "done", "cancelled", "carried"].includes(status)) {
+    const { status } = req.body || {}; // 'open' | 'done' | 'cancelled' — 'carried' artık yalnızca otomatik/dahili bir durumdur
+    if (!["open", "done", "cancelled"].includes(status)) {
       return res.status(400).json({ error: "Geçersiz durum." });
     }
     const item = await query("SELECT * FROM meeting_items WHERE id=$1 AND meeting_id=$2", [req.params.itemId, req.params.id]);
     if (!item.rowCount) return res.status(404).json({ error: "Madde bulunamadı." });
-    const meetingRow = await query("SELECT * FROM meetings WHERE id=$1", [req.params.id]);
-    const mtg = meetingRow.rows[0];
-
-    if (status === "carried") {
-      // Yalnızca PERİYODİK (haftalık/aylık/üç aylık) toplantılarda madde
-      // taşınabilir — tek seferlik toplantılarda bu özellik yoktur.
-      if (!mtg.recurrence) {
-        return res.status(400).json({ error: "Yalnızca periyodik (weekly/monthly/quarterly) toplantılarda madde taşınabilir." });
-      }
-      const nextDate = computeNextMeetingDate(mtg.meeting_date.toISOString().slice(0, 10), mtg.recurrence);
-      const parts = await query("SELECT username FROM meeting_participants WHERE meeting_id=$1", [mtg.id]);
-      const participantUsernames = parts.rows.map((r) => r.username);
-
-      await withTransaction(async (client) => {
-        // Bu seri için "sonraki oluşum" zaten var mı (aynı proje/konu,
-        // aynı periyodiklik, aynı tarih)? Varsa maddeyi ORAYA ekle, yoksa
-        // yeni bir toplantı oluştur — art arda birden fazla madde
-        // taşındığında mükerrer "sonraki toplantı" açılmasın diye.
-        const existing = await client.query(
-          `SELECT id FROM meetings WHERE project_k IS NOT DISTINCT FROM $1 AND project_other_subject IS NOT DISTINCT FROM $2
-             AND recurrence=$3 AND meeting_date=$4`,
-          [mtg.project_k, mtg.project_other_subject, mtg.recurrence, nextDate]
-        );
-        let nextMeetingId;
-        if (existing.rowCount) {
-          nextMeetingId = existing.rows[0].id;
-        } else {
-          const ins = await client.query(
-            `INSERT INTO meetings (project_k, project_other_subject, title, meeting_date, meeting_time, notes, created_by, recurrence)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-            [mtg.project_k, mtg.project_other_subject, mtg.title, nextDate, mtg.meeting_time, null, req.user.username, mtg.recurrence]
-          );
-          nextMeetingId = ins.rows[0].id;
-          for (const u of participantUsernames) {
-            await client.query("INSERT INTO meeting_participants (meeting_id, username) VALUES ($1,$2)", [nextMeetingId, u]);
-          }
-        }
-        // Önceki taşıma mantığıyla AYNI: yeni bir Task AÇILMAZ, mevcut
-        // Task'ın anahtarı (varsa) olduğu gibi yeni toplantı maddesine taşınır.
-        await client.query(
-          `INSERT INTO meeting_items (meeting_id, text, status, assignee_username, due_date, linked_issue_key, carried_from_meeting_id)
-           VALUES ($1,$2,'open',$3,$4,$5,$6)`,
-          [nextMeetingId, item.rows[0].text, item.rows[0].assignee_username, item.rows[0].due_date, item.rows[0].linked_issue_key, mtg.id]
-        );
-      });
-      await query("UPDATE meeting_items SET status=$1 WHERE id=$2", [status, req.params.itemId]);
-      await audit(`Toplantı maddesi sonraki oluşuma (${nextDate}) taşındı: #${req.params.itemId}`, req.user.username);
-      return res.json({ ok: true, nextDate });
-    }
 
     await query("UPDATE meeting_items SET status=$1 WHERE id=$2", [status, req.params.itemId]);
     await audit(`Toplantı maddesi durumu değişti: #${req.params.itemId} -> ${status}`, req.user.username);
