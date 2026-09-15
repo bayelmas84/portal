@@ -957,6 +957,20 @@ let DIR={url:"",baseDn:"",bindDn:"",passwordSet:false,
  filter:"(&(objectClass=user)(sAMAccountName={username}))",tls:true,defaultRole:"staff",
  active:false,lastTestAt:null,lastTestOk:null,lastTestMsg:null,lastTestUser:null,
  updatedBy:null,updatedAt:null};
+let DIR_LIVE_LOADED=false,DIR_LIVE_LOADING=false;
+async function loadDirectoryLive(){
+ DIR_LIVE_LOADING=true;
+ try{
+  const data=await api("GET","/api/admin/directory");
+  const d=data.item||{};
+  Object.assign(DIR,{url:d.url||"",baseDn:d.base_dn||"",bindDn:d.bind_dn||"",
+   passwordSet:!!d.password_set,filter:d.user_filter||DIR.filter,tls:d.tls!==false,
+   defaultRole:d.default_role||"staff",active:!!d.active,
+   lastTestAt:d.last_test_at,lastTestOk:d.last_test_ok,lastTestMsg:d.last_test_msg,
+   updatedBy:d.updated_by,updatedAt:d.updated_at});
+  S.dirF=null; // yeniden yüklenen veriyle formu senkronlamak için taslak temizlenir
+ }catch(e){/* okuma yetkisi yoksa sessizce mock veriyle devam et */}
+ DIR_LIVE_LOADED=true;DIR_LIVE_LOADING=false;render();}
 /* SMTP ayarları — tanımlı ve etkin olmadıkça hiçbir ekran gerçekten e-posta gönderemez
    (bkz. mail()). Prototipte gerçek bir SMTP sunucusuna bağlanılmaz; "Bağlantıyı sına"
    sonucu taklit edilir. */
@@ -2579,6 +2593,7 @@ function screenView(){
 
 
  if(v==="m.dir"){
+  if(LIVE_BACKEND&&!DIR_LIVE_LOADED&&!DIR_LIVE_LOADING)loadDirectoryLive();
   const src=DIR.active&&DIR.url?"ekran ayarı":"sunucu yapılandırması (.env)";
   /* Yazılanlar durumda tutulur: doğrulama hatası girdileri silmez. */
   const f=S.dirF||(S.dirF={url:DIR.url,baseDn:DIR.baseDn,bindDn:DIR.bindDn,filter:DIR.filter});
@@ -3857,12 +3872,26 @@ app.addEventListener("click",async ev=>{
   if(bind.trim().length<3){toast("Servis hesabı DN zorunlu.",1);return;}
   if(!filt.includes("{username}")){toast("Kullanıcı filtresi {username} yer tutucusunu içermeli.",1);return;}
   if(DIR.active&&!DIR.passwordSet&&!pass){toast("Etkinleştirmek için servis hesabı parolası gerekli.",1);return;}
+  if(LIVE_BACKEND){
+   try{
+    const data=await api("PUT","/api/admin/directory",{
+     url:url.trim(),baseDn:base.trim(),bindDn:bind.trim(),bindPassword:pass||undefined,
+     userFilter:filt.trim(),tls:DIR.tls,defaultRole:DIR.defaultRole,active:DIR.active});
+    toast(data.message||"Onaya gönderildi.");
+   }catch(e){toast(e.message,1);}
+   return;}
   DIR.url=url.trim();DIR.baseDn=base.trim();DIR.bindDn=bind.trim();DIR.filter=filt.trim();
   if(pass)DIR.passwordSet=true;
   DIR.updatedBy=S.me.n;DIR.updatedAt=now();
   audit("Dizin ayarları güncellendi (parola"+(pass?" değişti":" korundu")+")");
   toast("Dizin ayarları kaydedildi. Parola şifreli saklanır, ekranda gösterilmez.");return;}
  if(k==="dirVerify"){
+  if(LIVE_BACKEND){
+   try{const result=await api("POST","/api/admin/directory/test",{});
+    DIR.lastTestAt=now();DIR.lastTestOk=result.ok;DIR.lastTestMsg=result.msg;
+    toast(result.ok?"Bağlantı kuruldu.":"Bağlantı kurulamadı: "+result.msg,result.ok?0:1);render();}
+   catch(e){toast(e.message,1);}
+   return;}
   if(!DIR.url||!DIR.bindDn){toast("Önce sunucu ve servis hesabı bilgilerini kaydedin.",1);return;}
   DIR.lastTestAt=now();DIR.lastTestUser=null;
   /* Prototipte gerçek bağlantı kurulmaz; sonucu ekranda göstermek için taklit edilir. */
