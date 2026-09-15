@@ -30,9 +30,15 @@ router.get("/", requireRead("c.audit"), async (req, res, next) => {
 
 // CSV dışa aktarma: aynı sorgu, Excel'de doğrudan açılabilecek formatta.
 // Sınır 5000 satır (dosya boyutu ve bellek için makul bir üst sınır).
+// GÜVENLİK: CSV Formula Injection (OWASP) — bir hücre =, +, -, @, TAB veya CR
+// ile başlıyorsa Excel/Sheets bunu FORMÜL sayıp çalıştırabilir (örn. bir
+// kullanıcı adını "=cmd|'/c calc'!A1" yaparsa, dosyayı açan biri komut
+// çalıştırabilir). Böyle başlayan her hücrenin başına tek tırnak eklenir;
+// bu, Excel'de değeri düz metin olarak gösterir, formül olarak ÇALIŞTIRMAZ.
 function csvEscape(v) {
   if (v === null || v === undefined) return "";
-  const s = String(v);
+  let s = String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 router.get("/export.csv", requireRead("c.audit"), async (req, res, next) => {
