@@ -620,6 +620,38 @@ function projSelectHTML(list,allowAll){
     return `<option value="${idx}" ${!S.projAll&&idx===S.proj?"selected":""}>${x.k} — ${esc(x.n)}</option>`;}).join("")}
  </select>`;}
 const itemByKey=(p,k)=>(p.items||[]).find(i=>i.key===k);
+/* Board'daki 5 sütunluk (todo/prog/review/test/done) kartlar ızgarasını
+   üretir — hem tek proje görünümünde hem de her bir swimlane satırında
+   (Epic'e ya da atanan kişiye göre gruplandığında) aynı fonksiyon
+   kullanılır. draggable=true iken sürükle-bırak (data-drop/data-key)
+   etkinleştirilir; All Projects modunda ya da salt-okunur ekranlarda
+   false geçilerek yalnızca tıklanabilir kartlar gösterilir. */
+function renderBoardCols(cols,items,pi,draggable){
+ return `<div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+  ${cols.map(st=>{const list=items.filter(i=>i.st===st);
+   return `<div class="col" ${draggable?`data-drop="${st}"`:""}><div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--tm);
+    letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px"><span>${FLOW[st]}</span><span class="m">${list.length}</span></div>
+    ${list.map(i=>`<div class="ic" style="border-left-color:${TYC[i.ty]}" data-a="issue:${pi}:${i.key}"
+     ${draggable?`draggable="true" data-key="${i.key}"`:""}>
+     <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
+      <span style="color:${TYC[i.ty]};font-size:10px">${i.ty}</span><span style="flex:1"></span>
+      <span class="m" style="color:${PRIC[i.pri]}">${i.pri}</span></div>
+     <div style="margin-bottom:6px">${esc(i.t)}</div>
+     <div style="display:flex;gap:6px;align-items:center"><span class="m" style="color:var(--ta)">${i.key}</span>
+      <span class="m" style="color:var(--tm)">${i.pts} SP</span><span style="flex:1"></span>
+      ${i.as?`<span style="width:20px;height:20px;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center;
+       background:${i.as===S.me.n?"var(--gold)":"var(--ba)"};color:${i.as===S.me.n?"#231705":"var(--ta)"}">${initials(i.as)}</span>`:""}</div></div>`).join("")
+    ||`<div style="font-size:11px;color:var(--tm);padding:6px 2px">—</div>`}</div>`;}).join("")}</div>`;}
+/* Bir konunun EN ÜST Epic atasını bulur (Story/Task/Bug -> ... -> Epic).
+   Konunun kendisi Epic ise kendisini döner; hiçbir üst Epic yoksa null. */
+function epicAncestorOf(p,item){
+ let cur=item,guard=0;
+ while(cur&&cur.parent&&guard++<10){
+  const par=itemByKey(p,cur.parent);
+  if(!par)break;
+  if(par.ty==="Epic")return par;
+  cur=par;}
+ return item.ty==="Epic"?item:null;}
 /* Backlog'da sürükle-bırak ile öncelik sırasını (Jira "Rank") değiştirir.
    prevKey/nextKey: konunun bırakıldığı yerde hemen öncesinde/sonrasında
    kalacak komşu anahtarlar (ikisi de opsiyonel). Yerel diziyi anında (optimistic)
@@ -1862,25 +1894,33 @@ function screenView(){
   const p=P();
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("Board",p.n+" · "+p.m,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+  const swimBy=S.swimlaneBy||"none";
+  const visible=p.items.filter(pass);
+  const draggable=cw("d.board");
+  let boardHtml;
+  if(swimBy==="none"){
+   boardHtml=renderBoardCols(cols,visible,S.proj,draggable);
+  }else{
+   const groups=new Map();
+   visible.forEach(i=>{
+    let key,label;
+    if(swimBy==="epic"){const ep=epicAncestorOf(p,i);key=ep?ep.key:"__none__";label=ep?ep.key+" — "+ep.t:"No Epic";}
+    else{key=i.as||"__none__";label=i.as||"Unassigned";}
+    if(!groups.has(key))groups.set(key,{label,items:[]});
+    groups.get(key).items.push(i);});
+   boardHtml=[...groups.values()].map(g=>`<div style="margin-bottom:16px">
+    <div class="lbl" style="margin-bottom:6px">${esc(g.label)} <span class="m" style="color:var(--tm)">(${g.items.length})</span></div>
+    ${renderBoardCols(cols,g.items,S.proj,draggable)}</div>`).join("")
+    ||`<p class="m" style="color:var(--tm)">No issues match this filter.</p>`;}
   return head("Board",p.n+" · "+p.m+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
+    <select id="fSwimlaneBy" style="padding:7px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12.5px">
+     <option value="none" ${swimBy==="none"?"selected":""}>No swimlanes</option>
+     <option value="epic" ${swimBy==="epic"?"selected":""}>Group by Epic</option>
+     <option value="assignee" ${swimBy==="assignee"?"selected":""}>Group by Assignee</option></select>
     <button class="b s ${S.onlyMine?"p":""}" data-a="onlyMine">Only my issues</button>
     ${cw("d.board")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.board")+
-  `<div class="boardwrap"><div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr))">
-   ${cols.map(st=>{const list=p.items.filter(i=>i.st===st&&pass(i));
-    return `<div class="col" data-drop="${st}"><div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--tm);
-     letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px"><span>${FLOW[st]}</span><span class="m">${list.length}</span></div>
-     ${list.map(i=>`<div class="ic" style="border-left-color:${TYC[i.ty]}" data-a="issue:${S.proj}:${i.key}"
-      ${cw("d.board")?`draggable="true" data-key="${i.key}"`:""}>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
-       <span style="color:${TYC[i.ty]};font-size:10px">${i.ty}</span><span style="flex:1"></span>
-       <span class="m" style="color:${PRIC[i.pri]}">${i.pri}</span></div>
-      <div style="margin-bottom:6px">${esc(i.t)}</div>
-      <div style="display:flex;gap:6px;align-items:center"><span class="m" style="color:var(--ta)">${i.key}</span>
-       <span class="m" style="color:var(--tm)">${i.pts} SP</span><span style="flex:1"></span>
-       ${i.as?`<span style="width:20px;height:20px;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center;
-        background:${i.as===S.me.n?"var(--gold)":"var(--ba)"};color:${i.as===S.me.n?"#231705":"var(--ta)"}">${initials(i.as)}</span>`:""}</div></div>`).join("")
-     ||`<div style="font-size:11px;color:var(--tm);padding:6px 2px">—</div>`}</div>`;}).join("")}</div></div>
+  `<div class="boardwrap">${boardHtml}</div>
    <p style="font-size:11.5px;color:var(--tm);margin-top:11px">The gold avatar marks issues assigned to you.
     Drag a card between columns to change its status, or open it to use the transition buttons.
     On phones, swipe the columns sideways.</p>`;}
@@ -4319,6 +4359,8 @@ function afterRender(){
  if(psd)psd.onchange=e=>{const v=+e.target.value;
   if(v===-1){S.projAll=true;}else{S.projAll=false;S.proj=v;}
   render();};
+ const swimSel=document.getElementById("fSwimlaneBy");
+ if(swimSel)swimSel.onchange=e=>{S.swimlaneBy=e.target.value;render();};
  const mtProjSel=document.getElementById("fMtProjSel");
  if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
   S.f.items=[]; // Taşıma artık otomatik/arka planda işliyor; yeni toplantı formu her zaman boş başlar.
