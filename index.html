@@ -353,10 +353,10 @@ const SCREENS={
  delivery:[["d.my","My Work","ti-user-check"],["d.projects","Projects","ti-layout-grid"],
    ["d.board","Board","ti-layout-kanban"],["d.backlog","Backlog","ti-list-details"],
    ["d.sprint","Sprint","ti-clock"],["d.gate","Stage Gates","ti-checkbox"],
-   ["d.charts","Project charts","ti-chart-histogram"],["d.exec","Executive summary","ti-target"],
-   ["d.team","Project team","ti-users-group"],["d.docs","Project documents","ti-files"],
+   ["d.charts","Project Charts","ti-chart-histogram"],["d.exec","Executive Summary","ti-target"],
+   ["d.team","Project Team","ti-users-group"],["d.docs","Project Documents","ti-files"],
    ["d.docview","Document",null],
-   ["d.appr","Approvals log","ti-checks"],["d.cr","Change requests","ti-file-symlink"],
+   ["d.appr","Approvals Log","ti-checks"],["d.cr","Change Requests","ti-file-symlink"],
    ["d.meeting","Meeting Notes","ti-notes"],["d.meetingview","Meeting note",null],
    ["d.meetingnew","Yeni toplantı notu",null],
    ["d.gantt","Gantt Chart","ti-gantt"]],
@@ -615,9 +615,9 @@ function projSelectHTML(list,allowAll){
  const opts=list||PROJ;
  return `<select id="projSelectDropdown" class="sel" aria-label="Proje seç"
    style="padding:7px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12.5px">
-  ${allowAll?`<option value="-1" ${S.backlogAll?"selected":""}>All Projects</option>`:""}
+  ${allowAll?`<option value="-1" ${S.projAll?"selected":""}>All Projects</option>`:""}
   ${opts.map(x=>{const idx=PROJ.indexOf(x);
-    return `<option value="${idx}" ${!S.backlogAll&&idx===S.proj?"selected":""}>${x.k} — ${esc(x.n)}</option>`;}).join("")}
+    return `<option value="${idx}" ${!S.projAll&&idx===S.proj?"selected":""}>${x.k} — ${esc(x.n)}</option>`;}).join("")}
  </select>`;}
 const itemByKey=(p,k)=>(p.items||[]).find(i=>i.key===k);
 const childrenOf=(p,k)=>(p.items||[]).filter(i=>i.parent===k);
@@ -1128,7 +1128,7 @@ let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.l
  crLive:null,crLiveProj:null,crLiveLoading:null,
  docsLive:null,docsLiveLoading:false,
  trainLive:null,trainLiveLoading:false,trainViewId:null,trainQuizLive:null,trainAnswers:{},trainResult:null,
- reqsInboxLive:null,reqsMineLive:null,reqsDoneLive:null,backlogAll:true};
+ reqsInboxLive:null,reqsMineLive:null,reqsDoneLive:null,projAll:true};
 
 /* --------------------------- gerçek backend istemcisi ---------------------------
    API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
@@ -1214,6 +1214,21 @@ async function loadCRLive(projK){
   S.crLiveProj=projK;
  }catch(e){toast("Değişiklik talepleri yüklenemedi: "+e.message,1);S.crLive=[];S.crLiveProj=projK;}
  S.crLiveLoading=null;render();}
+/* "All Projects" toplu görünümü için ayrı, proje-anahtarlı önbellek —
+   d.cr ekranındaki tekli-proje S.crLive/S.crLiveProj çiftini etkilemez. */
+let CR_CACHE_LIVE={};
+async function loadCRCacheLive(projK){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(projK)+"/change-requests");
+  CR_CACHE_LIVE[projK]=data.items.map(c=>({id:String(c.id),no:c.no,t:c.title,why:c.reason,impact:c.impact,
+   by:(function(){const u=USERS.find(x=>x.u===c.created_by);return u?u.n:c.created_by;})(),
+   at:(c.created_at||"").replace("T"," ").slice(0,16),st:CR_ST_MAP[c.status]||c.status,
+   appr:c.approvals.map(a=>({n:a.name,t:a.title,at:(a.approved_at||"").replace("T"," ").slice(0,16),team:a.capacity==="team"}))}));
+ }catch(e){CR_CACHE_LIVE[projK]=[];}
+ render();}
+function crsAllOf(k){
+ if(LIVE_BACKEND){if(!(k in CR_CACHE_LIVE)){CR_CACHE_LIVE[k]=[];loadCRCacheLive(k);}return CR_CACHE_LIVE[k];}
+ return crsOf(k);}
 const DOC_TYPE_TO_CODE={"Proje Kartı":"PK",BRD:"BRD",FRD:"FRD",UAT:"UAT","Go Live":"GL","Risk ve Uyumluluk":"RSK","Kapanış":"KAP"};
 async function loadDocsLive(){
  S.docsLiveLoading=true;
@@ -1631,12 +1646,36 @@ function screenView(){
    <td style="text-align:right;white-space:nowrap"><button class="b s p" data-a="openProj:${i}">Board</button>
     ${can("d.charts")?` <button class="b s" data-a="projCharts:${i}">Charts</button>`:""}</td></tr>`;}).join(""));
 
- if(v==="d.board"){const p=P(),cols=["todo","prog","review","test","done"];
+ if(v==="d.board"){const cols=["todo","prog","review","test","done"];
+  const pass=i=>!S.onlyMine||i.as===S.me.n;
+  if(S.projAll){
+   if(LIVE_BACKEND&&PROJ.some(pr=>!pr.itemsLoaded)&&!S.boardAllLoading){S.boardAllLoading=true;loadAllIssuesLive().then(()=>{S.boardAllLoading=false;render();});}
+   if(LIVE_BACKEND&&PROJ.some(pr=>!pr.itemsLoaded))return head("Board","All Projects","")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+   const rows=PROJ.flatMap((pr,pi)=>pr.items.map(i=>({pr,pi,i})));
+   return head("Board","All Projects"+(LIVE_BACKEND?" · live backend":""),
+    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
+     <button class="b s ${S.onlyMine?"p":""}" data-a="onlyMine">Only my issues</button></div>`)+
+   `<div class="boardwrap"><div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+    ${cols.map(st=>{const list=rows.filter(({i})=>i.st===st&&pass(i));
+     return `<div class="col"><div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--tm);
+      letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px"><span>${FLOW[st]}</span><span class="m">${list.length}</span></div>
+      ${list.map(({pr,pi,i})=>`<div class="ic" style="border-left-color:${TYC[i.ty]}" data-a="issue:${pi}:${i.key}">
+       <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
+        <span style="color:${TYC[i.ty]};font-size:10px">${i.ty}</span><span style="flex:1"></span>
+        <span class="m" style="color:${PRIC[i.pri]}">${i.pri}</span></div>
+       <div style="margin-bottom:6px">${esc(i.t)}</div>
+       <div style="display:flex;gap:6px;align-items:center"><span class="m" style="color:var(--ta)">${esc(pr.k)} · ${i.key}</span>
+        <span class="m" style="color:var(--tm)">${i.pts} SP</span><span style="flex:1"></span>
+        ${i.as?`<span style="width:20px;height:20px;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center;
+         background:${i.as===S.me.n?"var(--gold)":"var(--ba)"};color:${i.as===S.me.n?"#231705":"var(--ta)"}">${initials(i.as)}</span>`:""}</div></div>`).join("")
+      ||`<div style="font-size:11px;color:var(--tm);padding:6px 2px">—</div>`}</div>`;}).join("")}</div></div>
+    <p style="font-size:11.5px;color:var(--tm);margin-top:11px">All Projects view: click a card to open it and change its status.
+     Switch to a single project from the dropdown to drag-and-drop between columns.</p>`;}
+  const p=P();
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("Board",p.n+" · "+p.m,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
-  const pass=i=>!S.onlyMine||i.as===S.me.n;
   return head("Board",p.n+" · "+p.m+(LIVE_BACKEND?" · live backend":""),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
     <button class="b s ${S.onlyMine?"p":""}" data-a="onlyMine">Only my issues</button>
     ${cw("d.board")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.board")+
   `<div class="boardwrap"><div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr))">
@@ -1659,8 +1698,8 @@ function screenView(){
     On phones, swipe the columns sideways.</p>`;}
 
  if(v==="d.backlog"){
-  if(S.backlogAll){
-   if(LIVE_BACKEND&&PROJ.some(pr=>!pr.itemsLoaded)&&!S.backlogAllLoading){S.backlogAllLoading=true;loadAllIssuesLive().then(()=>{S.backlogAllLoading=false;render();});}
+  if(S.projAll){
+   if(LIVE_BACKEND&&PROJ.some(pr=>!pr.itemsLoaded)&&!S.projAllLoading){S.projAllLoading=true;loadAllIssuesLive().then(()=>{S.projAllLoading=false;render();});}
    if(LIVE_BACKEND&&PROJ.some(pr=>!pr.itemsLoaded))return head("Backlog","All Projects","")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
    const rows=PROJ.flatMap((pr,pi)=>pr.items.filter(i=>i.st==="backlog").map(i=>({pr,pi,i})));
    return head("Backlog","All Projects"+(LIVE_BACKEND?" · live backend":""),
@@ -1690,8 +1729,18 @@ function screenView(){
    const gated=PROJ.filter(x=>x.m==="Waterfall");
    if(!gated.length)return head("Stage Gates","Phase gates apply to Waterfall projects only"+" · live backend")+
     `<div class="card"><span style="font-size:12px;color:var(--tm)">No Waterfall project defined.</span></div>`;
+   if(S.projAll){
+    return head("Stage Gates","All Waterfall Projects"+" · live backend",`<div style="display:flex;gap:7px">${projSelectHTML(gated,true)}</div>`)+
+    table(["Project","Gate","Signatures",""],gated.map(pr=>{const pi=PROJ.indexOf(pr);
+     if(!pr.gate)return `<tr><td class="m" style="color:var(--ta)">${esc(pr.k)}</td>
+      <td colspan="2" class="m" style="color:var(--tm)">No gate defined yet</td>
+      <td style="text-align:right"><button class="b s p" data-a="pickProj:${pi}">Open</button></td></tr>`;
+     const full=pr.gate.sign.length>=pr.gate.need;
+     return `<tr><td class="m" style="color:var(--ta)">${esc(pr.k)}</td><td>${esc(pr.gate.n)}</td>
+      <td>${pill(pr.gate.sign.length+" / "+pr.gate.need,full?"ok":"wr")}</td>
+      <td style="text-align:right"><button class="b s p" data-a="pickProj:${pi}">Open</button></td></tr>`;}).join(""));}
    const p=gated.some(x=>x.k===P().k)?P():gated[0];
-   const projSel=gated.length>1?`<div style="display:flex;gap:7px">${projSelectHTML(gated)}</div>`:"";
+   const projSel=`<div style="display:flex;gap:7px">${projSelectHTML(gated,true)}</div>`;
    if(!p.gate){
     return head("Stage Gates",p.k+" · live backend",projSel)+
      `<div class="card" style="max-width:640px">
@@ -1722,10 +1771,17 @@ function screenView(){
   const gated=PROJ.filter(x=>x.gate);
   if(!gated.length)return head("Stage Gates","Phase gates apply to Waterfall projects only")+
    `<div class="card"><span style="font-size:12px;color:var(--tm)">No Waterfall project defined.</span></div>`;
+  if(S.projAll){
+   return head("Stage Gates","All Waterfall Projects",`<div style="display:flex;gap:7px">${projSelectHTML(gated,true)}</div>`)+
+   table(["Project","Gate","Signatures",""],gated.map(pr=>{const pi=PROJ.indexOf(pr),g=pr.gate;
+    const full=g.sign.length>=g.need;
+    return `<tr><td class="m" style="color:var(--ta)">${esc(pr.k)}</td><td>${esc(g.n)}</td>
+     <td>${g.passed?pill("passed","ok"):pill(g.sign.length+" / "+g.need,full?"ok":"wr")}</td>
+     <td style="text-align:right"><button class="b s p" data-a="pickProj:${pi}">Open</button></td></tr>`;}).join(""));}
   const p=gated.includes(P())?P():gated[0],g=p.gate;
   const open=g.crit.filter(c=>!c[1]).length,full=g.sign.length>=g.need;
   return head("Stage Gates",p.k+" · phase gate control for Waterfall projects",
-   gated.length>1?`<div style="display:flex;gap:7px">${projSelectHTML(gated)}</div>`:"")+
+   `<div style="display:flex;gap:7px">${projSelectHTML(gated,true)}</div>`)+
   `<div class="card" style="max-width:640px;background:var(--ba);border-color:var(--ta);margin-bottom:13px">
    <div style="font-size:12.5px;line-height:1.65;color:var(--ta)"><b>What is a stage gate?</b>
     Moving from one phase to the next is controlled here. The next phase cannot start until every entry
@@ -1790,7 +1846,18 @@ function screenView(){
      Onay bekleyen doküman yalnızca yükleyen kişiye, yöneticisine ve Teftiş'e görünür. Onayı yalnızca Teftiş verir; yükleyen dosyayı değiştirebilir veya kaydı silebilir.</p>`;}
 
 
- if(v==="d.sprint"){const p=P();
+ if(v==="d.sprint"){
+  const scrumProjects=PROJ.filter(pr=>pr.m==="Scrum");
+  if(!scrumProjects.length)return head("Sprint","No Scrum projects exist — sprints only apply to Scrum-method projects.");
+  if(S.projAll){
+   return head("Sprint","All Scrum Projects",`<div style="display:flex;gap:7px">${projSelectHTML(scrumProjects,true)}</div>`)+
+   table(["Project","Sprint","Goal",""],scrumProjects.map(pr=>{
+    const pi=PROJ.indexOf(pr);
+    return `<tr><td class="m" style="color:var(--ta)">${esc(pr.k)}</td>
+     <td>${pr.sprint&&pr.sprint.n?esc(pr.sprint.n):`<span class="m" style="color:var(--tm)">No active sprint</span>`}</td>
+     <td style="color:var(--t2)">${pr.sprint&&pr.sprint.goal?esc(pr.sprint.goal):"—"}</td>
+     <td style="text-align:right"><button class="b s p" data-a="pickProj:${pi}">Open</button></td></tr>`;}).join(""));}
+  const p=P();
   if(p.m!=="Scrum")return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">This project does not use sprints (${p.m}).</p>`;
   if(LIVE_BACKEND){
    if(!p.itemsLoaded)loadIssuesLive(p.k);
@@ -1801,14 +1868,14 @@ function screenView(){
    const pct=committed?Math.round(done/committed*100):0;
    const openCount=inSprintItems.filter(i=>i.st!=="done").length;
    if(!p.sprint.n){
-    return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${projSelectHTML()}</div>`)+
+    return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${projSelectHTML(scrumProjects,true)}</div>`)+
      `<div class="card" style="max-width:520px">
        <div style="font-size:13px;margin-bottom:9px">There is no active sprint right now.</div>
        ${cw("d.board")?`<div class="lbl">GOAL</div><input id="fSpGoal" placeholder="Target for this sprint">
         <div class="lbl" style="margin-top:11px">END DATE</div><input id="fSpEnds" type="date">
         <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b p" data-a="sprintStart">Start sprint</button></div>`
        :`<p class="m" style="color:var(--tm)">Only the project team can start a sprint.</p>`}</div>`;}
-   return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${projSelectHTML()}</div>`)+
+   return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${projSelectHTML(scrumProjects,true)}</div>`)+
    `<div class="card" style="max-width:640px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
      <span style="font-size:15px">${esc(p.sprint.n)}</span>${pill("active","ok")}<span style="flex:1"></span>
      ${p.sprint.endsAt?`<span class="m" style="color:var(--t2)">ends: ${p.sprint.endsAt}</span>`:""}</div>
@@ -1827,7 +1894,7 @@ function screenView(){
     ${cw("d.board")?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">To add a new item, use the "Add to sprint" button from the Backlog screen — this also works while the sprint is active.</p>`:""}`;}
   if(!p.sprint)return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">This project does not use sprints (${p.m}).</p>`;
   const sp=p.sprint,pct=Math.round(sp.done/sp.committed*100);
-  return head("Sprint",p.n,`<div style="display:flex;gap:7px">${projSelectHTML()}</div>`)+
+  return head("Sprint",p.n,`<div style="display:flex;gap:7px">${projSelectHTML(scrumProjects,true)}</div>`)+
   `<div class="card" style="max-width:620px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <span style="font-size:15px">${sp.n}</span>${pill("active","ok")}<span style="flex:1"></span>
     <span class="m" style="color:var(--t2)">${sp.left} days left</span></div>
@@ -2153,8 +2220,9 @@ function screenView(){
 
     <div class="lbl" style="margin-top:13px">Meeting date and time</div>
     <div style="display:flex;gap:8px">
-     <input id="fMtDate" type="date" value="${esc(f.date||"")}" style="flex:1">
-     <input id="fMtTime" type="time" value="${esc(f.time||"")}" style="width:120px"></div>
+     <input id="fMtDate" type="date" value="${esc(f.date||"")}" style="width:170px;flex:none">
+     <input id="fMtTime" type="time" value="${esc(f.time||"")}" min="08:00" max="20:00" step="900" style="width:120px"></div>
+    <p class="m" style="color:var(--tm);margin:5px 0 0">Time: 08:00–20:00, 15-minute steps.</p>
 
     <div class="lbl" style="margin-top:13px">Title (optional)</div>
     <input id="fMtTitle" value="${esc(f.title||"")}" placeholder="E.g.: Weekly status meeting">
@@ -2235,12 +2303,23 @@ function screenView(){
 
 
  /* ------------------------------ Project team ------------------------------ */
- if(v==="d.team"){const p=P();
+ if(v==="d.team"){
+  if(S.projAll){
+   const rows=PROJ.flatMap(pr=>teamOf(pr.k).map(m=>({pr,m})));
+   return head("Project Team","All Projects"+(LIVE_BACKEND?" · live backend":" · demo data"),
+    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
+   table(["Project","Name","Title","Unit","Project role"],rows.map(({pr,m})=>`<tr>
+    <td class="m" style="color:var(--ta)">${esc(pr.k)}</td>
+    <td>${esc(m.n)}</td><td style="color:var(--t2)">${esc(titleOf(m.n))}</td>
+    <td style="color:var(--t2)">${esc((USERS.find(u=>u.n===m.n)||{}).unit||"—")}</td>
+    <td>${pill(m.r)}</td></tr>`).join("")||`<tr><td colspan="5" style="color:var(--tm)">No members assigned yet.</td></tr>`)+
+   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Select a single project from the dropdown to add or remove members.</p>`;}
+  const p=P();
   if(LIVE_BACKEND&&(S.teamLiveProj!==p.k||S.teamLive===null)&&S.teamLiveLoading!==p.k)loadTeamLive(p.k);
   const team=LIVE_BACKEND?(S.teamLiveProj===p.k?(S.teamLive||[]):[]):teamOf(p.k);
   const loading=LIVE_BACKEND&&S.teamLiveProj!==p.k;
-  return head("Project team",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":" · demo data"),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}
+  return head("Project Team",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":" · demo data"),
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
     ${cw("d.team")?`<button class="b p" data-a="teamAdd">Add member</button>`:""}</div>`)+
   (loading?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
   table(["Name","Title","Unit","Project role",""],team.map((m,i)=>`<tr>
@@ -2259,17 +2338,13 @@ function screenView(){
  if(v==="d.docs"){
   if(LIVE_BACKEND&&S.docsLive===null&&!S.docsLiveLoading)loadDocsLive();
   const all=[];PROJ.forEach(pr=>docsOf(pr.k).forEach(d=>all.push({pr,d})));
-  const fp=S.docProj||"ALL";
-  const rows=all.filter(x=>fp==="ALL"||x.pr.k===fp)
+  const rows=(S.projAll?all:all.filter(x=>x.pr.k===P().k))
    .sort((a,b)=>a.pr.k.localeCompare(b.pr.k)||docTypeIdx(a.d.type)-docTypeIdx(b.d.type));
-  const cur=P();
-  return head("Project documents","PDF only · a document cannot be approved before the previous one"+(LIVE_BACKEND?" · live backend":" · demo data"),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">
-     <button class="b s ${fp==="ALL"?"p":""}" data-a="docProj:ALL">All projects</button>
-     ${PROJ.map(x=>`<button class="b s ${fp===x.k?"p":""}" data-a="docProj:${x.k}">${x.k}</button>`).join("")}
+  return head("Project Documents","PDF only · a document cannot be approved before the previous one"+(LIVE_BACKEND?" · live backend":" · demo data"),
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
      ${cw("d.docs")?`<button class="b p" data-a="pdocAdd">Add document</button>`:""}</div>`)+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));margin-bottom:13px">
-    ${PROJ.filter(x=>fp==="ALL"||x.k===fp).map(x=>`<div class="card">
+    ${(S.projAll?PROJ:[P()]).map(x=>`<div class="card">
      <div style="display:flex;gap:8px;align-items:center"><span class="m" style="color:var(--ta)">${x.k}</span>
       <span style="flex:1;font-size:12.5px">${esc(x.n)}</span></div>
      <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
@@ -2352,30 +2427,48 @@ function screenView(){
       <button class="b d" data-a="pdocRej:${pr.k}:${d.id}">Reject</button>`:""}</div>`;}
 
  /* ---------------------------- Approvals log ------------------------------- */
- if(v==="d.appr"){const p=P();
+ if(v==="d.appr"){
+  if(LIVE_BACKEND&&S.docsLive===null&&!S.docsLiveLoading)loadDocsLive();
+  const projects=S.projAll?PROJ:[P()];
   const rows=[];
-  docsOf(p.k).forEach(d=>d.appr.forEach(a=>rows.push({what:"Document",item:d.name,...a})));
-  crsOf(p.k).forEach(c=>(c.appr||[]).forEach(a=>rows.push({what:"Change request",item:c.no+" — "+c.t,...a})));
-  (p.gate?(p.gate.sign||[]):[]).forEach(sg=>rows.push({what:"Stage gate",item:p.gate.n,n:sg.n,
-    t:titleOf(sg.n),r:sg.r,at:sg.at||"—"}));
+  projects.forEach(p=>{
+   docsOf(p.k).forEach(d=>d.appr.forEach(a=>rows.push({pr:p,what:"Document",item:d.name,...a})));
+   crsOf(p.k).forEach(c=>(c.appr||[]).forEach(a=>rows.push({pr:p,what:"Change request",item:c.no+" — "+c.t,...a})));
+   (p.gate?(p.gate.sign||[]):[]).forEach(sg=>rows.push({pr:p,what:"Stage gate",item:p.gate.n,n:sg.n,
+     t:titleOf(sg.n),r:sg.r,at:sg.at||"—"}));});
   rows.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
-  return head("Approvals log",p.k+" — who approved what and when",
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}</div>`)+
-  table(["Approver","Title","Project role","Approved item","Type","Date"],rows.map(r=>`<tr>
+  return head("Approvals Log",S.projAll?"All Projects — who approved what and when":P().k+" — who approved what and when",
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
+  table((S.projAll?["Project"]:[]).concat(["Approver","Title","Project role","Approved item","Type","Date"]),rows.map(r=>`<tr>
+   ${S.projAll?`<td class="m" style="color:var(--ta)">${esc(r.pr.k)}</td>`:""}
    <td>${esc(r.n)}</td><td style="color:var(--t2)">${esc(r.t||titleOf(r.n))}</td>
    <td>${pill(r.r)}</td><td>${esc(r.item)}</td><td class="m" style="color:var(--tm)">${r.what}</td>
    <td class="m">${r.at}</td></tr>`).join("")
-   ||`<tr><td colspan="6" style="color:var(--tm)">No approvals recorded yet.</td></tr>`);}
+   ||`<tr><td colspan="${S.projAll?7:6}" style="color:var(--tm)">No approvals recorded yet.</td></tr>`);}
 
  /* --------------------------- Change requests ------------------------------ */
- if(v==="d.cr"){const p=P();
+ if(v==="d.cr"){
+  const ST={taslak:["draft","wr"],onayda:["pending approval","wr"],onaylandi:["approved","ok"],reddedildi:["rejected","er"]};
+  if(S.projAll){
+   const rows=PROJ.flatMap(pr=>crsAllOf(pr.k).map(c=>({pr,c})));
+   rows.sort((a,b)=>String(b.c.at).localeCompare(String(a.c.at)));
+   return head("Change Requests","All Projects — scope, cost and schedule changes"+(LIVE_BACKEND?" · live backend":" · demo data"),
+    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
+   table(["Project","No","Title","Raised by","Date","Status",""],rows.map(({pr,c})=>`<tr>
+    <td class="m" style="color:var(--ta)">${esc(pr.k)}</td>
+    <td class="m" style="color:var(--ta)">${c.no}</td><td>${esc(c.t)}</td>
+    <td style="color:var(--t2)">${esc(c.by)}</td><td class="m" style="color:var(--tm)">${c.at}</td>
+    <td>${pill(...(ST[c.st]||[c.st,""]))}</td>
+    <td style="text-align:right"><button class="b s p" data-a="pickProj:${PROJ.indexOf(pr)}">Open project</button></td></tr>`).join("")
+    ||`<tr><td colspan="7" style="color:var(--tm)">No change requests across any project.</td></tr>`)+
+   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Select a single project from the dropdown to approve, reject, or create a new request.</p>`;}
+  const p=P();
   if(LIVE_BACKEND&&(S.crLiveProj!==p.k||S.crLive===null)&&S.crLiveLoading!==p.k)loadCRLive(p.k);
   if(LIVE_BACKEND&&(S.teamLiveProj!==p.k||S.teamLive===null)&&S.teamLiveLoading!==p.k)loadTeamLive(p.k);
   const list=LIVE_BACKEND?(S.crLiveProj===p.k?(S.crLive||[]):[]):crsOf(p.k);
   const loading=LIVE_BACKEND&&S.crLiveProj!==p.k;
-  const ST={taslak:["draft","wr"],onayda:["pending approval","wr"],onaylandi:["approved","ok"],reddedildi:["rejected","er"]};
-  return head("Change requests",p.k+" — scope, cost and schedule changes"+(LIVE_BACKEND?" · live backend":" · demo data"),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}
+  return head("Change Requests",p.k+" — scope, cost and schedule changes"+(LIVE_BACKEND?" · live backend":" · demo data"),
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
     ${cw("d.cr")?`<button class="b p" data-a="crAdd">New request</button>`:""}</div>`)+
   (loading?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
   table(["No","Title","Impact","Raised by","Date","Status","Approvals",""],list.map((c,i)=>{
@@ -2400,14 +2493,24 @@ function screenView(){
    </td></tr>`;}).join("")||`<tr><td colspan="8" style="color:var(--tm)">No change requests.</td></tr>`))+
   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">A change request needs the raiser's manager AND a
    project-team member (Business Owner or Product Owner) to approve — both are required. The requester cannot approve their own request.</p>`;}
- if(v==="d.charts"){const p=P();
+ if(v==="d.charts"){
+  if(S.projAll){
+   if(LIVE_BACKEND&&PROJ.some(pr=>!pr.itemsLoaded)&&!S.chartsAllLoading){S.chartsAllLoading=true;loadAllIssuesLive().then(()=>{S.chartsAllLoading=false;render();});}
+   if(LIVE_BACKEND&&PROJ.some(pr=>!pr.itemsLoaded))return head("Project Charts","All Projects","")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+   return head("Project Charts","All Projects"+(LIVE_BACKEND?" · live backend":""),
+    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
+   table(["Project","Progress","Story points","Open bugs",""],PROJ.map((pr,pi)=>{const mt=metrics(pr);
+    return `<tr><td class="m" style="color:var(--ta)">${esc(pr.k)}</td>
+     <td>${mt.pct}%</td><td>${mt.donePts} / ${mt.pts}</td><td>${mt.bugs}</td>
+     <td style="text-align:right"><button class="b s p" data-a="pickProj:${pi}">Open</button></td></tr>`;}).join(""));}
+  const p=P();
   if(LIVE_BACKEND){
    if(!p.itemsLoaded)loadIssuesLive(p.k);
    if(!p.sprintHistoryLoaded)loadSprintHistoryLive(p.k);
-   if(!p.itemsLoaded)return head("Project charts",p.k+" — "+p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;}
+   if(!p.itemsLoaded)return head("Project Charts",p.k+" — "+p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;}
   const mt=metrics(p);
-  return head("Project charts",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":""),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}</div>`)+
+  return head("Project Charts",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":""),
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:13px">
    ${[["Progress",mt.pct+"%","open"],["Story points",mt.donePts+" / "+mt.pts,"open"],
       ["Issues",mt.done+" / "+mt.items,"all"],["Open bugs",mt.bugs,"bugs"],
@@ -2433,7 +2536,7 @@ function screenView(){
    <p style="font-size:12.5px;line-height:1.65;margin:8px 0 0">This report is available to <b>Director</b>,
     <b>Group Director</b> and <b>Executive Vice President</b> titles only. Your title: ${esc(S.me.title)}.</p></div>`;
   if(LIVE_BACKEND&&PROJ.some(p=>!p.itemsLoaded))
-   return head("Executive summary","")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+   return head("Executive Summary","")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
   const rows=PROJ.map(p=>({p,mt:metrics(p)}));
   const tot={pts:rows.reduce((a,r)=>a+r.mt.pts,0),done:rows.reduce((a,r)=>a+r.mt.donePts,0),
    bugs:rows.reduce((a,r)=>a+r.mt.bugs,0),
@@ -2456,7 +2559,7 @@ function screenView(){
    return true;});
   const FLABEL={delayed:"Delayed projects",risk:"Projects at risk",bugs:"Projects with open bugs",
    attention:"Projects behind schedule",ontrack:"Projects on track"};
-  return head("Executive summary",PROJ.length+" projects · portfolio view",pill("restricted","wr"))+
+  return head("Executive Summary",PROJ.length+" projects · portfolio view",pill("restricted","wr"))+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
    ${[["Projects",PROJ.length,null],["Portfolio progress",tot.pct+"%",null],
       ["Story points",tot.done+" / "+tot.pts,null],["Delayed",tot.late,"delayed"],
@@ -3668,14 +3771,13 @@ function dialogView(){
       ${cw("d.board")?`<button class="b s d" data-a="issueLinkDel:${d.pi}:${i.key}:${lk.id}" title="Kaldır">✕</button>`:""}</div>`).join("")
     :`<p class="m" style="color:var(--tm);margin:4px 0 0">No linked issues.</p>`}
    ${cw("d.board")&&otherIssues.length?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
-    <select id="fLinkType" style="padding:6px 8px;border-radius:8px;border:1px solid ${f.linkType?"var(--bd)":"var(--er-fg)"};background:var(--s2);color:var(--t1);font-size:12px">
+    <select id="fLinkType" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
      <option value="" ${!f.linkType?"selected":""}>Select relationship…</option>
      ${["blocks","clones","duplicates","relates"].map(t=>`<option value="${t}" ${f.linkType===t?"selected":""}>${LINK_FORWARD_LABEL[t]}</option>`).join("")}</select>
-    <select id="fLinkTarget" style="padding:6px 8px;border-radius:8px;border:1px solid ${f.linkTarget?"var(--bd)":"var(--er-fg)"};background:var(--s2);color:var(--t1);font-size:12px;flex:1;min-width:140px">
+    <select id="fLinkTarget" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px;flex:1;min-width:140px">
      <option value="" ${!f.linkTarget?"selected":""}>Select issue…</option>
      ${otherIssues.map(x=>`<option value="${x.key}" ${f.linkTarget===x.key?"selected":""}>${x.key} — ${esc(String(x.t).slice(0,32))}</option>`).join("")}</select>
-    <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>
-    ${!f.linkType||!f.linkTarget?`<p class="m" style="color:var(--er-fg);margin:5px 0 0">Select both a relationship and an issue.</p>`:""}`:""}
+    <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
    ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">${(NEXT[i.st]||[]).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
@@ -3919,7 +4021,7 @@ function afterRender(){
    },300);};}
  const psd=document.getElementById("projSelectDropdown");
  if(psd)psd.onchange=e=>{const v=+e.target.value;
-  if(v===-1){S.backlogAll=true;}else{S.backlogAll=false;S.proj=v;}
+  if(v===-1){S.projAll=true;}else{S.projAll=false;S.proj=v;}
   render();};
  const mtProjSel=document.getElementById("fMtProjSel");
  if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
@@ -4340,12 +4442,14 @@ app.addEventListener("click",async ev=>{
   render();return;}
  if(k==="scr"){if(!shown(p[1])){toast("Bu ekran kullanım dışı.",1);return;}
   clearInterval(S.timer);S.scr=p[1];
-  if(p[1]==="d.backlog")S.backlogAll=true; // Backlog'a her girişte varsayılan: All Projects
+  // Proje-seçimli ekranlara her girişte varsayılan: All Projects
+  if(["d.backlog","d.board","d.sprint","d.gate","d.charts","d.team","d.docs","d.appr","d.cr"].includes(p[1]))S.projAll=true;
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null,filter:""});render();return;}
  if(k==="filter"){S.filter=p[1]||"";render();return;}
  if(k==="proj"){S.proj=+p[1];render();return;}
+ if(k==="pickProj"){S.proj=+p[1];S.projAll=false;render();return;}
  if(k==="onlyMine"){S.onlyMine=!S.onlyMine;render();return;}
- if(k==="openProj"){S.proj=+p[1];S.mod="delivery";S.scr="d.board";S.dlg=null;render();return;}
+ if(k==="openProj"){S.proj=+p[1];S.projAll=false;S.mod="delivery";S.scr="d.board";S.dlg=null;render();return;}
  if(k==="execFilter"){S.execFilter=p[1]||null;S.execUnit=null;render();return;}
  if(k==="execUnit"){S.execUnit=decodeURIComponent(p[1]||"");S.execFilter=null;render();return;}
  if(k==="issueNew"){S.f={ty:"Story",pri:"Medium",pts:3,st:"backlog"};PENDING_ISSUE_FILE=null;S.dlg={type:"issue2"};render();return;}
