@@ -611,15 +611,21 @@ const parentsFor=(p,ty)=>{const need=PARENT_OF[ty];
    isim listesi yerine); "list" verilirse (örn. yalnızca Waterfall projeleri)
    sadece o alt küme seçenek olarak sunulur, ama value her zaman PROJ'daki GERÇEK
    index'tir — böylece S.proj ataması filtrelenmiş listede de doğru çalışır. */
-function projSelectHTML(list){
+function projSelectHTML(list,allowAll){
  const opts=list||PROJ;
  return `<select id="projSelectDropdown" class="sel" aria-label="Proje seç"
    style="padding:7px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12.5px">
+  ${allowAll?`<option value="-1" ${S.backlogAll?"selected":""}>All Projects</option>`:""}
   ${opts.map(x=>{const idx=PROJ.indexOf(x);
-    return `<option value="${idx}" ${idx===S.proj?"selected":""}>${x.k} — ${esc(x.n)}</option>`;}).join("")}
+    return `<option value="${idx}" ${!S.backlogAll&&idx===S.proj?"selected":""}>${x.k} — ${esc(x.n)}</option>`;}).join("")}
  </select>`;}
 const itemByKey=(p,k)=>(p.items||[]).find(i=>i.key===k);
 const childrenOf=(p,k)=>(p.items||[]).filter(i=>i.parent===k);
+/* Epic açıldığında yalnızca doğrudan çocuklar (Story) değil, TÜM soy
+   (torunlar dahil — Story altındaki Task/Bug'lar, tamamlanmış olanlar
+   dahil) gösterilmesi için: Story kendi doğrudan çocuklarını zaten
+   childrenOf ile gösterdiği için bu yalnızca Epic görünümünde kullanılır. */
+const allDescendants=(p,k)=>childrenOf(p,k).flatMap(c=>[c,...allDescendants(p,c.key)]);
 /* Konu KEY'i her tabloda tıklanabilir bir link olarak gösterilir (Jira'daki gibi);
    Open butonuna artık gerek yok. */
 const issueKeyLink=(pi,key)=>`<a href="javascript:void(0)" class="m" data-a="issue:${pi}:${encodeURIComponent(key)}"
@@ -1122,7 +1128,7 @@ let S={view:"login",u:"",err:"",me:null,dark:prefersDark,mod:"announce",scr:"a.l
  crLive:null,crLiveProj:null,crLiveLoading:null,
  docsLive:null,docsLiveLoading:false,
  trainLive:null,trainLiveLoading:false,trainViewId:null,trainQuizLive:null,trainAnswers:{},trainResult:null,
- reqsInboxLive:null,reqsMineLive:null,reqsDoneLive:null};
+ reqsInboxLive:null,reqsMineLive:null,reqsDoneLive:null,backlogAll:true};
 
 /* --------------------------- gerçek backend istemcisi ---------------------------
    API_BASE boşsa (aynı origin'den servis edilir) doğrudan /api/... çağrılır.
@@ -1592,7 +1598,8 @@ function screenView(){
     <div class="lbl">${k[0]}</div><div class="m" style="font-size:23px">${k[1]}</div></div>`).join("")}</div>`+
   (Object.keys(byProj).length?Object.keys(byProj).map(k=>{const p=byProj[k][0].p,pi=byProj[k][0].pi;
    return `<div style="margin-bottom:15px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-    <span class="m" style="width:30px;height:30px;border-radius:9px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center">${k}</span>
+    <span class="m" style="min-width:30px;height:22px;padding:0 7px;border-radius:6px;background:var(--navy);color:#fff;
+     display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;font-size:9.5px;letter-spacing:.02em">${esc(k)}</span>
     <span style="font-size:13px;flex:1">${esc(p.n)}</span>${pill(p.m)}
     <button class="b s" data-a="openProj:${pi}">Board</button></div>
    ${table(["Type","Key","Summary","Status","Priority","SP"],byProj[k].map(x=>`<tr>
@@ -1651,17 +1658,31 @@ function screenView(){
     Drag a card between columns to change its status, or open it to use the transition buttons.
     On phones, swipe the columns sideways.</p>`;}
 
- if(v==="d.backlog"){const p=P();
+ if(v==="d.backlog"){
+  if(S.backlogAll){
+   if(LIVE_BACKEND&&PROJ.some(pr=>!pr.itemsLoaded)&&!S.backlogAllLoading){S.backlogAllLoading=true;loadAllIssuesLive().then(()=>{S.backlogAllLoading=false;render();});}
+   if(LIVE_BACKEND&&PROJ.some(pr=>!pr.itemsLoaded))return head("Backlog","All Projects","")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+   const rows=PROJ.flatMap((pr,pi)=>pr.items.filter(i=>i.st==="backlog").map(i=>({pr,pi,i})));
+   return head("Backlog","All Projects"+(LIVE_BACKEND?" · live backend":""),
+    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
+    table(["Project","Type","Key","Title","SP",""],rows.map(({pr,pi,i})=>`<tr>
+     <td class="m" style="color:var(--ta)">${esc(pr.k)}</td>
+     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
+     <td>${issueKeyLink(pi,i.key)}</td><td>${esc(i.t)}</td><td class="m">${i.pts}</td>
+     <td style="text-align:right;white-space:nowrap">
+     ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${pi}:${i.key}">${pr.m==="Kanban"?"Add to board":"Add to sprint"}</button>`:""}</td></tr>`).join("")||
+     `<tr><td colspan="6" style="color:var(--tm)">Backlog is empty across all projects.</td></tr>`);}
+  const p=P();
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("Backlog",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
   return head("Backlog",p.n+(LIVE_BACKEND?" · live backend":""),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML()}
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
     ${cw("d.backlog")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
    table(["Type","Key","Title","SP",""],p.items.filter(i=>i.st==="backlog").map(i=>`<tr>
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
     <td>${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td><td class="m">${i.pts}</td>
     <td style="text-align:right;white-space:nowrap">
-    ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${S.proj}:${i.key}">Add to sprint</button>`:""}</td></tr>`).join("")||
+    ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${S.proj}:${i.key}">${p.m==="Kanban"?"Add to board":"Add to sprint"}</button>`:""}</td></tr>`).join("")||
     `<tr><td colspan="5" style="color:var(--tm)">Backlog is empty.</td></tr>`);}
 
  if(v==="d.gate"){
@@ -3587,7 +3608,7 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px"><button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b off" data-a="needFields">${isNew?"Ekle":"Kaydet"}</button></div>`);}
  if(d.type==="issue"){const p=PROJ[d.pi],i=p.items.find(x=>x.key===d.key);if(!i)return "";
-  const kids=childrenOf(p,i.key),par=i.parent?itemByKey(p,i.parent):null;
+  const kids=i.ty==="Epic"?allDescendants(p,i.key):childrenOf(p,i.key),par=i.parent?itemByKey(p,i.parent):null;
   const attKey=p.k+"::"+i.key;
   const atts=LIVE_BACKEND?(ISSUE_ATTACH_LIVE[attKey]||null):null;
   const links=LIVE_BACKEND?(ISSUE_LINKS_LIVE[attKey]||null):demoLinksFor(p.k,i.key);
@@ -3601,7 +3622,7 @@ function dialogView(){
      ["Reported by",esc(i.rep||"—")],["Created",esc(i.at||"—")],
      ...(i.upd?[["Updated",esc(i.upd)]]:[]),
      ["Parent",par?`<span class="m" style="color:var(--ta)">${par.key}</span> · ${esc(par.t)}`:(PARENT_OF[i.ty]?"—":"top level")],
-     ["Children",kids.length?kids.map(c=>`<span class="pl">${c.key} ${FLOW[c.st]}</span>`).join(" "):"—"]]
+     [i.ty==="Epic"?"All descendants":"Children",kids.length?kids.map(c=>`<span class="pl">${c.ty}: ${c.key} ${FLOW[c.st]}</span>`).join(" "):"—"]]
     .map(x=>`<div style="display:flex;gap:11px;margin-bottom:8px">
     <span class="lbl" style="width:88px;margin:0">${x[0]}</span><span style="flex:1;font-size:12.5px">${x[1]}</span></div>`).join("")}
    <div class="lbl" style="margin-top:4px">Priority</div>
@@ -3897,7 +3918,9 @@ function afterRender(){
     catch(err){/* sessizce yut */}
    },300);};}
  const psd=document.getElementById("projSelectDropdown");
- if(psd)psd.onchange=e=>{S.proj=+e.target.value;render();};
+ if(psd)psd.onchange=e=>{const v=+e.target.value;
+  if(v===-1){S.backlogAll=true;}else{S.backlogAll=false;S.proj=v;}
+  render();};
  const mtProjSel=document.getElementById("fMtProjSel");
  if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
   S.f.items=S.f.projKey&&S.f.projKey!=="OTHER"
@@ -4317,6 +4340,7 @@ app.addEventListener("click",async ev=>{
   render();return;}
  if(k==="scr"){if(!shown(p[1])){toast("Bu ekran kullanım dışı.",1);return;}
   clearInterval(S.timer);S.scr=p[1];
+  if(p[1]==="d.backlog")S.backlogAll=true; // Backlog'a her girişte varsayılan: All Projects
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null,filter:""});render();return;}
  if(k==="filter"){S.filter=p[1]||"";render();return;}
  if(k==="proj"){S.proj=+p[1];render();return;}
@@ -4853,13 +4877,14 @@ app.addEventListener("click",async ev=>{
   return;}
  if(k==="toSprint"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]);
+  const msg=p[2]+(pr.m==="Kanban"?" board'a alındı.":" sprinte alındı.");
   it.st="todo";if(LIVE_BACKEND)it.inSprint=true;render();
   if(LIVE_BACKEND){
    try{await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/sprint/items",{issueKey:p[2],inSprint:true});
-    toast(p[2]+" sprinte alındı.");}
+    toast(msg);}
    catch(e){it.st="backlog";it.inSprint=false;toast(e.message,1);render();}
    return;}
-  toast(p[2]+" sprinte alındı.");return;}
+  toast(msg);return;}
  if(k==="sprintRemove"){
   const pr=PROJ.find(x=>x.k===p[1]),it=pr.items.find(x=>x.key===p[2]);
   const prevSt=it.st,prevInSprint=it.inSprint;

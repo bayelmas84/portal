@@ -219,6 +219,13 @@ async function nextKeyForPrefix(client, projectK, prefix) {
   return prefix + (max + 1);
 }
 
+// "MOBİL1" -> "MOBİL 1": bir konu anahtarını, henüz özel bir başlık
+// verilmemiş toplantılarda okunabilir bir başlık olarak kullanmak için
+// harf/rakam arasına boşluk ekler.
+function formatKeyAsLabel(issueKey) {
+  return issueKey.replace(/([A-Za-zÇĞİÖŞÜçğıöşü]+)(\d+)$/, "$1 $2");
+}
+
 const FLOW_LABELS = { backlog: "Backlog", todo: "To Do", prog: "In Progress", review: "In Review", test: "In Testing", done: "Done" };
 
 async function logIssueHistory(runner, username, projectK, issueKey, message) {
@@ -1088,11 +1095,10 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
       }
     }
 
-    const meetingTitle = (title || "").trim() || otherSubject || "Toplantı Notu";
     // Konu anahtarı öneki: başlık varsa ondan, yoksa gerçek projenin adından,
     // o da yoksa "Diğer" konu metninden türetilir (örn. "Mobil işlem
     // platformu" -> "MOBİL"). Böylece aynı konudaki ardışık toplantıların
-    // Task'ları (bugün, gelecek hafta, ...) aynı önek+sayaçtan devam eder.
+    // Epic+Task'ları (bugün, gelecek hafta, ...) aynı önek+sayaçtan devam eder.
     let subjectSource = (title || "").trim();
     if (!subjectSource && projectK) {
       const projRow = await query("SELECT name FROM projects WHERE k=$1", [projectK]);
@@ -1100,8 +1106,36 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
     }
     if (!subjectSource) subjectSource = otherSubject || "";
     const subjectPrefix = deriveSubjectPrefix(subjectSource);
+    const explicitTitle = (title || "").trim() || otherSubject || null;
 
     const meeting = await withTransaction(async (client) => {
+      let epicKey = null;
+      let meetingTitle = explicitTitle;
+      if ((items || []).length) {
+        await ensureMeetingProject(client, req.user.username);
+        const uniqueAssignees = [...new Set(items.map((it) => it.assigneeUsername))];
+        for (const u of uniqueAssignees) await ensureMeetingTeamMember(client, u);
+        // Özel bir başlık/konu verilmemişse, toplantının görünen adı da
+        // Epic'in anahtarından türetilir ("MOBİL1" -> "MOBİL 1") — Meeting
+        // Notes listesi ile Backlog'daki Epic başlığı böylece birebir eşleşir.
+        if (!meetingTitle && subjectPrefix) {
+          const previewKey = await nextKeyForPrefix(client, MEETING_PROJECT_K, subjectPrefix);
+          meetingTitle = formatKeyAsLabel(previewKey);
+        }
+        if (!meetingTitle) meetingTitle = "Toplantı Notu";
+        const epic = await insertIssueRow(client, MEETING_PROJECT_K, {
+          issueType: "Epic",
+          title: meetingTitle,
+          description: notes || "",
+          createdBy: req.user.username,
+          createdAt: date, // Task'lar gibi Epic de toplantı tarihiyle açılmış görünür
+          keyPrefix: subjectPrefix, // Epic de Task'larla AYNI konu sayacından ilk numarayı alır
+        });
+        epicKey = epic.issue_key;
+        await logIssueHistory(client.query.bind(client), req.user.username, MEETING_PROJECT_K, epicKey, `Konu oluşturuldu (toplantı notu): ${epic.title}`);
+      }
+      if (!meetingTitle) meetingTitle = "Toplantı Notu";
+
       const m = await client.query(
         `INSERT INTO meetings (project_k, project_other_subject, title, meeting_date, meeting_time, notes, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
@@ -1109,22 +1143,6 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
       );
       for (const p of participants) {
         await client.query("INSERT INTO meeting_participants (meeting_id, username) VALUES ($1,$2)", [m.rows[0].id, p]);
-      }
-
-      let epicKey = null;
-      if ((items || []).length) {
-        await ensureMeetingProject(client, req.user.username);
-        const uniqueAssignees = [...new Set(items.map((it) => it.assigneeUsername))];
-        for (const u of uniqueAssignees) await ensureMeetingTeamMember(client, u);
-        const epic = await insertIssueRow(client, MEETING_PROJECT_K, {
-          issueType: "Epic",
-          title: `${meetingTitle} — ${date}`,
-          description: notes || "",
-          createdBy: req.user.username,
-          createdAt: date, // Task'lar gibi Epic de toplantı tarihiyle açılmış görünür
-        });
-        epicKey = epic.issue_key;
-        await logIssueHistory(client.query.bind(client), req.user.username, MEETING_PROJECT_K, epicKey, `Konu oluşturuldu (toplantı notu): ${epic.title}`);
       }
 
       for (const it of items || []) {
