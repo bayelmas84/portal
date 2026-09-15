@@ -7,26 +7,18 @@ function randomId() {
   return crypto.randomBytes(32).toString("base64url");
 }
 
-async function createSession(username, pending2fa, mustSetup2fa) {
+async function createSession(username) {
   const id = randomId();
   const csrfSecret = randomId();
   const now = Date.now();
   const idleExpiresAt = new Date(now + config.session.idleMinutes * 60000);
   const absoluteExpiresAt = new Date(now + config.session.absoluteMinutes * 60000);
   await query(
-    `INSERT INTO sessions (id, username, csrf_secret, idle_expires_at, absolute_expires_at, pending_2fa, must_setup_2fa)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [id, username, csrfSecret, idleExpiresAt, absoluteExpiresAt, !!pending2fa, !!mustSetup2fa]
+    `INSERT INTO sessions (id, username, csrf_secret, idle_expires_at, absolute_expires_at)
+     VALUES ($1,$2,$3,$4,$5)`,
+    [id, username, csrfSecret, idleExpiresAt, absoluteExpiresAt]
   );
-  return { id, csrfSecret, idleExpiresAt, absoluteExpiresAt, pending2fa: !!pending2fa };
-}
-
-async function completeTwoFactorSetup(id) {
-  await query("UPDATE sessions SET must_setup_2fa=false WHERE id=$1", [id]);
-}
-
-async function completeTwoFactor(id) {
-  await query("UPDATE sessions SET pending_2fa=false WHERE id=$1", [id]);
+  return { id, csrfSecret, idleExpiresAt, absoluteExpiresAt };
 }
 
 async function getSession(id) {
@@ -59,4 +51,4 @@ async function destroyAllSessionsForUser(username) {
   await query("DELETE FROM sessions WHERE username = $1", [username]);
 }
 
-module.exports = { createSession, getSession, destroySession, destroyAllSessionsForUser, completeTwoFactor, completeTwoFactorSetup };
+module.exports = { createSession, getSession, destroySession, destroyAllSessionsForUser };

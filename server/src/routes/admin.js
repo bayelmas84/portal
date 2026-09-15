@@ -207,26 +207,6 @@ router.post("/users", requireWrite("m.users"), async (req, res, next) => {
   }
 });
 
-// 2FA kurtarma: e-postasına erişemeyen ve giremeyen bir kullanıcının 2FA'sını
-// admin sıfırlayabilir. Kendi hesabı için YASAK — ele geçirilmiş bir hesap
-// kendi korumasını devre dışı bırakamasın diye (kendi rolünü değiştirememesiyle
-// aynı ilke). Diğer admin işlemleri gibi onaya tabidir.
-router.post("/users/:username/reset-2fa", requireWrite("m.users"), async (req, res, next) => {
-  try {
-    if (req.params.username === req.user.username) {
-      return res.status(403).json({ error: "Kendi 2FA'nızı sıfırlayamazsınız — başka bir yöneticiden isteyin." });
-    }
-    if (req.params.username === "belmas") {
-      return res.status(403).json({ error: "belmas sistem hesabı hiçbir şekilde değiştirilemez." });
-    }
-    const target = await query("SELECT username, totp_enabled FROM users WHERE username=$1", [req.params.username]);
-    if (!target.rowCount) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
-    if (!target.rows[0].totp_enabled) return res.status(409).json({ error: "Bu kullanıcıda 2FA zaten kapalı." });
-    await requestAdminApproval(req, res, "admin.reset_2fa", { username: req.params.username },
-      `2FA kurtarma: ${req.params.username} kullanıcısının 2FA'sı sıfırlanacak`);
-  } catch (e) { next(e); }
-});
-
 router.put("/users/:username", requireWrite("m.users"), async (req, res, next) => {
   try {
     // KURAL: "belmas" (AD'den gelen sistem/platform hesabı) kimse tarafından

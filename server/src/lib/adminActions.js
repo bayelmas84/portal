@@ -8,7 +8,6 @@ const { query } = require("../db");
 const { encryptSecret } = require("./crypto");
 const { saveSmtpSettings, setSmtpActive } = require("./mailer");
 const { setAccess, resetAccessToDefault, setAvailability } = require("./permissions");
-const { destroyAllSessionsForUser } = require("../auth/session");
 
 async function applyAdminAction(targetType, payload, actingUsername) {
   switch (targetType) {
@@ -102,14 +101,6 @@ async function applyAdminAction(targetType, payload, actingUsername) {
     }
     case "admin.smtp.active": {
       await setSmtpActive(!!payload.active, actingUsername);
-      return;
-    }
-    case "admin.reset_2fa": {
-      const { username } = payload;
-      await query("UPDATE users SET totp_enabled=false, totp_secret_encrypted=NULL, totp_method='email' WHERE username=$1", [username]);
-      // Olası ele geçirilmiş hesabın mevcut oturumlarını da keser — kurtarma
-      // hem kilitlenmeyi çözer hem güvenlik şüphesini temizler.
-      await destroyAllSessionsForUser(username);
       return;
     }
     case "admin.approval_rule": {
