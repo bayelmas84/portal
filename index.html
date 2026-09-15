@@ -392,6 +392,9 @@ const ACC={
   "m.notif":R,"m.dir":R,"m.smtp":R,"m.brand":R,"m.avail":R,"m.short":R},
  /* Teftiş: yalnızca kendi görev alanı. Proje Yönetimi ve Admin Panel yetkisi yoktur —
     yetkisi olmayan modül menüde hiç görünmez. */
+ /* Teftiş: kendi görev alanının (Duyurular/Eğitim/Onaylar/Uyum onayı/Denetim)
+    DIŞINDA kalan HER ekranı da görebilir (read) — örn. Proje Yönetimi'ndeki
+    tüm menüler açıktır, yalnızca değişiklik yapamaz. Admin panel de dahildir. */
  inspection:{delivery:R,"d.docs":R,"d.docview":R,"d.appr":R,
   documents:W,announce:W,training:R,reports:R,approvals:W,compliance:W,
   "k.docs":W,"k.new":W,"k.queue":W,"k.mail":W,
@@ -399,17 +402,34 @@ const ACC={
   "t.un":W,"t.done":W,"t.author":W,
   "r.list":R,"r.view":R,"r.dev":R,"r.usage":R,
   "p.in":W,"p.my":W,"p.done":W,
-  "c.read":W,"c.rem":W,"c.audit":W,audit:R},
+  "c.read":W,"c.rem":W,"c.audit":W,audit:R,
+  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.sprint":R,"d.gate":R,"d.charts":R,"d.exec":R,
+  "d.team":R,"d.cr":R,"d.meeting":R,"d.meetingview":R,"d.meetingnew":R,"d.gantt":R,"t.readlive":R,
+  admin:R,"m.ann":R,"m.users":R,"m.units":R,"m.titles":R,"m.roles":R,"m.access":R,"m.notif":R,
+  "m.mailtpl":R,"m.settings":R,"m.approvalrules":R,"m.dir":R,"m.smtp":R,"m.brand":R,"m.avail":R,"m.short":R},
  /* Bilgi Güvenliği: proje yönetiminde işi yok; yalnızca proje dokümanlarını görür. */
+ /* Bilgi Güvenliği (IT İç Kontrol): kendi görev alanının DIŞINDA kalan HER
+    ekranı da görebilir (read) — Proje Yönetimi dahil tüm menüler açıktır. */
  infosec:{delivery:R,documents:W,announce:W,training:R,reports:R,approvals:W,
   "d.docs":R,"d.docview":R,
   "k.docs":W,"k.new":W,"a.list":W,"a.new":W,"a.del":W,"t.un":W,"t.done":W,
-  "r.list":R,"r.view":R,"p.in":W,"p.my":W,"p.done":W,"k.mail":R},
- /* İç Kontrol / Kurumsal Risk: proje yönetiminde işlem yapmaz; dokümanları görür ve onaylar. */
+  "r.list":R,"r.view":R,"p.in":W,"p.my":W,"p.done":W,"k.mail":R,
+  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.sprint":R,"d.gate":R,"d.charts":R,"d.exec":R,
+  "d.team":R,"d.appr":R,"d.cr":R,"d.meeting":R,"d.meetingview":R,"d.meetingnew":R,"d.gantt":R,
+  "t.author":R,"t.readlive":R,"r.dev":R,"r.usage":R,"k.queue":R,compliance:R,"c.read":R,"c.rem":R,audit:R,"c.audit":R,
+  admin:R,"m.ann":R,"m.users":R,"m.units":R,"m.titles":R,"m.roles":R,"m.access":R,"m.notif":R,
+  "m.mailtpl":R,"m.settings":R,"m.approvalrules":R,"m.dir":R,"m.smtp":R,"m.brand":R,"m.avail":R,"m.short":R},
+ /* İç Kontrol / Kurumsal Risk: kendi görev alanının DIŞINDA kalan HER ekranı
+    da görebilir (read) — Proje Yönetimi dahil tüm menüler açıktır. */
  control:{delivery:R,documents:W,announce:W,training:R,reports:R,approvals:W,
   "d.docs":R,"d.docview":R,"d.appr":R,
   "k.docs":W,"k.new":W,"a.list":W,"a.new":W,"a.del":W,"t.un":W,"t.done":W,"r.list":R,"r.view":R,
-  "p.in":W,"p.my":W,"p.done":W,"compliance":W,"c.read":W,"c.rem":W,"c.audit":W,audit:R,"k.mail":R},
+  "p.in":W,"p.my":W,"p.done":W,"compliance":W,"c.read":W,"c.rem":W,"c.audit":W,audit:R,"k.mail":R,
+  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.sprint":R,"d.gate":R,"d.charts":R,"d.exec":R,
+  "d.team":R,"d.cr":R,"d.meeting":R,"d.meetingview":R,"d.meetingnew":R,"d.gantt":R,
+  "t.author":R,"t.readlive":R,"r.dev":R,"r.usage":R,"k.queue":R,
+  admin:R,"m.ann":R,"m.users":R,"m.units":R,"m.titles":R,"m.roles":R,"m.access":R,"m.notif":R,
+  "m.mailtpl":R,"m.settings":R,"m.approvalrules":R,"m.dir":R,"m.smtp":R,"m.brand":R,"m.avail":R,"m.short":R},
  gmy:{delivery:R,documents:R,announce:R,training:R,reports:R,approvals:W,
   "d.my":R,"d.projects":R,"d.board":R,"d.sprint":R,"d.gate":W,"d.charts":R,"d.exec":R,"r.usage":R,"k.docs":R,"a.list":R,"t.un":W,"t.done":W,
   "r.list":R,"r.view":R,"p.in":W,"p.my":W,"p.done":W},

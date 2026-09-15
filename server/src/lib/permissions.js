@@ -24,20 +24,34 @@ const DEFAULT_ACCESS = {
     "m.users": "read", "m.dir": "read", "m.smtp": "read", "m.brand": "read",
     "m.avail": "read", "m.access": "read",
   },
+  // KURAL: Teftiş/İç Kontrol/IT İç Kontrol, kendi görev alanlarının (yukarıdaki
+  // "write" ekranlar) DIŞINDA kalan HER ekranı da GÖREBİLMELİDİR (read) — yani
+  // örn. Proje Yönetimi'ndeki tüm menüler bu roller için açıktır, yalnızca
+  // değişiklik yapamazlar. Bu, admin/pmdir rollerinde zaten uygulanan aynı
+  // "kendi alanı yaz, gerisini oku" modelidir.
   inspection: {
     announcements: "write", training: "write",
     "d.docs": "read", "d.docview": "read", "d.appr": "read",
     "d.meeting": "read", "d.meetingview": "read", "c.audit": "read",
+    "d.team": "read", "d.cr": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
+    "m.users": "read", "m.units": "read", "m.dir": "read", "m.smtp": "read", "m.brand": "read",
+    "m.mailtpl": "read", "m.settings": "read", "m.approvalrules": "read", "m.avail": "read", "m.access": "read",
   },
   infosec: {
     announcements: "write", training: "read",
     "d.docs": "read", "d.docview": "read",
     "d.meeting": "read", "d.meetingview": "read",
+    "d.team": "read", "d.appr": "read", "d.cr": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read", "c.audit": "read",
+    "m.users": "read", "m.units": "read", "m.dir": "read", "m.smtp": "read", "m.brand": "read",
+    "m.mailtpl": "read", "m.settings": "read", "m.approvalrules": "read", "m.avail": "read", "m.access": "read",
   },
   control: {
     announcements: "write", training: "read",
     "d.docs": "read", "d.docview": "read", "d.appr": "read",
     "d.meeting": "read", "d.meetingview": "read", "c.audit": "read",
+    "d.team": "read", "d.cr": "read", "d.gantt": "read", "d.board": "read", "d.gate": "read",
+    "m.users": "read", "m.units": "read", "m.dir": "read", "m.smtp": "read", "m.brand": "read",
+    "m.mailtpl": "read", "m.settings": "read", "m.approvalrules": "read", "m.avail": "read", "m.access": "read",
   },
   gmy: {
     announcements: "read", training: "read",
