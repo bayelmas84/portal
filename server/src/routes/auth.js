@@ -2,7 +2,7 @@
 const express = require("express");
 const { query } = require("../db");
 const { config } = require("../config");
-const { createSession, destroySession, completePasswordChange } = require("../auth/session");
+const { createSession, destroySession, completePasswordChange, destroyAllSessionsForUser } = require("../auth/session");
 const { verifyAgainstDirectory } = require("../auth/ldap");
 const { audit } = require("../lib/audit");
 const { verifyPassword, validatePasswordPolicy, hashPassword } = require("../lib/password");
@@ -143,6 +143,21 @@ router.post("/logout", async (req, res, next) => {
   try {
     const sid = req.cookies[config.session.cookieName];
     if (sid) await destroySession(sid);
+    res.clearCookie(config.session.cookieName, { path: "/" });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Kullanıcının kendi tüm oturumlarını (bu cihaz dahil) sonlandırması: hesabının
+// ele geçirildiğinden şüphelenirse veya başka bir cihazda açık unuttuysa
+// kullanabileceği self-service bir güvenlik eylemi — admin onayı gerekmez,
+// yalnızca kendi hesabını etkiler.
+router.post("/logout-all-sessions", requireAuth, async (req, res, next) => {
+  try {
+    await destroyAllSessionsForUser(req.user.username);
+    await audit(`Tüm oturumlardan çıkış yapıldı: ${req.user.username}`, req.user.username, true);
     res.clearCookie(config.session.cookieName, { path: "/" });
     res.json({ ok: true });
   } catch (e) {

@@ -15,25 +15,40 @@ gibi değerleri kendi ortamınızdakiyle değiştirin.
 | Node.js 20 uygulaması (`server/`) | API, `127.0.0.1:8080` dinler |
 | PostgreSQL 14+ | Tüm veriler |
 | Nginx | TLS sonlandırma, statik dosya + API ters vekili (reverse proxy) |
-| Active Directory (LDAPS) | Kimlik doğrulama — parola portalda saklanmaz |
+| Active Directory (LDAPS) — opsiyonel | Kimlik doğrulama; admin panelinden açılıp kapatılabilir bir anahtardır (bkz. aşağı) |
 | SMTP | Bildirim e-postaları (Admin Panel > SMTP Ayarları'ndan girilir) |
 
 `index.html` (arayüz) statik olarak Nginx'ten sunulur; `/api/*` istekleri Node
 uygulamasına yönlendirilir.
 
-**Güncel durum:** Arayüz artık gerçek API'ye tam olarak bağlıdır (giriş, 2FA,
-onay akışları, admin paneli, denetim kaydı, arama, bildirimler — hepsi canlı
+**Güncel durum:** Arayüz gerçek API'ye tam olarak bağlıdır (giriş, onay
+akışları, admin paneli, denetim kaydı, arama, bildirimler — hepsi canlı
 backend üzerinden çalışır). Arayüz yalnızca `index.html` dosyasının Claude
 önizleyicisi gibi bir sandbox'ta AÇILMADIĞI, gerçek bir tarayıcıda backend'siz
 açıldığı durumlarda otomatik olarak "demo modu"na (bellek içi sahte veri) düşer
 — bu, geliştirme/tanıtım kolaylığı içindir, üretimde kullanılmaz.
 
+**Kimlik doğrulama modeli (önemli — mevcut durum):** Portal iki modu destekler,
+Admin Panel > Dizin (AD) Ayarları ekranındaki tek bir anahtarla seçilir:
+
+- **AD/LDAPS aktif:** Parola AD tarafından doğrulanır, portalda hiç saklanmaz.
+  Parola politikası (süre, karmaşıklık, kilitlenme) tamamen AD'nin sorumluluğundadır.
+- **AD kapalı (yerel mod):** Portal kendi parola sistemini kullanır. **Şifresiz
+  giriş yoktur.** Her kullanıcı admin tarafından oluşturulurken bir ilk giriş
+  şifresi alır (argon2 ile hashlenip saklanır) ve ilk girişte bu şifreyi kendi
+  seçtiği bir şifreyle değiştirmek ZORUNDADIR (iki kez teyit ile). Kasıtlı
+  olarak bir "şifremi unuttum" (self-service, e-posta ile sıfırlama) akışı
+  YOKTUR — bunun yerine admin, Kullanıcılar ekranından "Şifreyi sıfırla"
+  eylemini kullanır (yeni bir geçici şifre belirler, kullanıcının mevcut
+  oturumları sonlanır, kullanıcı bir sonraki girişte yine kendi şifresini
+  seçmek zorunda kalır).
+
 **Bu belgede henüz yer almayan, üretim öncesi MUTLAKA yapılması gereken adımlar:**
-- 2FA rol politikası: admin ve Teftiş rollerinde 2FA zorunludur (kod tarafında
-  hazır); ilk üretim girişlerinde bu rollerdeki her kullanıcı otomatik olarak
-  kurulum ekranına yönlendirilir — IT ekibinin bunu önceden duyurması önerilir.
 - `NETWORK_ALLOWED_CIDRS` (bkz. adım 6) **mutlaka** kurumsal ağ aralığınızla
   doldurulmalıdır; boş bırakılırsa herkese açık kalır.
+- AD'yi kullanmayacaksanız (yerel mod), her gerçek kullanıcıya admin panelinden
+  AYRI birer ilk giriş şifresi vermeniz ve bunu güvenli bir kanaldan (yüz yüze,
+  telefonla — e-posta ile DEĞİL) iletmeniz gerekir.
 
 ---
 
@@ -211,19 +226,21 @@ curl -I https://portal.terayatirim.com.tr/api/healthz   # 200 OK
 - [ ] `npm test` sunucuda (veya CI'da) 8/8 geçiyor
 - [ ] `npm audit` sıfır zafiyet gösteriyor (bu depo teslim anında öyleydi;
       düzenli olarak — örn. ayda bir — tekrar kontrol edin, yeni CVE'ler çıkabilir)
-- [ ] `AUTH_MODE=ldap` ve gerçek bir AD hesabıyla giriş denendi
+- [ ] AD kullanacaksanız: Admin Panel > Dizin (AD) Ayarları'ndan gerçek sunucu
+      bilgisi girilip "Bağlantıyı sına" başarılı, ardından gerçek bir AD
+      hesabıyla giriş denendi
+- [ ] AD kullanmayacaksanız (yerel mod): her gerçek kullanıcıya admin panelinden
+      AYRI birer ilk giriş şifresi verildi ve güvenli bir kanaldan iletildi;
+      ilk girişte zorunlu şifre değişimi test edildi
 - [ ] Admin Panel > SMTP Ayarları'ndan gerçek sunucu bilgisi girilip "Bağlantıyı sına" başarılı
 - [ ] `NETWORK_ALLOWED_CIDRS` gerçek kurumsal ağ/VPN aralığınızla dolduruldu ve
       kurumsal ağ DIŞINDAN bir denemeyle (örn. mobil veri) erişimin reddedildiği
       doğrulandı
-- [ ] Admin ve Teftiş rolündeki gerçek kullanıcılar bilgilendirildi: ilk
-      girişlerinde 2FA kurulum ekranına yönlendirilecekler (e-posta koduyla,
-      authenticator app gerekmez)
 - [ ] `systemctl status tera-portal` "active (running)"
 - [ ] Arayüz (`index.html`) gerçek API'ye bağlıdır ve bu depoda test edilmiştir
-      (giriş, 2FA, onay akışları, admin paneli, arama, bildirimler) — ancak bu
-      testler geliştirme ortamında (mock AD/SMTP) yapılmıştır; SİZİN gerçek AD
-      ve SMTP sunucunuza karşı ilk canlı denemeyi mutlaka siz yapmalısınız
+      (giriş, şifre değişimi, onay akışları, admin paneli, arama, bildirimler)
+      — ancak bu testler geliştirme ortamında (mock AD/SMTP) yapılmıştır; SİZİN
+      gerçek AD ve SMTP sunucunuza karşı ilk canlı denemeyi mutlaka siz yapmalısınız
 - [ ] **Bağımsız (üçüncü taraf) sızma testi** hâlâ yapılmadı — bu depoda
       manuel olarak denenen ve düzeltilen açıklar (SQLi, XSS, CSRF, IDOR, dosya
       sahteciliği, rate-limit atlatma, LDAP/oturum zaman aşımı vb.) gerçek bir
@@ -237,6 +254,10 @@ curl -I https://portal.terayatirim.com.tr/api/healthz   # 200 OK
       genel API rate limiter'da kritik bir hata bulunup düzeltildi). Gerçek
       kullanıcı sayınızla (özellikle NAT arkasından) canlıda bir kez daha
       izlenmesi önerilir
+- [ ] **KVKK (Kişisel Verilerin Korunması Kanunu) değerlendirmesi** hâlâ
+      yapılmadı — sistem çalışan e-postası, fotoğrafı, organizasyon şeması gibi
+      kişisel veri tutuyor. Bu hukuki bir değerlendirmedir, kod yazarak
+      kapatılamaz; kurumun hukuk/uyum ekibinin yapması gerekir
 
 ## 9. Güncelleme
 
@@ -258,22 +279,28 @@ sudo systemctl restart tera-portal
 | 403 "CSRF doğrulaması başarısız" | İstekte `X-CSRF-Token` başlığı eksik/yanlış — giriş yanıtındaki `csrfToken` her istekte gönderilmeli |
 | 429 "Çok fazla başarısız giriş denemesi" | `LOGIN_MAX_ATTEMPTS` aşıldı, 15 dakika sonra tekrar deneyin |
 
-### Acil durum: tüm adminler 2FA'dan kilitlendi
+### Acil durum: tüm adminler yerel modda şifrelerini unuttu / kilitlendi
 
 Normal kurtarma yolu, bir adminin BAŞKA bir admini uygulama içinden sıfırlamasıdır
-(Admin Panel > Kullanıcılar > "2FA sıfırla"). Ama TÜM admin ve Teftiş
-kullanıcıları aynı anda erişimini kaybederse (örn. hepsinin e-postası aynı
-anda kesildi), uygulama içinden çözüm YOKTUR — bu kasıtlıdır, aksi halde 2FA
-anlamsızlaşırdı. Bu durumda IT ekibi, sunucuya doğrudan erişimle (SSH),
-veritabanı üzerinden TEK BİR kullanıcının 2FA'sını manuel sıfırlar:
+(Admin Panel > Kullanıcılar > "Şifreyi sıfırla" — yalnızca AD kapalıyken/yerel
+modda görünür). Ama TÜM adminler aynı anda erişimini kaybederse, uygulama
+içinden çözüm YOKTUR — bu kasıtlıdır (self-service şifre sıfırlama akışı
+bilinçli olarak eklenmedi). Bu durumda IT ekibi, sunucuya doğrudan erişimle
+(SSH), veritabanı üzerinden TEK BİR kullanıcının şifresini manuel olarak
+yeni bir geçici şifreyle değiştirir ve zorunlu değişikliği tetikler:
 
 ```bash
+# Önce yeni geçici şifrenin hash'ini üretin (argon2id):
+node -e "require('/opt/tera-portal/server/src/lib/password').hashPassword(process.argv[1]).then(h=>console.log(h))" 'GeciciSifre123'
+
+# Çıkan hash'i aşağıdaki sorguda kullanın:
 sudo -u postgres psql -d tera_portal -c "
-  UPDATE users SET totp_enabled=false, totp_secret_encrypted=NULL WHERE username='KULLANICI_ADI';
+  UPDATE users SET password_hash='<yukarida-uretilen-hash>', must_change_password=true WHERE username='KULLANICI_ADI';
   DELETE FROM sessions WHERE username='KULLANICI_ADI';
 "
 ```
 
+Kullanıcı bu geçici şifreyle girip normal zorunlu değişim akışından geçecektir.
 Bu komutu çalıştırma yetkisi olan kişi zaten sunucuya kök erişimine sahip
 olduğu için, bu bir güvenlik açığı değil — fiziksel/altyapı erişimi olan
 birinin son çare olarak başvurduğu, denetim kaydına (audit_log) YANSIMAYAN

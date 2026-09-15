@@ -3125,6 +3125,9 @@ function dialogView(){
     <button class="b s" data-a="avatar:foto">Fotoğraf yükle</button>
     <button class="b s" data-a="avatar:kaldir">Fotoğrafı kaldır</button></div>
    <p style="font-size:11.5px;color:var(--tm);margin:10px 0 0">Rol, birim, ünvan ve yönetici bilgileri Active Directory ve Admin Panel üzerinden yönetilir; buradan değiştirilemez.</p>
+   ${LIVE_BACKEND?`<div class="lbl" style="margin-top:15px">Güvenlik</div>
+    <button class="b s d" data-a="logoutAllSessions">Tüm cihazlardan çıkış yap</button>
+    <p class="m" style="color:var(--tm);margin:6px 0 0">Hesabınızın başka bir yerden açık kaldığından şüpheleniyorsanız kullanın; bu cihaz dahil tüm oturumlar kapanır.</p>`:""}
    <div style="display:flex;justify-content:flex-end;margin-top:15px"><button class="b p" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="proj"){
   const unitPeople=u=>USERS.filter(x=>x.on&&x.unit===u);
@@ -3803,6 +3806,12 @@ app.addEventListener("click",async ev=>{
    S.pop=null;loadBrandLive();loadMyAccessLive();loadAvailabilityLive();loadProjectsLive();loadUnitsLive();loadAppSettingsLive();loadApprovalRulesLive();render();return;
   }catch(e){S.err=e.message||"Şifre değiştirilemedi.";render();return;}}
  if(k==="cancelChangePassword"){S.mustChangePassword=false;S.pendingUname=null;S.err="";render();return;}
+ if(k==="logoutAllSessions"){
+  try{await api("POST","/api/auth/logout-all-sessions",{});
+   toast("Tüm oturumlardan çıkış yapıldı.");
+   setTimeout(()=>window.location.reload(),600);
+  }catch(e){toast(e.message,1);}
+  return;}
  if(k==="signout"){
   if(LIVE_BACKEND){try{await api("POST","/api/auth/logout");}catch(e){/* yine de yerel oturumu kapat */}CSRF_TOKEN=null;LIVE_BACKEND=false;}
   TEAM_CACHE_LIVE={};
