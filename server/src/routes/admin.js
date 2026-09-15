@@ -58,9 +58,19 @@ router.get("/approval-rules", requireAuth, async (req, res, next) => {
 
 router.put("/approval-rules/:category", requireWrite("m.approvalrules"), async (req, res, next) => {
   try {
-    const { approverRole, criticalities, active } = req.body || {};
+    const { approverRole, criticalities, active, newCategory } = req.body || {};
     const payload = { category: req.params.category };
     const descParts = [];
+    if (newCategory !== undefined) {
+      const trimmed = String(newCategory).trim();
+      if (!trimmed || trimmed.length > 40) return res.status(400).json({ error: "Yeni kategori adı 1-40 karakter olmalı." });
+      if (trimmed !== req.params.category) {
+        const existing = await query("SELECT 1 FROM approval_rules WHERE category=$1", [trimmed]);
+        if (existing.rowCount) return res.status(409).json({ error: "Bu kategori adı zaten kullanılıyor." });
+        payload.newCategory = trimmed;
+        descParts.push(`ad->${trimmed}`);
+      }
+    }
     if (approverRole !== undefined) {
       if (!/^[a-z]+$/.test(approverRole)) return res.status(400).json({ error: "Geçersiz onaycı (küçük harf, örn. manager, inspection)." });
       if (approverRole !== "manager") {
@@ -82,6 +92,22 @@ router.put("/approval-rules/:category", requireWrite("m.approvalrules"), async (
     if (!descParts.length) return res.status(400).json({ error: "Değiştirilecek bir alan gönderilmedi." });
     await requestAdminApproval(req, res, "admin.approval_rule", payload,
       `Kategori güncelleme: ${req.params.category} (${descParts.join(", ")})`);
+  } catch (e) { next(e); }
+});
+
+// Kategori silme: yalnızca o kategoriye ait HİÇBİR duyuru yoksa izin verilir
+// (aksi halde eski duyurular yetim/tanımsız bir kategoriye işaret ederdi).
+// Referans varsa bunun yerine pasife almak (PUT ...active:false) önerilir.
+router.delete("/approval-rules/:category", requireWrite("m.approvalrules"), async (req, res, next) => {
+  try {
+    const existing = await query("SELECT 1 FROM approval_rules WHERE category=$1", [req.params.category]);
+    if (!existing.rowCount) return res.status(404).json({ error: "Kategori bulunamadı." });
+    const used = await query("SELECT 1 FROM announcements WHERE category=$1 LIMIT 1", [req.params.category]);
+    if (used.rowCount) {
+      return res.status(409).json({ error: "Bu kategoriye ait duyurular var; silinemez. Bunun yerine pasife alın." });
+    }
+    await requestAdminApproval(req, res, "admin.approval_rule_delete", { category: req.params.category },
+      `Kategori silme: ${req.params.category}`);
   } catch (e) { next(e); }
 });
 

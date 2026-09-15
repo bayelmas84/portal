@@ -4,7 +4,7 @@
 // şekli saklar), yönetici onaylayınca announcements.js'deki decide ucu
 // applyAdminAction'ı çağırır. Böylece "admin panelinde yapılan her işlem
 // adminin yöneticisi tarafından onaylanmalı" kuralı tek bir yerden garanti edilir.
-const { query } = require("../db");
+const { query, withTransaction } = require("../db");
 const { encryptSecret } = require("./crypto");
 const { saveSmtpSettings, setSmtpActive } = require("./mailer");
 const { setAccess, resetAccessToDefault, setAvailability } = require("./permissions");
@@ -116,15 +116,32 @@ async function applyAdminAction(targetType, payload, actingUsername) {
       return;
     }
     case "admin.approval_rule": {
-      const { category, approverRole, criticalities, active } = payload;
+      const { category, approverRole, criticalities, active, newCategory } = payload;
+      if (newCategory) {
+        // Kategori adı değişimi: PRIMARY KEY güncellenir VE bu kategoriyi
+        // kullanan mevcut duyurular (düz metin sütun, FK değil) yeni ada
+        // taşınır — aksi halde eski duyurular yetim bir isme işaret ederdi.
+        await withTransaction(async (client) => {
+          await client.query("UPDATE approval_rules SET category=$1, updated_by=$2, updated_at=now() WHERE category=$3",
+            [newCategory, actingUsername, category]);
+          await client.query("UPDATE announcements SET category=$1 WHERE category=$2", [newCategory, category]);
+        });
+      }
+      const effectiveCategory = newCategory || category;
       const sets = [];
-      const values = [category];
+      const values = [effectiveCategory];
       if (approverRole !== undefined) { values.push(approverRole); sets.push(`approver_role=$${values.length}`); }
       if (criticalities !== undefined) { values.push(criticalities); sets.push(`criticalities=$${values.length}`); }
       if (active !== undefined) { values.push(active); sets.push(`active=$${values.length}`); }
-      values.push(actingUsername);
-      sets.push(`updated_by=$${values.length}`, "updated_at=now()");
-      await query(`UPDATE approval_rules SET ${sets.join(", ")} WHERE category=$1`, values);
+      if (sets.length) {
+        values.push(actingUsername);
+        sets.push(`updated_by=$${values.length}`, "updated_at=now()");
+        await query(`UPDATE approval_rules SET ${sets.join(", ")} WHERE category=$1`, values);
+      }
+      return;
+    }
+    case "admin.approval_rule_delete": {
+      await query("DELETE FROM approval_rules WHERE category=$1", [payload.category]);
       return;
     }
     case "admin.approval_rule_create": {
