@@ -21,9 +21,13 @@ const config = {
     ssl: bool(process.env.DB_SSL, false),
   },
 
-  // 'ldap'  -> gerçek Active Directory (üretimde zorunlu)
-  // 'mock'  -> yalnızca geliştirme/test: kullanıcı adı users tablosunda varsa girer
-  authMode: process.env.AUTH_MODE || "mock",
+  // 'ldap'  -> gerçek Active Directory (üretimde önerilir)
+  // diğer her değer (varsayılan) -> yerel parola sistemi: her kullanıcının
+  // admin tarafından belirlenmiş, argon2 ile hashlenmiş bir şifresi vardır;
+  // şifresiz giriş YOKTUR (bkz. routes/auth.js getEffectiveAuthMode).
+  // Admin Panel > Dizin (AD) Ayarları'ndaki anahtar bu değeri DB üzerinden
+  // (yeniden başlatmaya gerek kalmadan) geçersiz kılabilir.
+  authMode: process.env.AUTH_MODE || "local",
 
   session: {
     cookieName: process.env.SESSION_COOKIE || "tp_sid",
