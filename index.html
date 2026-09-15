@@ -870,6 +870,20 @@ function pushDemoHistory(pk,key,message){
   user_name:S.me.n,message,created_at:now()});}
 function demoHistoryFor(pk,key){
  return ISSUE_HISTORY_DEMO.filter(h=>h.pk===pk&&h.issue_key===key);}
+/* Konu yorumları (comments) — Jira'daki gibi her konu altında bir tartışma
+   akışı. Canlı backend'de GET/POST/PUT/DELETE .../comments uç noktaları,
+   demo modda bellek-içi bir dizi üzerinden aynı yetki kuralıyla (yalnızca
+   yazan kişi düzenler/siler; pmdir/admin moderasyon amacıyla silebilir). */
+let ISSUE_COMMENTS_LIVE={};
+async function loadIssueCommentsLive(pk,key){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/comments");
+  ISSUE_COMMENTS_LIVE[pk+"::"+key]=data.items;render();
+ }catch(e){/* sessiz geç */}}
+let ISSUE_COMMENTS_DEMO=[],nextIssueComment=1;
+function demoCommentsFor(pk,key){
+ return ISSUE_COMMENTS_DEMO.filter(c=>c.pk===pk&&c.issue_key===key);}
+function canModerateComments(){return S.me.r==="pmdir"||S.me.r==="admin";}
 let ISSUE_LINKS_DEMO=[];
 let nextIssueLink=1;
 /* Backend'deki deriveSubjectPrefix/nextKeyForPrefix/formatKeyAsLabel ile
@@ -3871,6 +3885,7 @@ function dialogView(){
   const attKey=p.k+"::"+i.key;
   const atts=LIVE_BACKEND?(ISSUE_ATTACH_LIVE[attKey]||null):null;
   const links=LIVE_BACKEND?(ISSUE_LINKS_LIVE[attKey]||null):demoLinksFor(p.k,i.key);
+  const comments=LIVE_BACKEND?(ISSUE_COMMENTS_LIVE[attKey]||null):demoCommentsFor(p.k,i.key);
   const linkProjectK=S.f.linkProject||p.k;
   const linkProject=PROJ.find(x=>x.k===linkProjectK)||p;
   const linkCandidates=(linkProject.items||[])
@@ -3944,6 +3959,28 @@ function dialogView(){
      <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
    ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">${(NEXT[i.st]||[]).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
+   <div class="lbl" style="margin-top:12px">Comments${comments?" ("+comments.length+")":""}</div>
+   ${comments===null?`<p class="m" style="color:var(--tm)">Loading…</p>`:
+    (comments.map(c=>{
+     const isOwner=c.author_username===S.me.u;
+     const canDelete=isOwner||canModerateComments();
+     const when=String(c.created_at).replace("T"," ").slice(0,16)+(c.updated_at?" (edited)":"");
+     if(String(S.f.editingComment)===String(c.id))return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
+       <textarea id="fCommentEdit" style="min-height:60px">${esc(c.body)}</textarea>
+       <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">
+        <button class="b s" data-a="commentEditCancel">Cancel</button>
+        <button class="b s p" data-a="commentEditSave:${d.pi}:${i.key}:${c.id}">Save</button></div></div>`;
+     return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
+       <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+        <span style="font-size:12.5px;font-weight:600">${esc(c.author_name||c.author_username)}</span>
+        <span class="m" style="color:var(--tm)">${when}</span><span style="flex:1"></span>
+        ${isOwner?`<button class="b s" data-a="commentEditStart:${c.id}">Edit</button>`:""}
+        ${canDelete?`<button class="b s d" data-a="commentDelete:${d.pi}:${i.key}:${c.id}">Delete</button>`:""}</div>
+       <p style="font-size:12.5px;margin:6px 0 0;white-space:pre-wrap">${esc(c.body)}</p></div>`;}).join("")
+     ||`<p class="m" style="color:var(--tm)">No comments yet.</p>`)+
+    `<textarea id="fCommentNew" placeholder="Add a comment…" style="min-height:60px;margin-top:6px"></textarea>
+    <div style="display:flex;justify-content:flex-end;margin-top:6px">
+     <button class="b s p" data-a="commentAdd:${d.pi}:${i.key}">Comment</button></div>`}
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
     <button class="b" data-a="openProj:${d.pi}">Board'a git</button><button class="b p" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="gantt"){
@@ -5063,7 +5100,8 @@ app.addEventListener("click",async ev=>{
   if(LIVE_BACKEND){const pk=PROJ[+p[1]].k;
    delete ISSUE_ATTACH_LIVE[pk+"::"+key];loadIssueAttachmentsLive(pk,key);
    delete ISSUE_LINKS_LIVE[pk+"::"+key];loadIssueLinksLive(pk,key);
-   delete ISSUE_HISTORY_LIVE[pk+"::"+key];loadIssueHistoryLive(pk,key);}
+   delete ISSUE_HISTORY_LIVE[pk+"::"+key];loadIssueHistoryLive(pk,key);
+   delete ISSUE_COMMENTS_LIVE[pk+"::"+key];loadIssueCommentsLive(pk,key);}
   return;}
  if(k==="issueAttAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailDoc");const file=inp&&inp.files&&inp.files[0];
@@ -5159,6 +5197,43 @@ app.addEventListener("click",async ev=>{
   audit("Konu ilişkisi kaldırıldı: "+key+" (#"+linkId+")");
   pushDemoHistory(pk,key,S.me.n+" bir ilişkiyi kaldırdı.");
   toast("İlişki kaldırıldı.");render();return;}
+ if(k==="commentAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const ta=document.getElementById("fCommentNew");
+  const body=(ta&&ta.value||"").trim();
+  if(!body){toast("Yorum boş olamaz.",1);return;}
+  if(LIVE_BACKEND){
+   try{
+    await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/comments",{body});
+    await loadIssueCommentsLive(pk,key);toast("Yorum eklendi.");
+   }catch(e){toast(e.message,1);}
+   return;}
+  ISSUE_COMMENTS_DEMO.push({id:nextIssueComment++,pk,issue_key:key,author_username:S.me.u,author_name:S.me.n,
+   body,created_at:now(),updated_at:null});
+  toast("Yorum eklendi.");render();return;}
+ if(k==="commentEditStart"){S.f.editingComment=p[1];render();return;}
+ if(k==="commentEditCancel"){S.f.editingComment=null;render();return;}
+ if(k==="commentEditSave"){const pi=+p[1],key=p[2],commentId=p[3],pk=PROJ[pi].k;
+  const ta=document.getElementById("fCommentEdit");
+  const body=(ta&&ta.value||"").trim();
+  if(!body){toast("Yorum boş olamaz.",1);return;}
+  if(LIVE_BACKEND){
+   try{
+    await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/comments/"+commentId,{body});
+    S.f.editingComment=null;await loadIssueCommentsLive(pk,key);toast("Yorum güncellendi.");
+   }catch(e){toast(e.message,1);}
+   return;}
+  const c=ISSUE_COMMENTS_DEMO.find(x=>String(x.id)===String(commentId)&&x.pk===pk&&x.issue_key===key);
+  if(c){c.body=body;c.updated_at=now();}
+  S.f.editingComment=null;toast("Yorum güncellendi.");render();return;}
+ if(k==="commentDelete"){const pi=+p[1],key=p[2],commentId=p[3],pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{
+    await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/comments/"+commentId);
+    await loadIssueCommentsLive(pk,key);toast("Yorum silindi.");
+   }catch(e){toast(e.message,1);}
+   return;}
+  ISSUE_COMMENTS_DEMO=ISSUE_COMMENTS_DEMO.filter(x=>!(String(x.id)===String(commentId)&&x.pk===pk&&x.issue_key===key));
+  toast("Yorum silindi.");render();return;}
  if(k==="move"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]),from=it.st,to=p[3];
   if(to==="done"){const reason=issueCloseBlockReason(pr,it);

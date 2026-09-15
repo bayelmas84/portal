@@ -482,6 +482,78 @@ router.delete("/:k/issues/:issueKey/attachments/:id", requireWrite("d.board"), a
   } catch (e) { next(e); }
 });
 
+// ------------------------------- Konu yorumları (comments) -------------------------------
+router.get("/:k/issues/:issueKey/comments", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT c.*, u.name AS author_name FROM project_issue_comments c
+         LEFT JOIN users u ON u.username=c.author_username
+        WHERE c.project_k=$1 AND c.issue_key=$2 ORDER BY c.created_at`,
+      [req.params.k, req.params.issueKey]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/issues/:issueKey/comments", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const body = (req.body && req.body.body || "").trim();
+    if (!body) return res.status(400).json({ error: "Yorum boş olamaz." });
+    const issue = await query(
+      "SELECT issue_key FROM project_issues WHERE project_k=$1 AND issue_key=$2",
+      [req.params.k, req.params.issueKey]
+    );
+    if (!issue.rowCount) return res.status(404).json({ error: "Konu bulunamadı." });
+    const { rows } = await query(
+      `INSERT INTO project_issue_comments (project_k, issue_key, author_username, body)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id, project_k, issue_key, author_username, body, created_at, updated_at`,
+      [req.params.k, req.params.issueKey, req.user.username, body]
+    );
+    const author = await query("SELECT name FROM users WHERE username=$1", [req.user.username]);
+    res.status(201).json({ item: { ...rows[0], author_name: author.rows[0] ? author.rows[0].name : req.user.username } });
+  } catch (e) { next(e); }
+});
+
+router.put("/:k/issues/:issueKey/comments/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const body = (req.body && req.body.body || "").trim();
+    if (!body) return res.status(400).json({ error: "Yorum boş olamaz." });
+    const existing = await query(
+      "SELECT * FROM project_issue_comments WHERE id=$1 AND project_k=$2 AND issue_key=$3",
+      [req.params.id, req.params.k, req.params.issueKey]
+    );
+    if (!existing.rowCount) return res.status(404).json({ error: "Yorum bulunamadı." });
+    // Yalnızca yazan kişi kendi yorumunu düzenleyebilir.
+    if (existing.rows[0].author_username !== req.user.username) {
+      return res.status(403).json({ error: "Sadece kendi yorumunuzu düzenleyebilirsiniz." });
+    }
+    const { rows } = await query(
+      `UPDATE project_issue_comments SET body=$1, updated_at=now()
+       WHERE id=$2 RETURNING id, project_k, issue_key, author_username, body, created_at, updated_at`,
+      [body, req.params.id]
+    );
+    res.json({ item: rows[0] });
+  } catch (e) { next(e); }
+});
+
+router.delete("/:k/issues/:issueKey/comments/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const existing = await query(
+      "SELECT * FROM project_issue_comments WHERE id=$1 AND project_k=$2 AND issue_key=$3",
+      [req.params.id, req.params.k, req.params.issueKey]
+    );
+    if (!existing.rowCount) return res.status(404).json({ error: "Yorum bulunamadı." });
+    // Yazan kişi kendi yorumunu silebilir; pmdir/admin moderasyon amacıyla herkesin yorumunu silebilir.
+    const isModerator = req.user.role === "pmdir" || req.user.role === "admin";
+    if (existing.rows[0].author_username !== req.user.username && !isModerator) {
+      return res.status(403).json({ error: "Bu yorumu silme yetkiniz yok." });
+    }
+    await query("DELETE FROM project_issue_comments WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 // ----------------------------- Konu ilişkilendirmeleri (links) -----------------------------
 // Ters yön etiketleri: blocks<->is blocked by, clones<->is cloned by,
 // duplicates<->is duplicated by, relates simetriktir.

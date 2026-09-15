@@ -353,6 +353,59 @@ test("Kapatma kuralı: 'blocked by' ilişkisindeki konu, bloklayan konu DONE olm
   assert.equal(closeBAgain.status, 200, "bloklayan konu DONE olduktan sonra bloklanan da kapatılabilmeli");
 });
 
+test("Konu yorumları: ekleme, sadece yazan kişi düzenleyebilir/silebilir, pmdir moderasyon amacıyla silebilir", async () => {
+  const pm = await login("tolga.firat");
+  const other = await login("mert.balkan");
+  const mod = await login("bayram.elmas");
+
+  const create = await request(app)
+    .post("/api/projects/TRADE/issues/TRADE-1/comments")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ body: `Test yorumu ${Date.now()}` });
+  assert.equal(create.status, 201);
+  assert.equal(create.body.item.author_username, "tolga.firat");
+  const commentId = create.body.item.id;
+
+  const list = await request(app)
+    .get("/api/projects/TRADE/issues/TRADE-1/comments")
+    .set("Cookie", pm.cookie);
+  assert.ok(list.body.items.some((c) => c.id === commentId));
+
+  const editByOther = await request(app)
+    .put(`/api/projects/TRADE/issues/TRADE-1/comments/${commentId}`)
+    .set("Cookie", other.cookie)
+    .set("X-CSRF-Token", other.csrf)
+    .send({ body: "Başkasının yorumunu değiştirme denemesi" });
+  assert.equal(editByOther.status, 403);
+
+  const editByOwner = await request(app)
+    .put(`/api/projects/TRADE/issues/TRADE-1/comments/${commentId}`)
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ body: "Düzenlendi" });
+  assert.equal(editByOwner.status, 200);
+  assert.equal(editByOwner.body.item.body, "Düzenlendi");
+  assert.ok(editByOwner.body.item.updated_at);
+
+  const deleteByOther = await request(app)
+    .delete(`/api/projects/TRADE/issues/TRADE-1/comments/${commentId}`)
+    .set("Cookie", other.cookie)
+    .set("X-CSRF-Token", other.csrf);
+  assert.equal(deleteByOther.status, 403);
+
+  const deleteByModerator = await request(app)
+    .delete(`/api/projects/TRADE/issues/TRADE-1/comments/${commentId}`)
+    .set("Cookie", mod.cookie)
+    .set("X-CSRF-Token", mod.csrf);
+  assert.equal(deleteByModerator.status, 200, "pmdir moderasyon amacıyla başkasının yorumunu silebilmeli");
+
+  const listAfter = await request(app)
+    .get("/api/projects/TRADE/issues/TRADE-1/comments")
+    .set("Cookie", pm.cookie);
+  assert.ok(!listAfter.body.items.some((c) => c.id === commentId));
+});
+
 test.after(async () => {
   await pool.end();
 });
