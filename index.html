@@ -2138,7 +2138,7 @@ function screenView(){
     <div class="lbl" style="margin-top:13px">Title (optional)</div>
     <input id="fMtTitle" value="${esc(f.title||"")}" placeholder="E.g.: Weekly status meeting">
 
-    <div class="lbl" style="margin-top:13px">Attendees — selected from the staff list</div>
+    <div class="lbl" style="margin-top:13px">Attendees</div>
     ${parts.length?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
      ${parts.map(n=>`<span class="pl ok" style="cursor:pointer" data-a="mtRemPart:${encodeURIComponent(n)}">${esc(n)} ✕</span>`).join("")}</div>`:""}
     <select id="fMtPartSel">
@@ -3647,11 +3647,14 @@ function dialogView(){
       ${cw("d.board")?`<button class="b s d" data-a="issueLinkDel:${d.pi}:${i.key}:${lk.id}" title="Kaldır">✕</button>`:""}</div>`).join("")
     :`<p class="m" style="color:var(--tm);margin:4px 0 0">No linked issues.</p>`}
    ${cw("d.board")&&otherIssues.length?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
-    <select id="fLinkType" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
-     ${["blocks","clones","duplicates","relates"].map(t=>`<option value="${t}" ${(f.linkType||"blocks")===t?"selected":""}>${LINK_FORWARD_LABEL[t]}</option>`).join("")}</select>
-    <select id="fLinkTarget" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px;flex:1;min-width:140px">
-     ${otherIssues.map(x=>`<option value="${x.key}">${x.key} — ${esc(String(x.t).slice(0,32))}</option>`).join("")}</select>
-    <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
+    <select id="fLinkType" style="padding:6px 8px;border-radius:8px;border:1px solid ${f.linkType?"var(--bd)":"var(--er-fg)"};background:var(--s2);color:var(--t1);font-size:12px">
+     <option value="" ${!f.linkType?"selected":""}>Select relationship…</option>
+     ${["blocks","clones","duplicates","relates"].map(t=>`<option value="${t}" ${f.linkType===t?"selected":""}>${LINK_FORWARD_LABEL[t]}</option>`).join("")}</select>
+    <select id="fLinkTarget" style="padding:6px 8px;border-radius:8px;border:1px solid ${f.linkTarget?"var(--bd)":"var(--er-fg)"};background:var(--s2);color:var(--t1);font-size:12px;flex:1;min-width:140px">
+     <option value="" ${!f.linkTarget?"selected":""}>Select issue…</option>
+     ${otherIssues.map(x=>`<option value="${x.key}" ${f.linkTarget===x.key?"selected":""}>${x.key} — ${esc(String(x.t).slice(0,32))}</option>`).join("")}</select>
+    <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>
+    ${!f.linkType||!f.linkTarget?`<p class="m" style="color:var(--er-fg);margin:5px 0 0">Select both a relationship and an issue.</p>`:""}`:""}
    ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">${(NEXT[i.st]||[]).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
@@ -3817,7 +3820,7 @@ function render(){
   <div class="scrbar">${(SCREENS[S.mod]||[]).filter(x=>can(x[0])).map(x=>
    `<div class="si ${S.scr===x[0]?"on":""}" data-a="scr:${x[0]}">${ic(x[2],14)}<span>${x[1]}</span></div>`).join("")}</div>
   <div class="top">
-   <span style="font-size:11.5px;color:var(--tm)">${mod[1]}</span>
+   <span style="font-size:11.5px;color:var(--tm);cursor:pointer" data-a="mod:${S.mod}" title="${esc(mod[1])} anasayfasına dön">${mod[1]}</span>
    ${scr&&S.read===null&&S.quiz===null&&S.ann===null&&S.req===null?`<span style="color:var(--tm)">/</span><span style="font-size:12.5px">${scr[1]}</span>`:""}
    <span style="flex:1"></span>
    <span class="m" style="color:var(--tm)">${esc(S.me.n)}</span>
@@ -4741,10 +4744,11 @@ app.addEventListener("click",async ev=>{
  if(k==="bisave"){BIREP.push({code:"RPT-0"+(nbi++),name:S.f.a,area:S.f.b||"Genel",freq:"günlük",
    path:(S.f.c||"genel/rapor"),st:"gelistirme",owner:S.me.n,opens:0,last:null});
   audit("Yeni rapor taslağı oluşturuldu");S.dlg=null;S.f={};toast("Rapor taslağı oluşturuldu.");return;}
- if(k==="issue"){S.dlg={type:"issue",pi:+p[1],key:p[2]};render();
+ if(k==="issue"){S.dlg={type:"issue",pi:+p[1],key:p[2]};S.f={};render();
   if(LIVE_BACKEND){const pk=PROJ[+p[1]].k;
    delete ISSUE_ATTACH_LIVE[pk+"::"+p[2]];loadIssueAttachmentsLive(pk,p[2]);
-   delete ISSUE_LINKS_LIVE[pk+"::"+p[2]];loadIssueLinksLive(pk,p[2]);}
+   delete ISSUE_LINKS_LIVE[pk+"::"+p[2]];loadIssueLinksLive(pk,p[2]);
+   delete ISSUE_HISTORY_LIVE[pk+"::"+p[2]];loadIssueHistoryLive(pk,p[2]);}
   return;}
  if(k==="issueAttAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailDoc");const file=inp&&inp.files&&inp.files[0];
@@ -4814,29 +4818,31 @@ app.addEventListener("click",async ev=>{
    return;}
   it.labels=newLabels;audit("Etiket kaldırıldı: "+key+" -> "+lb);render();return;}
  if(k==="issueLinkAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
-  const typeSel=document.getElementById("fLinkType"),targetSel=document.getElementById("fLinkTarget");
-  const linkType=typeSel?typeSel.value:"blocks",targetKey=targetSel?targetSel.value:null;
-  if(!targetKey){toast("Bağlanacak bir konu seçin.",1);return;}
-  S.f.linkType=linkType;
+  const linkType=S.f.linkType||"",targetKey=S.f.linkTarget||"";
+  if(!linkType||!targetKey){toast("Hem ilişki türü hem konu seçilmelidir.",1);return;}
   if(LIVE_BACKEND){
    try{
     await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/links",
      {linkType,targetKey});
-    toast("İlişki eklendi.");await loadIssueLinksLive(pk,key);
+    S.f.linkType=null;S.f.linkTarget=null;
+    toast("İlişki eklendi.");await loadIssueLinksLive(pk,key);await loadIssueHistoryLive(pk,key);
    }catch(e){toast(e.message,1);}
    return;}
   ISSUE_LINKS_DEMO.push({id:nextIssueLink++,pk,type:linkType,source:key,target:targetKey});
   audit("Konu ilişkisi eklendi: "+key+" "+linkType+" "+targetKey);
+  pushDemoHistory(pk,key,S.me.n+" bir ilişki ekledi: "+LINK_FORWARD_LABEL[linkType]+" "+targetKey);
+  S.f.linkType=null;S.f.linkTarget=null;
   toast("İlişki eklendi.");render();return;}
  if(k==="issueLinkDel"){const pi=+p[1],key=p[2],linkId=p[3],pk=PROJ[pi].k;
   if(LIVE_BACKEND){
    try{
     await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/links/"+linkId);
-    toast("İlişki kaldırıldı.");await loadIssueLinksLive(pk,key);
+    toast("İlişki kaldırıldı.");await loadIssueLinksLive(pk,key);await loadIssueHistoryLive(pk,key);
    }catch(e){toast(e.message,1);}
    return;}
   ISSUE_LINKS_DEMO=ISSUE_LINKS_DEMO.filter(l=>!(l.id===+linkId&&l.pk===pk));
   audit("Konu ilişkisi kaldırıldı: "+key+" (#"+linkId+")");
+  pushDemoHistory(pk,key,S.me.n+" bir ilişkiyi kaldırdı.");
   toast("İlişki kaldırıldı.");render();return;}
  if(k==="move"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]),from=it.st,to=p[3];

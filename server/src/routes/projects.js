@@ -161,10 +161,15 @@ const ISSUE_PARENT_OF = { Epic: null, Story: "Epic", Task: "Story", Bug: "Story"
 // Epic/Task üretimi bu ortak fonksiyonu kullanır — anahtar üretim mantığı
 // tek yerde kalır.
 async function insertIssueRow(client, projectK, opts) {
-  const seq = await client.query(
-    "SELECT count(*)::int AS n FROM project_issues WHERE project_k=$1", [projectK]
-  );
-  const issueKey = `${projectK}-${seq.rows[0].n + 1}`;
+  let issueKey;
+  if (opts.keyPrefix) {
+    issueKey = await nextKeyForPrefix(client, projectK, opts.keyPrefix);
+  } else {
+    const seq = await client.query(
+      "SELECT count(*)::int AS n FROM project_issues WHERE project_k=$1", [projectK]
+    );
+    issueKey = `${projectK}-${seq.rows[0].n + 1}`;
+  }
   // createdAt verilirse (örn. toplantı tarihinden otomatik Task açılışı) hem
   // created_at hem updated_at o tarihe sabitlenir — aksi halde updated_at'in
   // created_at'ten "önce" görünmesi gibi tutarsız bir görüntü oluşurdu.
@@ -180,6 +185,86 @@ async function insertIssueRow(client, projectK, opts) {
      sanitizeLabels(opts.labels), opts.dueDate || null, createdAt]
   );
   return ins.rows[0];
+}
+
+// Bir toplantının "konusu"ndan (başlık / proje adı / diğer-konu metni) sabit
+// bir anahtar öneki türetir: yalnızca harfler tutulur, ilk kelime alınır,
+// Türkçe yerel ayarla büyük harfe çevrilir. Örn: "Mobil işlem platformu" ya
+// da "MOBİL1" -> "MOBİL". Anlamlı bir önek çıkaramazsa null döner (bu durumda
+// çağıran taraf jenerik "TOPLANTI-N" şemasına düşer).
+function deriveSubjectPrefix(text) {
+  const s = String(text || "").trim();
+  if (!s) return null;
+  const firstWord = s.split(/[\s\-_/,.]+/)[0] || "";
+  const lettersOnly = firstWord.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü]/g, "");
+  if (!lettersOnly) return null;
+  return lettersOnly.toLocaleUpperCase("tr-TR").slice(0, 12);
+}
+
+// Belirli bir önekle (örn. "MOBİL") başlayan konular arasında en yüksek sıra
+// numarasını bulup bir sonrakini üretir — proje geneli değil, YALNIZCA o
+// önek için süreklidir; böylece aynı konudaki ardışık toplantılar (bugün,
+// gelecek hafta, ...) aynı sayaçtan devam eder.
+async function nextKeyForPrefix(client, projectK, prefix) {
+  const { rows } = await client.query(
+    "SELECT issue_key FROM project_issues WHERE project_k=$1 AND issue_key LIKE $2",
+    [projectK, prefix + "%"]
+  );
+  const re = new RegExp("^" + prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\d+)$");
+  let max = 0;
+  for (const r of rows) {
+    const m = re.exec(r.issue_key);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return prefix + (max + 1);
+}
+
+const FLOW_LABELS = { backlog: "Backlog", todo: "To Do", prog: "In Progress", review: "In Review", test: "In Testing", done: "Done" };
+
+async function logIssueHistory(runner, username, projectK, issueKey, message) {
+  // runner: query() (havuzdan bağımsız istek) ya da client.query.bind(client)
+  // (aktif transaction içinde) — transaction içindeyken global query() kullanmak,
+  // henüz COMMIT edilmemiş satırlara FK ihlali ile başarısız olurdu.
+  await runner(
+    "INSERT INTO project_issue_history (project_k, issue_key, username, message) VALUES ($1,$2,$3,$4)",
+    [projectK, issueKey, username, message]
+  );
+  await audit(message, username);
+}
+
+// Bir PUT /:k/issues/:issueKey isteğinin eski satırla karşılaştırıldığında
+// gerçekte neyi değiştirdiğini insan-okur biçimde özetler; hiçbir alan
+// gerçekten değişmediyse boş dizi döner (gereksiz history kaydı oluşmaz).
+function describeIssueChanges(old, patch) {
+  const parts = [];
+  if (patch.status !== undefined && patch.status !== old.status) {
+    parts.push(`Durum: ${FLOW_LABELS[old.status] || old.status} → ${FLOW_LABELS[patch.status] || patch.status}`);
+  }
+  if (patch.assigneeUsername !== undefined && (patch.assigneeUsername || null) !== (old.assignee_username || null)) {
+    parts.push(`Atanan kişi: ${old.assignee_username || "(boş)"} → ${patch.assigneeUsername || "(boş)"}`);
+  }
+  if (patch.priority !== undefined && patch.priority !== old.priority) {
+    parts.push(`Öncelik: ${old.priority} → ${patch.priority}`);
+  }
+  if (patch.storyPoints !== undefined && (Number(patch.storyPoints) || 0) !== old.story_points) {
+    parts.push(`Story point: ${old.story_points} → ${Number(patch.storyPoints) || 0}`);
+  }
+  if (patch.title !== undefined && patch.title.trim() !== old.title) {
+    parts.push(`Başlık güncellendi`);
+  }
+  if (patch.dueDate !== undefined) {
+    const oldDue = old.due_date ? new Date(old.due_date).toISOString().slice(0, 10) : null;
+    const newDue = patch.dueDate || null;
+    if (oldDue !== newDue) parts.push(`Bitiş tarihi: ${oldDue || "(yok)"} → ${newDue || "(yok)"}`);
+  }
+  if (patch.labels !== undefined) {
+    const newLabels = sanitizeLabels(patch.labels);
+    const oldLabels = old.labels || [];
+    if (JSON.stringify(oldLabels) !== JSON.stringify(newLabels)) {
+      parts.push(`Etiketler: [${oldLabels.join(", ")}] → [${newLabels.join(", ")}]`);
+    }
+  }
+  return parts;
 }
 
 router.get("/:k/issues", requireRead("d.board"), async (req, res, next) => {
@@ -222,7 +307,7 @@ router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
       issueType, title, description, priority, storyPoints, assigneeUsername,
       parentKey: needParent ? parentKey : null, status, labels, dueDate, createdBy: req.user.username,
     }));
-    await audit(`Konu oluşturuldu: ${result.issue_key} — ${title.trim()}`, req.user.username);
+    await logIssueHistory(query, req.user.username, req.params.k, result.issue_key, `Konu oluşturuldu: ${title.trim()}`);
     res.status(201).json({ item: result });
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Bu konu anahtarı zaten var, tekrar deneyin." });
@@ -259,13 +344,16 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     if (dueDate !== undefined) { fields.push(`due_date=$${i++}`); values.push(dueDate || null); }
     if (inSprint !== undefined) { fields.push(`in_sprint=$${i++}`); values.push(!!inSprint); }
     if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });
+    const changes = describeIssueChanges(issue, { status, assigneeUsername, priority, storyPoints, title, dueDate, labels });
     fields.push(`updated_at=now()`);
     values.push(req.params.k, req.params.issueKey);
     await query(
       `UPDATE project_issues SET ${fields.join(", ")} WHERE project_k=$${i++} AND issue_key=$${i}`,
       values
     );
-    await audit(`Konu güncellendi: ${req.params.issueKey}`, req.user.username);
+    if (changes.length) {
+      await logIssueHistory(query, req.user.username, req.params.k, req.params.issueKey, changes.join("; "));
+    }
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -304,7 +392,7 @@ router.post("/:k/issues/:issueKey/attachments", requireWrite("d.board"), uploadI
        RETURNING id, file_name, mime_type, size_bytes, uploaded_by, uploaded_at`,
       [req.params.k, req.params.issueKey, req.file.originalname, storedName, req.file.mimetype, req.file.size, req.user.username]
     );
-    await audit(`Konuya doküman eklendi: ${req.params.issueKey} — ${req.file.originalname}`, req.user.username);
+    await logIssueHistory(query, req.user.username, req.params.k, req.params.issueKey, `Doküman eklendi: ${req.file.originalname}`);
     res.status(201).json({ item: rows[0] });
   } catch (e) { next(e); }
 });
@@ -336,7 +424,7 @@ router.delete("/:k/issues/:issueKey/attachments/:id", requireWrite("d.board"), a
     );
     if (!rows.length) return res.status(404).json({ error: "Doküman bulunamadı." });
     try { fs.unlinkSync(path.join(config.uploadDir, rows[0].stored_name)); } catch (_) { /* dosya zaten yoksa yok say */ }
-    await audit(`Konudan doküman kaldırıldı: ${req.params.issueKey} — ${rows[0].file_name}`, req.user.username);
+    await logIssueHistory(query, req.user.username, req.params.k, req.params.issueKey, `Doküman kaldırıldı: ${rows[0].file_name}`);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -390,7 +478,8 @@ router.post("/:k/issues/:issueKey/links", requireWrite("d.board"), async (req, r
        VALUES ($1,$2,$3,$4,$5) RETURNING id`,
       [req.params.k, linkType, req.params.issueKey, targetKey, req.user.username]
     );
-    await audit(`Konu ilişkisi eklendi: ${req.params.issueKey} ${linkType} ${targetKey}`, req.user.username);
+    await logIssueHistory(query, req.user.username, req.params.k, req.params.issueKey,
+      `İlişki eklendi: ${LINK_FORWARD_LABEL[linkType]} ${targetKey}`);
     res.status(201).json({ id: rows[0].id });
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Bu ilişki zaten mevcut." });
@@ -402,12 +491,27 @@ router.delete("/:k/issues/:issueKey/links/:linkId", requireWrite("d.board"), asy
   try {
     const { rows } = await query(
       `DELETE FROM project_issue_links WHERE id=$1 AND project_k=$2
-         AND (source_key=$3 OR target_key=$3) RETURNING id`,
+         AND (source_key=$3 OR target_key=$3) RETURNING id, link_type, source_key, target_key`,
       [req.params.linkId, req.params.k, req.params.issueKey]
     );
     if (!rows.length) return res.status(404).json({ error: "İlişki bulunamadı." });
-    await audit(`Konu ilişkisi kaldırıldı: ${req.params.issueKey} (#${req.params.linkId})`, req.user.username);
+    const other = rows[0].source_key === req.params.issueKey ? rows[0].target_key : rows[0].source_key;
+    await logIssueHistory(query, req.user.username, req.params.k, req.params.issueKey,
+      `İlişki kaldırıldı: ${LINK_FORWARD_LABEL[rows[0].link_type]} ${other}`);
     res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// ------------------------------- Konu geçmişi (history) -------------------------------
+router.get("/:k/issues/:issueKey/history", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT pih.*, u.name AS user_name FROM project_issue_history pih
+       LEFT JOIN users u ON u.username = pih.username
+       WHERE pih.project_k=$1 AND pih.issue_key=$2 ORDER BY pih.created_at DESC`,
+      [req.params.k, req.params.issueKey]
+    );
+    res.json({ items: rows });
   } catch (e) { next(e); }
 });
 
@@ -985,6 +1089,18 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
     }
 
     const meetingTitle = (title || "").trim() || otherSubject || "Toplantı Notu";
+    // Konu anahtarı öneki: başlık varsa ondan, yoksa gerçek projenin adından,
+    // o da yoksa "Diğer" konu metninden türetilir (örn. "Mobil işlem
+    // platformu" -> "MOBİL"). Böylece aynı konudaki ardışık toplantıların
+    // Task'ları (bugün, gelecek hafta, ...) aynı önek+sayaçtan devam eder.
+    let subjectSource = (title || "").trim();
+    if (!subjectSource && projectK) {
+      const projRow = await query("SELECT name FROM projects WHERE k=$1", [projectK]);
+      subjectSource = projRow.rows[0] ? projRow.rows[0].name : "";
+    }
+    if (!subjectSource) subjectSource = otherSubject || "";
+    const subjectPrefix = deriveSubjectPrefix(subjectSource);
+
     const meeting = await withTransaction(async (client) => {
       const m = await client.query(
         `INSERT INTO meetings (project_k, project_other_subject, title, meeting_date, meeting_time, notes, created_by)
@@ -1008,6 +1124,7 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
           createdAt: date, // Task'lar gibi Epic de toplantı tarihiyle açılmış görünür
         });
         epicKey = epic.issue_key;
+        await logIssueHistory(client.query.bind(client), req.user.username, MEETING_PROJECT_K, epicKey, `Konu oluşturuldu (toplantı notu): ${epic.title}`);
       }
 
       for (const it of items || []) {
@@ -1022,8 +1139,10 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
             status: "backlog", // Jira "board"a değil doğrudan backlog'a düşer
             createdBy: req.user.username,
             createdAt: date, // "Created" alanı, notun girildiği an değil TOPLANTI tarihini gösterir
+            keyPrefix: subjectPrefix, // "MOBİL1, MOBİL2, ..." gibi konuya özel sürekli sayaç
           });
           linkedIssueKey = task.issue_key;
+          await logIssueHistory(client.query.bind(client), req.user.username, MEETING_PROJECT_K, linkedIssueKey, `Konu oluşturuldu (toplantı notu): ${task.title}`);
         }
         await client.query(
           `INSERT INTO meeting_items (meeting_id, text, status, carried_from_meeting_id, assignee_username, due_date, linked_issue_key)
