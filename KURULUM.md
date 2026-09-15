@@ -196,7 +196,15 @@ server {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # GÜVENLİK — $proxy_add_x_forwarded_for KULLANMAYIN: o değişken,
+        # istemciden gelen X-Forwarded-For header'ını (varsa) KORUYUP sonuna
+        # ekler. TRUST_PROXY=true olduğunda (bu kurulumda zorunlu), Node bu
+        # zincirin EN SOLUNDAKİ değeri "gerçek istemci IP'si" sayar — yani bir
+        # saldırgan sahte bir X-Forwarded-For göndererek NETWORK_ALLOWED_CIDRS
+        # ağ kısıtlamasını tamamen atlatabilir. $remote_addr, Nginx'in
+        # GERÇEKTEN gördüğü bağlantıyı kullanır ve istemciden gelen header'ı
+        # tamamen yok sayarak bu sahteciliği engeller.
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
