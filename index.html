@@ -620,6 +620,23 @@ function projSelectHTML(list,allowAll){
     return `<option value="${idx}" ${!S.projAll&&idx===S.proj?"selected":""}>${x.k} — ${esc(x.n)}</option>`;}).join("")}
  </select>`;}
 const itemByKey=(p,k)=>(p.items||[]).find(i=>i.key===k);
+/* Backlog'da sürükle-bırak ile öncelik sırasını (Jira "Rank") değiştirir.
+   prevKey/nextKey: konunun bırakıldığı yerde hemen öncesinde/sonrasında
+   kalacak komşu anahtarlar (ikisi de opsiyonel). Yerel diziyi anında (optimistic)
+   yeniden sıralar; canlı backend'de ayrıca kalıcı olarak kaydeder. */
+function rankIssue(pr,draggedKey,prevKey,nextKey){
+ const it=itemByKey(pr,draggedKey);if(!it)return;
+ pr.items=pr.items.filter(x=>x.key!==draggedKey);
+ let insertAt=pr.items.length;
+ if(nextKey){const idx=pr.items.findIndex(x=>x.key===nextKey);if(idx>=0)insertAt=idx;}
+ pr.items.splice(insertAt,0,it);
+ render();
+ if(LIVE_BACKEND){
+  api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(draggedKey)+"/rank",{prevKey,nextKey})
+   .then(()=>toast(draggedKey+" moved."))
+   .catch(err=>{toast(err.message,1);loadIssuesLive(pr.k);});
+  return;}
+ toast(draggedKey+" moved.");}
 const childrenOf=(p,k)=>(p.items||[]).filter(i=>i.parent===k);
 /* Epic açıldığında yalnızca doğrudan çocuklar (Story) değil, TÜM soy
    (torunlar dahil — Story altındaki Task/Bug'lar, tamamlanmış olanlar
@@ -1866,15 +1883,18 @@ function screenView(){
   const p=P();
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("Backlog",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+  const canRank=cw("d.backlog");
   return head("Backlog",p.n+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
     ${cw("d.backlog")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
-   table(["Type","Key","Title","SP",""],p.items.filter(i=>i.st==="backlog").map(i=>`<tr>
+   table(["Type","Key","Title","SP",""],p.items.filter(i=>i.st==="backlog").map(i=>`<tr
+    ${canRank?`draggable="true" data-key="${i.key}" data-rank-target="${i.key}" style="cursor:grab"`:""}>
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
     <td>${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td><td class="m">${i.pts}</td>
     <td style="text-align:right;white-space:nowrap">
     ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${S.proj}:${i.key}">${p.m==="Kanban"?"Add to board":"Add to sprint"}</button>`:""}</td></tr>`).join("")||
-    `<tr><td colspan="5" style="color:var(--tm)">Backlog is empty.</td></tr>`);}
+    `<tr><td colspan="5" style="color:var(--tm)">Backlog is empty.</td></tr>`)+
+   (canRank&&p.items.some(i=>i.st==="backlog")?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">Drag a row to reorder priority — this ranking is saved and shared with the whole team.</p>`:"");}
 
  if(v==="d.gate"){
   if(LIVE_BACKEND){
@@ -4287,11 +4307,26 @@ app.addEventListener("dragstart",e=>{
 app.addEventListener("dragend",e=>{
  const card=e.target.closest("[data-key]");if(card)card.style.opacity="";});
 app.addEventListener("dragover",e=>{
+ const rankRow=e.target.closest("[data-rank-target]");
+ if(rankRow&&S.drag){e.preventDefault();rankRow.style.outline="2px dashed var(--ta)";rankRow.style.outlineOffset="-2px";return;}
  const col=e.target.closest("[data-drop]");if(!col||!S.drag)return;
  e.preventDefault();col.style.outline="2px dashed var(--ta)";col.style.outlineOffset="-3px";});
 app.addEventListener("dragleave",e=>{
+ const rankRow=e.target.closest("[data-rank-target]");if(rankRow)rankRow.style.outline="";
  const col=e.target.closest("[data-drop]");if(col)col.style.outline="";});
 app.addEventListener("drop",e=>{
+ const rankRow=e.target.closest("[data-rank-target]");
+ if(rankRow&&S.drag){
+  e.preventDefault();rankRow.style.outline="";
+  const pr=S.projAll?null:P();
+  const draggedKey=S.drag,targetKey=rankRow.dataset.rankTarget;
+  S.drag=null;
+  if(!pr||draggedKey===targetKey)return;
+  const others=pr.items.filter(i=>i.st==="backlog"&&i.key!==draggedKey).map(i=>i.key);
+  const targetIdx=others.indexOf(targetKey);
+  if(targetIdx<0)return;
+  rankIssue(pr,draggedKey,targetIdx>0?others[targetIdx-1]:null,others[targetIdx]);
+  return;}
  const col=e.target.closest("[data-drop]");if(!col||!S.drag)return;
  e.preventDefault();col.style.outline="";
  const pr=P(),it=itemByKey(pr,S.drag),to=col.dataset.drop;

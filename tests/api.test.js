@@ -406,6 +406,41 @@ test("Konu yorumları: ekleme, sadece yazan kişi düzenleyebilir/silebilir, pmd
   assert.ok(!listAfter.body.items.some((c) => c.id === commentId));
 });
 
+test("Konu sıralaması (rank): yeni konu en sona eklenir, sürükle-bırak ile komşular arasına taşınabilir", async () => {
+  const pm = await login("tolga.firat");
+  const a = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Rank Test A ${Date.now()}` });
+  const b = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Rank Test B ${Date.now()}` });
+  const c = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Rank Test C ${Date.now()}` });
+  const keyA = a.body.item.issue_key, keyB = b.body.item.issue_key, keyC = c.body.item.issue_key;
+  // Ardışık oluşturulan konular artan rank sırasında olmalı (yeni konu en sona eklenir).
+  assert.ok(a.body.item.rank < b.body.item.rank);
+  assert.ok(b.body.item.rank < c.body.item.rank);
+
+  // C'yi A ile B arasına taşı.
+  const move = await request(app)
+    .put(`/api/projects/TRADE/issues/${keyC}/rank`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ prevKey: keyA, nextKey: keyB });
+  assert.equal(move.status, 200);
+
+  const list = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  const ranks = Object.fromEntries(list.body.items.map((i) => [i.issue_key, i.rank]));
+  assert.ok(ranks[keyA] < ranks[keyC] && ranks[keyC] < ranks[keyB], "C artık A ile B arasında olmalı");
+
+  // Yalnızca nextKey verilirse (en başa taşıma) A'nın önüne geçmeli.
+  const moveTop = await request(app)
+    .put(`/api/projects/TRADE/issues/${keyB}/rank`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ nextKey: keyA });
+  assert.equal(moveTop.status, 200);
+  const list2 = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  const ranks2 = Object.fromEntries(list2.body.items.map((i) => [i.issue_key, i.rank]));
+  assert.ok(ranks2[keyB] < ranks2[keyA], "B artık A'nın önünde olmalı");
+});
+
 test.after(async () => {
   await pool.end();
 });

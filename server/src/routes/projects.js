@@ -175,14 +175,20 @@ async function insertIssueRow(client, projectK, opts) {
   // created_at'ten "önce" görünmesi gibi tutarsız bir görüntü oluşurdu.
   // Verilmezse ikisi de gerçek an (now()) olur.
   const createdAt = opts.createdAt || new Date();
+  // Yeni konu, o projenin sıralamasının EN SONUNA eklenir (Jira'daki gibi) —
+  // kullanıcı sonradan Backlog'da sürükleyerek öncelik sırasını değiştirebilir.
+  const rankRow = await client.query(
+    "SELECT COALESCE(MAX(rank),0)+1000 AS r FROM project_issues WHERE project_k=$1", [projectK]
+  );
+  const rank = rankRow.rows[0].r;
   const ins = await client.query(
     `INSERT INTO project_issues (project_k, issue_key, issue_type, title, description, status, priority, story_points,
-       assignee_username, parent_key, created_by, labels, due_date, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14) RETURNING *`,
+       assignee_username, parent_key, created_by, labels, due_date, created_at, updated_at, rank)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14,$15) RETURNING *`,
     [projectK, issueKey, opts.issueType, opts.title.trim(), (opts.description || "").trim(),
      opts.status || "backlog", opts.priority || "Medium", Number(opts.storyPoints) || 0,
      opts.assigneeUsername || null, opts.parentKey || null, opts.createdBy,
-     sanitizeLabels(opts.labels), opts.dueDate || null, createdAt]
+     sanitizeLabels(opts.labels), opts.dueDate || null, createdAt, rank]
   );
   return ins.rows[0];
 }
@@ -279,10 +285,38 @@ router.get("/:k/issues", requireRead("d.board"), async (req, res, next) => {
     const { rows } = await query(
       `SELECT pi.*, u.name AS assignee_name FROM project_issues pi
        LEFT JOIN users u ON u.username = pi.assignee_username
-       WHERE pi.project_k=$1 ORDER BY pi.created_at`,
+       WHERE pi.project_k=$1 ORDER BY pi.rank`,
       [req.params.k]
     );
     res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+// Backlog'da sürükle-bırak ile öncelik sırasını değiştirir (Jira "Rank").
+// prevKey/nextKey: konunun YENİ konumunda hemen öncesinde/sonrasında kalacak
+// komşu konuların anahtarları (ikisi de opsiyonel — biri uçta olabilir).
+router.put("/:k/issues/:issueKey/rank", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { prevKey, nextKey } = req.body || {};
+    if (!prevKey && !nextKey) return res.status(400).json({ error: "prevKey veya nextKey belirtilmeli." });
+    const issue = await query("SELECT rank FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
+    if (!issue.rowCount) return res.status(404).json({ error: "Konu bulunamadı." });
+    let prevRank = null, nextRank = null;
+    if (prevKey) {
+      const r = await query("SELECT rank FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, prevKey]);
+      if (r.rowCount) prevRank = r.rows[0].rank;
+    }
+    if (nextKey) {
+      const r = await query("SELECT rank FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, nextKey]);
+      if (r.rowCount) nextRank = r.rows[0].rank;
+    }
+    let newRank;
+    if (prevRank !== null && nextRank !== null) newRank = (prevRank + nextRank) / 2;
+    else if (prevRank !== null) newRank = prevRank + 1000;
+    else if (nextRank !== null) newRank = nextRank - 1000;
+    else return res.status(400).json({ error: "Komşu konu(lar) bulunamadı." });
+    await query("UPDATE project_issues SET rank=$1 WHERE project_k=$2 AND issue_key=$3", [newRank, req.params.k, req.params.issueKey]);
+    res.json({ ok: true, rank: newRank });
   } catch (e) { next(e); }
 });
 
