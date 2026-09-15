@@ -15,7 +15,7 @@ router.get("/", requireAuth, async (req, res, next) => {
     if (q.length < 2) return res.json({ items: [] });
     const like = `%${q}%`;
 
-    const [ann, docs, projects] = await Promise.all([
+    const [ann, docs, projects, issues, users] = await Promise.all([
       query(
         `SELECT id, title AS label, 'announcement' AS kind, category AS meta
          FROM announcements WHERE status='yayinda' AND title ILIKE $1
@@ -34,13 +34,28 @@ router.get("/", requireAuth, async (req, res, next) => {
          ORDER BY name LIMIT 8`,
         [like]
       ),
+      query(
+        `SELECT pi.project_k, pi.issue_key, (pi.issue_key || ' — ' || pi.title) AS label,
+                'issue' AS kind, (pi.project_k || ' · ' || pi.issue_type) AS meta
+         FROM project_issues pi WHERE pi.issue_key ILIKE $1 OR pi.title ILIKE $1
+         ORDER BY pi.updated_at DESC LIMIT 10`,
+        [like]
+      ),
+      query(
+        `SELECT username AS id, (name || ' — ' || username) AS label, 'user' AS kind, title AS meta
+         FROM users WHERE active AND (name ILIKE $1 OR username ILIKE $1)
+         ORDER BY name LIMIT 6`,
+        [like]
+      ),
     ]);
 
     res.json({
       items: [
+        ...issues.rows.map((r) => ({ ...r, group: "Konular (Issues)" })),
+        ...projects.rows.map((r) => ({ ...r, group: "Projeler" })),
         ...ann.rows.map((r) => ({ ...r, group: "Duyurular" })),
         ...docs.rows.map((r) => ({ ...r, group: "Eğitim/Doküman" })),
-        ...projects.rows.map((r) => ({ ...r, group: "Projeler" })),
+        ...users.rows.map((r) => ({ ...r, group: "Kullanıcılar" })),
       ],
     });
   } catch (e) { next(e); }

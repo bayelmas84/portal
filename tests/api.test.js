@@ -663,6 +663,28 @@ test("İş akışı (workflow): tanımsız geçiş serbesttir (geriye dönük uy
     ] });
 });
 
+test("Genel arama: konu (issue) başlık/anahtarına göre bulunur ve tıklanabilir sonuç döner", async () => {
+  const pm = await login("tolga.firat");
+  const uniqueTitle = `Arama Test Konusu ${Date.now()}`;
+  const issue = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: uniqueTitle });
+  const issueKey = issue.body.item.issue_key;
+
+  const byTitle = await request(app).get(`/api/search?q=${encodeURIComponent(uniqueTitle.slice(0, 15))}`).set("Cookie", pm.cookie);
+  assert.equal(byTitle.status, 200);
+  const found1 = byTitle.body.items.find((i) => i.kind === "issue" && i.issue_key === issueKey);
+  assert.ok(found1, "başlığa göre arama konuyu bulmalı");
+  assert.equal(found1.project_k, "TRADE");
+  assert.equal(found1.group, "Konular (Issues)");
+
+  const byKey = await request(app).get(`/api/search?q=${encodeURIComponent(issueKey)}`).set("Cookie", pm.cookie);
+  const found2 = byKey.body.items.find((i) => i.kind === "issue" && i.issue_key === issueKey);
+  assert.ok(found2, "anahtara (issue_key) göre arama da konuyu bulmalı");
+
+  const tooShort = await request(app).get("/api/search?q=a").set("Cookie", pm.cookie);
+  assert.deepEqual(tooShort.body.items, [], "2 karakterden kısa sorgu boş dönmeli");
+});
+
 test.after(async () => {
   await pool.end();
 });

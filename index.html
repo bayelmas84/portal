@@ -4019,13 +4019,15 @@ function dialogView(){
  if(d.type==="search"){
   const groups={};(S.searchResults||[]).forEach(r=>{(groups[r.group]=groups[r.group]||[]).push(r);});
   return wrap(`<div style="font-size:15px">Ara</div>
-   <input id="fSearchQ" value="${esc(f.q||"")}" placeholder="Duyuru, doküman veya proje ara…" style="margin-top:10px">
+   <input id="fSearchQ" value="${esc(f.q||"")}" placeholder="Konu, proje, duyuru, doküman veya kişi ara…" style="margin-top:10px">
    <div style="max-height:320px;overflow:auto;margin-top:10px">
     ${Object.keys(groups).length?Object.entries(groups).map(([g,items])=>`
      <div class="lbl" style="margin-top:10px">${esc(g)}</div>
-     ${items.map(r=>`<div class="card" style="margin-bottom:6px;padding:9px 12px">
-      <div style="font-size:12.5px">${esc(r.label)}</div>
-      <div class="m" style="color:var(--tm)">${esc(r.meta||"")}</div></div>`).join("")}`).join("")
+     ${items.map(r=>{const jumpable=["issue","project"].includes(r.kind);
+       return `<div class="card" style="margin-bottom:6px;padding:9px 12px;${jumpable?"cursor:pointer":""}"
+        ${jumpable?`data-a="searchJump:${r.kind}:${encodeURIComponent(r.project_k||r.id)}:${encodeURIComponent(r.issue_key||"")}"`:""}>
+       <div style="font-size:12.5px">${esc(r.label)}</div>
+       <div class="m" style="color:var(--tm)">${esc(r.meta||"")}</div></div>`;}).join("")}`).join("")
      :`<p class="m" style="color:var(--tm);margin-top:10px">${(f.q||"").trim().length>=2?"Sonuç bulunamadı.":"En az 2 karakter girin."}</p>`}
    </div>
    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b" data-a="dlgClose">Kapat</button></div>`);}
@@ -5024,6 +5026,23 @@ app.addEventListener("click",async ev=>{
  if(k==="pickProj"){S.proj=+p[1];S.projAll=false;render();return;}
  if(k==="onlyMine"){S.onlyMine=!S.onlyMine;render();return;}
  if(k==="openProj"){S.proj=+p[1];S.projAll=false;S.mod="delivery";S.scr="d.board";S.dlg=null;render();return;}
+ if(k==="searchJump"){const kind=p[1],projK=dec(p[2]),issueKey=dec(p[3]);
+  const pi=PROJ.findIndex(x=>x.k===projK);
+  if(pi<0){toast("Proje bulunamadı.",1);return;}
+  S.proj=pi;S.projAll=false;S.mod="delivery";
+  if(kind==="issue"){
+   S.scr="d.board";S.dlg={type:"issue",pi,key:issueKey};S.f={};
+   if(LIVE_BACKEND){const pk=PROJ[pi].k;
+    if(!PROJ[pi].itemsLoaded)loadIssuesLive(pk);
+    delete ISSUE_ATTACH_LIVE[pk+"::"+issueKey];loadIssueAttachmentsLive(pk,issueKey);
+    delete ISSUE_LINKS_LIVE[pk+"::"+issueKey];loadIssueLinksLive(pk,issueKey);
+    delete ISSUE_HISTORY_LIVE[pk+"::"+issueKey];loadIssueHistoryLive(pk,issueKey);
+    delete ISSUE_COMMENTS_LIVE[pk+"::"+issueKey];loadIssueCommentsLive(pk,issueKey);
+    delete ISSUE_WORKLOGS_LIVE[pk+"::"+issueKey];loadIssueWorklogsLive(pk,issueKey);}
+  }else{
+   S.scr="d.board";S.dlg=null;
+  }
+  render();return;}
  if(k==="execFilter"){S.execFilter=p[1]||null;S.execUnit=null;render();return;}
  if(k==="execUnit"){S.execUnit=decodeURIComponent(p[1]||"");S.execFilter=null;render();return;}
  if(k==="issueNew"){S.f={ty:"Story",pri:"Medium",pts:3,st:"backlog"};PENDING_ISSUE_FILE=null;S.dlg={type:"issue2"};render();return;}
