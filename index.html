@@ -1050,6 +1050,19 @@ let LIVE_BACKEND=false;
 async function checkLiveBackend(){
  try{const r=await fetch(API_BASE+"/api/healthz");LIVE_BACKEND=r.ok;}catch(e){LIVE_BACKEND=false;}
  return LIVE_BACKEND;}
+/* Giriş ekranının "AD mi, yerel şifre mi" metnini doğru göstermesi için,
+   kimlik doğrulamadan ÖNCE bilinmesi gerekir. null = henüz bilinmiyor (ilk
+   render'da nötr bir metin gösterilir), sayfa açılışında sorgulanır. */
+let AD_ACTIVE=null;
+async function loadAuthModeLive(){
+ try{
+  const ok=await checkLiveBackend();
+  if(!ok){AD_ACTIVE=false;render();return;}
+  const r=await fetch(API_BASE+"/api/auth/mode");
+  const data=await r.json();
+  AD_ACTIVE=!!data.adActive;
+ }catch(e){AD_ACTIVE=false;}
+ render();}
 /* Gerçek backend'den toplantı notlarını çeker; sonucu S.meetingsLive'a yazar ve
    render() tetikler. screenView() bu diziyi salt okuma amaçlı kullanır — hiçbir
    ekran render sırasında kendisi fetch başlatmaz, yalnızca "henüz yüklenmedi"
@@ -1257,7 +1270,8 @@ function loginView(){
      alt="Tera Yatırım — Her şey bir arada, tek bir yerde" decoding="sync" fetchpriority="high">
    <div class="login-panel">
     <h2>${S.mustChangePassword?"Şifre değişikliği zorunlu":esc(BRAND.loginTitle)}</h2>
-    <p class="login-hint">${S.mustChangePassword?"İlk girişte ya da bir sıfırlama sonrasında yeni bir şifre belirlemeniz gerekiyor.":esc(BRAND.loginHint)}</p>
+    <p class="login-hint">${S.mustChangePassword?"İlk girişte ya da bir sıfırlama sonrasında yeni bir şifre belirlemeniz gerekiyor.":
+      AD_ACTIVE===null?esc(BRAND.loginHint):AD_ACTIVE?"Kurum hesabınızla devam edin.":"Kullanıcı adı ve şifrenizi girin"}</p>
 
     ${S.mustChangePassword?`
     <label class="field"><span>Yeni şifre</span>
@@ -1269,12 +1283,12 @@ function loginView(){
     <button class="b s" style="margin-top:8px" data-a="cancelChangePassword">Vazgeç</button>
     `:`
     <label class="field"><span>Kullanıcı adı</span>
-     <span class="input-wrap"><span class="prefix">TERA\\</span>
-      <input id="lu" value="${esc(S.u)}" placeholder="ad.soyad" autocomplete="username"
+     <span class="input-wrap">${AD_ACTIVE?`<span class="prefix">TERA\\</span>`:""}
+      <input id="lu" value="${esc(S.u)}" placeholder="${AD_ACTIVE?"ad.soyad":"Kullanıcı Adı"}" autocomplete="username"
        autocapitalize="none" spellcheck="false"></span></label>
 
     <label class="field"><span>Parola</span>
-     <span class="input-wrap"><input id="lp" type="${S.showPw?"text":"password"}" placeholder="••••••••••"
+     <span class="input-wrap"><input id="lp" type="${S.showPw?"text":"password"}" placeholder="Parolanızı giriniz"
        autocomplete="current-password">
       <button type="button" class="reveal" data-a="togglePw">${S.showPw?"gizle":"göster"}</button></span></label>
 
@@ -5014,6 +5028,7 @@ app.addEventListener("click",async ev=>{
  if(k==="dlgClose"){S.dlg=null;S.f={};render();return;}
 });
 render();
+loadAuthModeLive();
 })();
 </script>
 </body>

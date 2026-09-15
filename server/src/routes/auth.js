@@ -32,6 +32,17 @@ async function getEffectiveAuthMode() {
   return config.authMode === "ldap" ? "ldap" : "local";
 }
 
+// Giriş ekranının metnini (AD mi, yerel şifre mi) doğru göstermesi için,
+// kimlik doğrulama YAPILMADAN önce bilinmesi gerekir — bu yüzden bu tek uç
+// kimlik doğrulama gerektirmez. Yalnızca açık/kapalı bilgisini döner; sunucu
+// adresi, DN gibi hiçbir hassas ayrıntı içermez, bu nedenle güvenlidir.
+router.get("/mode", async (req, res, next) => {
+  try {
+    const mode = await getEffectiveAuthMode();
+    res.json({ adActive: mode === "ldap" });
+  } catch (e) { next(e); }
+});
+
 // GÜVENLİK: Timing attack / kullanıcı numaralandırma (CWE-208). Argon2
 // doğrulaması bilinçli olarak yavaştır (~100ms+); kullanıcı bulunamadığında bu
 // adım hiç çalıştırılmazsa, yanıt süresi farkı bir saldırganın hangi kullanıcı
