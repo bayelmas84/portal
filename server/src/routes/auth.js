@@ -32,6 +32,13 @@ async function getEffectiveAuthMode() {
   return config.authMode === "ldap" ? "ldap" : "local";
 }
 
+// GÜVENLİK: Timing attack / kullanıcı numaralandırma (CWE-208). Argon2
+// doğrulaması bilinçli olarak yavaştır (~100ms+); kullanıcı bulunamadığında bu
+// adım hiç çalıştırılmazsa, yanıt süresi farkı bir saldırganın hangi kullanıcı
+// adlarının sistemde var olduğunu ölçmesine izin verir. Kullanıcı yokken de
+// AYNI SÜREYİ harcayan sahte bir doğrulama çalıştırılarak süre eşitlenir.
+const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHRzYWx0c2FsdA$Y7HmGGGvJqz9F5H2xJ3vXQ5Y5W5X5V5T5S5R5Q5P5O";
+
 router.post("/login", async (req, res, next) => {
   try {
     const { username, password } = req.body || {};
@@ -45,6 +52,7 @@ router.post("/login", async (req, res, next) => {
     const { rows } = await query("SELECT * FROM users WHERE username=$1 AND active", [uname]);
     const user = rows[0];
     if (!user) {
+      await verifyPassword(DUMMY_HASH, password); // süre eşitleme — yukarıdaki not
       await audit(`Başarısız giriş denemesi: ${uname}`, uname, false);
       return res.status(401).json({ error: "Kullanıcı adı veya parola hatalı." });
     }
