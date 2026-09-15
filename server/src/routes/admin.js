@@ -373,7 +373,7 @@ router.get("/brand", requireRead("m.brand"), async (req, res, next) => {
 
 router.put("/brand", requireWrite("m.brand"), async (req, res, next) => {
   try {
-    const allowed = ["company", "companyShort", "product", "slogan", "loginTitle", "loginHint", "footer", "accent"];
+    const allowed = ["company", "companyShort", "product", "slogan", "loginTitle", "loginHint", "loginUserPlaceholder", "loginPassPlaceholder", "footer", "accent"];
     const entries = Object.entries(req.body || {}).filter(([k]) => allowed.includes(k));
     await requestAdminApproval(req, res, "admin.brand", req.body || {},
       `Marka ve metinler güncelleme: ${entries.map(([k]) => k).join(", ") || "değişiklik yok"}`);

@@ -162,7 +162,7 @@ async function applyAdminAction(targetType, payload, actingUsername) {
       return;
     }
     case "admin.brand": {
-      const allowed = ["company", "companyShort", "product", "slogan", "loginTitle", "loginHint", "footer", "accent"];
+      const allowed = ["company", "companyShort", "product", "slogan", "loginTitle", "loginHint", "loginUserPlaceholder", "loginPassPlaceholder", "footer", "accent"];
       const entries = Object.entries(payload || {}).filter(([k]) => allowed.includes(k));
       for (const [k, v] of entries) {
         await query(

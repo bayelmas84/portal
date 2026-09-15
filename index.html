@@ -553,7 +553,7 @@ let REQS=[
 
 /* Proje metrikleri ve burndown verisi (gerçek uygulamada sunucuda hesaplanır) */
 let PROJ=[
- {k:"TRADE",n:"Mobil işlem platformu",m:"Scrum",lead:"Tolga Fırat",health:"Risk altında",hc:"#BA7517",
+ {k:"TRADE",n:"Mobil işlem platformu",m:"Scrum",lead:"Tolga Fırat",health:"At risk",hc:"#BA7517",
   unitName:"Bilgi Teknolojileri",start:"2026-08-01",target:"2026-09-20",timePct:80,
   burndown:[40,38,34,32,29,27,24,22,19,16],
   velocityHist:[{n:"Sprint 24",c:38,d:35},{n:"Sprint 25",c:42,d:39},{n:"Sprint 26",c:47,d:36}],
@@ -565,7 +565,7 @@ let PROJ=[
    {key:"TRADE-4",ty:"Story",t:"Pozisyon limitleri",st:"test",pri:"High",pts:8,as:"Nazlı Han"},
    {key:"TRADE-7",ty:"Story",t:"İki faktörlü doğrulama",st:"todo",pri:"Highest",pts:5,as:"Mert Balkan"},
    {key:"TRADE-13",ty:"Story",t:"Fiyat alarm merkezi",st:"backlog",pri:"Medium",pts:8,as:null}]},
- {k:"CORE",n:"Portföy sistemi göçü",m:"Waterfall",lead:"Tolga Fırat",health:"Gecikmede",hc:"#A32D2D",sprint:null,
+ {k:"CORE",n:"Portföy sistemi göçü",m:"Waterfall",lead:"Tolga Fırat",health:"Delayed",hc:"#A32D2D",sprint:null,
   unitName:"Bilgi Teknolojileri",start:"2026-06-15",target:"2026-09-15",timePct:92,burndown:null,velocityHist:[],
   gate:{n:"Geliştirme → Test",need:2,sign:[{n:"Tolga Fırat",r:"Proje Yöneticisi"}],
    crit:[["Code reviews closed",1],["Unit test coverage at 80%",1],["Test environment ready",1],["No open critical bugs",0],["Deployment plan approved",0]]},
@@ -574,7 +574,7 @@ let PROJ=[
    {key:"CORE-5",ty:"Task",t:"Takasbank arayüzü",st:"review",pri:"High",pts:8,as:"Tolga Fırat"},
    {key:"CORE-9",ty:"Bug",t:"Bakiye yuvarlama hatası",st:"todo",pri:"High",pts:3,as:"Nazlı Han"},
    {key:"CORE-11",ty:"Story",t:"Mutabakat raporu",st:"backlog",pri:"Medium",pts:5,as:null}]},
- {k:"OPS",n:"Platform operasyonları",m:"Kanban",lead:"Meltem Aydın",health:"Planında",hc:"#3B6D11",sprint:null,gate:null,
+ {k:"OPS",n:"Platform operasyonları",m:"Kanban",lead:"Meltem Aydın",health:"On track",hc:"#3B6D11",sprint:null,gate:null,
   unitName:"Operasyon ve Takas",start:"2026-01-01",target:"2026-12-31",timePct:69,burndown:null,velocityHist:[],
   items:[
    {key:"OPS-1",ty:"Bug",t:"Emir API 5xx artışı",st:"prog",pri:"Highest",pts:5,as:"Mert Balkan"},
@@ -629,6 +629,8 @@ let BRAND={
  slogan:"Her şey bir arada, tek bir yerde.",
  loginTitle:"Oturum açın",
  loginHint:"Kurum hesabınızla devam edin.",
+ loginUserPlaceholder:"Kullanıcı Adı",
+ loginPassPlaceholder:"Parolanızı giriniz",
  homeGreetSuffix:"",
  footer:"© "+new Date().getFullYear()+" Tera Yatırım Menkul Değerler A.Ş.",
  accent:"#B8894A",
@@ -637,6 +639,8 @@ const BRAND_FIELDS=[
  ["company","Şirket adı (tam)"],["companyShort","Şirket adı (kısa)"],
  ["product","Ürün adı"],
  ["slogan","Slogan"],["loginTitle","Giriş başlığı"],["loginHint","Giriş alt metni"],
+ ["loginUserPlaceholder","Kullanıcı adı kutusu metni (AD kapalıyken)"],
+ ["loginPassPlaceholder","Parola kutusu metni (AD kapalıyken)"],
  ["footer","Alt bilgi"]];
 /* İmza ("powered by bayelmas") kasıtlı olarak BRAND'ın dışındadır: sabit bir değerdir,
    admin panelinde hiçbir alanla ilişkilendirilmez ve hiçbir ekrandan değiştirilemez. */
@@ -869,7 +873,7 @@ async function loadAuditLive(){
  try{const data=await api("GET","/api/audit");AUDIT_LIVE=data.items;}
  catch(e){toast("Denetim kaydı yüklenemedi: "+e.message,1);AUDIT_LIVE=[];}
  AUDIT_LIVE_LOADING=false;render();}
-const HEALTH_COLOR={"İzleniyor":"#0B1F48","Risk altında":"#BA7517","Gecikmede":"#A32D2D","Planında":"#3B6D11"};
+const HEALTH_COLOR={"Monitoring":"#0B1F48","At risk":"#BA7517","Delayed":"#A32D2D","On track":"#3B6D11"};
 function mapProjectLive(p){
  const nameOf=u=>{const x=USERS.find(y=>y.u===u);return x?x.n:u;};
  const existing=PROJ.find(x=>x.k===p.k);
@@ -1084,6 +1088,7 @@ async function loadAuthModeLive(){
   const r=await fetch(API_BASE+"/api/auth/mode");
   const data=await r.json();
   AD_ACTIVE=!!data.adActive;
+  if(data.brand)Object.assign(BRAND,data.brand);
  }catch(e){AD_ACTIVE=false;}
  render();}
 /* Gerçek backend'den toplantı notlarını çeker; sonucu S.meetingsLive'a yazar ve
@@ -1307,11 +1312,11 @@ function loginView(){
     `:`
     <label class="field"><span>Kullanıcı adı</span>
      <span class="input-wrap">${AD_ACTIVE?`<span class="prefix">TERA\\</span>`:""}
-      <input id="lu" value="${esc(S.u)}" placeholder="${AD_ACTIVE?"ad.soyad":"Kullanıcı Adı"}" autocomplete="username"
+      <input id="lu" value="${esc(S.u)}" placeholder="${AD_ACTIVE?"kullanıcıadı":esc(BRAND.loginUserPlaceholder)}" autocomplete="username"
        autocapitalize="none" spellcheck="false"></span></label>
 
     <label class="field"><span>Parola</span>
-     <span class="input-wrap"><input id="lp" type="${S.showPw?"text":"password"}" placeholder="Parolanızı giriniz"
+     <span class="input-wrap"><input id="lp" type="${S.showPw?"text":"password"}" placeholder="${AD_ACTIVE?"Parola":esc(BRAND.loginPassPlaceholder)}"
        autocomplete="current-password">
       <button type="button" class="reveal" data-a="togglePw">${S.showPw?"gizle":"göster"}</button></span></label>
 
@@ -1522,7 +1527,7 @@ function screenView(){
   const kpi=[["Open items",mine.length,""],["In progress",mine.filter(x=>x.i.st==="prog").length,"prog"],
    ["Bugs",mine.filter(x=>x.i.ty==="Bug").length,"Bug"],["Projects",new Set(mine.map(x=>x.p.k)).size,null]];
   return head("My Work",S.me.n+" · open items across all projects",
-   S.filter?`<button class="b s" data-a="filter:">Filtreyi kaldır</button>`:"")+
+   S.filter?`<button class="b s" data-a="filter:">Clear filter</button>`:"")+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin-bottom:15px">
    ${kpi.map(k=>`<div class="card" style="cursor:${k[2]===null?"default":"pointer"}" ${k[2]===null?"":`data-a="filter:${k[2]}"`}>
     <div class="lbl">${k[0]}</div><div class="m" style="font-size:23px">${k[1]}</div></div>`).join("")}</div>`+
@@ -1536,13 +1541,13 @@ function screenView(){
     <td class="m" style="color:var(--ta)">${x.i.key}</td><td>${esc(x.i.t)}</td>
     <td>${pill(FLOW[x.i.st])}</td><td><span class="m" style="color:${PRIC[x.i.pri]}">${x.i.pri}</span></td>
     <td class="m">${x.i.pts}</td>
-    <td style="text-align:right"><button class="b s p" data-a="issue:${x.pi}:${x.i.key}">Aç</button></td></tr>`).join(""))}</div>`;}).join("")
-  :`<div class="card"><div style="font-size:12.5px">${S.filter?"Bu filtreye uyan açık işiniz yok.":"Size atanmış açık iş yok."}</div>
-    <p style="font-size:12px;color:var(--t2);margin:8px 0 11px;line-height:1.6">Projelerin tamamını, board'ları ve faz kapılarını Projeler ekranından görebilirsiniz.</p>
+    <td style="text-align:right"><button class="b s p" data-a="issue:${x.pi}:${x.i.key}">Open</button></td></tr>`).join(""))}</div>`;}).join("")
+  :`<div class="card"><div style="font-size:12.5px">${S.filter?"No open items match this filter.":"No open items are assigned to you."}</div>
+    <p style="font-size:12px;color:var(--t2);margin:8px 0 11px;line-height:1.6">You can view all projects, boards, and stage gates from the Projects screen.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-     ${S.filter?`<button class="b" data-a="filter:">Filtreyi kaldır</button>`:""}
-     ${can("d.projects")?`<button class="b p" data-a="scr:d.projects">Projelere git</button>`:""}
-     ${can("d.board")?`<button class="b" data-a="scr:d.board">Board'a git</button>`:""}</div></div>`);}
+     ${S.filter?`<button class="b" data-a="filter:">Clear filter</button>`:""}
+     ${can("d.projects")?`<button class="b p" data-a="scr:d.projects">Go to Projects</button>`:""}
+     ${can("d.board")?`<button class="b" data-a="scr:d.board">Go to Board</button>`:""}</div></div>`);}
 
  if(v==="d.projects")return head("Projects",PROJ.length+" active projects",
    (cw("d.projects")?`<button class="b p" data-a="projNew">New project</button>`:"")+
@@ -1563,9 +1568,9 @@ function screenView(){
 
  if(v==="d.board"){const p=P(),cols=["todo","prog","review","test","done"];
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
-  if(LIVE_BACKEND&&!p.itemsLoaded)return head("Board",p.n+" · "+p.m,"")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
+  if(LIVE_BACKEND&&!p.itemsLoaded)return head("Board",p.n+" · "+p.m,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
   const pass=i=>!S.onlyMine||i.as===S.me.n;
-  return head("Board",p.n+" · "+p.m+(LIVE_BACKEND?" · canlı backend":""),
+  return head("Board",p.n+" · "+p.m+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
     <button class="b s ${S.onlyMine?"p":""}" data-a="onlyMine">Only my issues</button>
     ${cw("d.board")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.board")+
@@ -1590,38 +1595,38 @@ function screenView(){
 
  if(v==="d.backlog"){const p=P();
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
-  if(LIVE_BACKEND&&!p.itemsLoaded)return head("Backlog",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
-  return head("Backlog",p.n+(LIVE_BACKEND?" · canlı backend":""),
+  if(LIVE_BACKEND&&!p.itemsLoaded)return head("Backlog",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+  return head("Backlog",p.n+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
      `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
     ${cw("d.backlog")?`<button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
-   table(["Tip","Kayıt","Başlık","SP",""],p.items.filter(i=>i.st==="backlog").map(i=>`<tr>
+   table(["Type","Key","Title","SP",""],p.items.filter(i=>i.st==="backlog").map(i=>`<tr>
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
     <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td><td class="m">${i.pts}</td>
-    <td style="text-align:right;white-space:nowrap"><button class="b s" data-a="issue:${S.proj}:${i.key}">Aç</button>
-    ${cw("d.backlog")?` <button class="b s p" data-a="toSprint:${S.proj}:${i.key}">Sprinte al</button>`:""}</td></tr>`).join("")||
-    `<tr><td colspan="5" style="color:var(--tm)">Backlog boş.</td></tr>`);}
+    <td style="text-align:right;white-space:nowrap"><button class="b s" data-a="issue:${S.proj}:${i.key}">Open</button>
+    ${cw("d.backlog")?` <button class="b s p" data-a="toSprint:${S.proj}:${i.key}">Add to sprint</button>`:""}</td></tr>`).join("")||
+    `<tr><td colspan="5" style="color:var(--tm)">Backlog is empty.</td></tr>`);}
 
  if(v==="d.gate"){
   if(LIVE_BACKEND){
    const gated=PROJ.filter(x=>x.m==="Waterfall");
-   if(!gated.length)return head("Stage Gates","Phase gates apply to Waterfall projects only"+" · canlı backend")+
+   if(!gated.length)return head("Stage Gates","Phase gates apply to Waterfall projects only"+" · live backend")+
     `<div class="card"><span style="font-size:12px;color:var(--tm)">No Waterfall project defined.</span></div>`;
    const p=gated.some(x=>x.k===P().k)?P():gated[0];
    const projSel=gated.length>1?`<div style="display:flex;gap:7px">${gated.map(x=>
     `<button class="b s ${x.k===p.k?"p":""}" data-a="proj:${PROJ.indexOf(x)}">${x.k}</button>`).join("")}</div>`:"";
    if(!p.gate){
-    return head("Stage Gates",p.k+" · canlı backend",projSel)+
+    return head("Stage Gates",p.k+" · live backend",projSel)+
      `<div class="card" style="max-width:640px">
-      <div style="font-size:13px;margin-bottom:9px">Bu proje için henüz bir stage gate tanımlanmadı.</div>
-      ${cw("d.gate")?`<div class="lbl">GATE ADI</div><input id="fGateName" placeholder="Geliştirme → Test">
-       <div class="lbl" style="margin-top:11px">KRİTERLER (her satır bir kriter)</div>
+      <div style="font-size:13px;margin-bottom:9px">No stage gate has been defined for this project yet.</div>
+      ${cw("d.gate")?`<div class="lbl">GATE NAME</div><input id="fGateName" placeholder="Development → Test">
+       <div class="lbl" style="margin-top:11px">CRITERIA (one per line)</div>
        <textarea id="fGateCrit" placeholder="Code reviews closed&#10;Unit test coverage at 80%&#10;Test environment ready" style="min-height:90px"></textarea>
-       <div class="lbl" style="margin-top:11px">GEREKLİ İMZA SAYISI</div><input id="fGateNeed" type="number" min="1" value="2" style="max-width:100px">
-       <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b p" data-a="gateDefine">Gate'i tanımla</button></div>`
-      :`<p class="m" style="color:var(--tm)">Yalnızca proje yöneticisi gate tanımlayabilir.</p>`}</div>`;}
+       <div class="lbl" style="margin-top:11px">REQUIRED SIGNATURES</div><input id="fGateNeed" type="number" min="1" value="2" style="max-width:100px">
+       <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b p" data-a="gateDefine">Define gate</button></div>`
+      :`<p class="m" style="color:var(--tm)">Only the project manager can define a gate.</p>`}</div>`;}
    const g=p.gate,open=g.crit.filter(c=>!c[1]).length,full=g.sign.length>=g.need,signedByMe=g.sign.some(s=>s.n===S.me.n);
-   return head("Stage Gates",p.k+" · canlı backend",projSel)+
+   return head("Stage Gates",p.k+" · live backend",projSel)+
    `<div class="card" style="max-width:640px">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="font-size:14px">${esc(g.n)}</span>
      ${full?pill(g.sign.length+" / "+g.need+" signatures","ok"):pill(g.sign.length+" / "+g.need+" signatures","wr")}<span style="flex:1"></span>
@@ -1710,7 +1715,7 @@ function screenView(){
 
 
  if(v==="d.sprint"){const p=P();
-  if(p.m!=="Scrum")return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">Bu proje sprint kullanmıyor (${p.m}).</p>`;
+  if(p.m!=="Scrum")return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">This project does not use sprints (${p.m}).</p>`;
   if(LIVE_BACKEND){
    if(!p.itemsLoaded)loadIssuesLive(p.k);
    const canClose=!p.sprint.endsAt||new Date(p.sprint.endsAt)<=new Date(new Date().toDateString());
@@ -1720,41 +1725,41 @@ function screenView(){
    const pct=committed?Math.round(done/committed*100):0;
    const openCount=inSprintItems.filter(i=>i.st!=="done").length;
    if(!p.sprint.n){
-    return head("Sprint",p.n+" · canlı backend",`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
+    return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
      `<div class="card" style="max-width:520px">
-       <div style="font-size:13px;margin-bottom:9px">Şu anda aktif bir sprint yok.</div>
-       ${cw("d.board")?`<div class="lbl">HEDEF</div><input id="fSpGoal" placeholder="Bu sprintte hedeflenen">
-        <div class="lbl" style="margin-top:11px">BİTİŞ TARİHİ</div><input id="fSpEnds" type="date">
-        <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b p" data-a="sprintStart">Sprint başlat</button></div>`
-       :`<p class="m" style="color:var(--tm)">Yalnızca proje ekibi sprint başlatabilir.</p>`}</div>`;}
-   return head("Sprint",p.n+" · canlı backend",`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
+       <div style="font-size:13px;margin-bottom:9px">There is no active sprint right now.</div>
+       ${cw("d.board")?`<div class="lbl">GOAL</div><input id="fSpGoal" placeholder="Target for this sprint">
+        <div class="lbl" style="margin-top:11px">END DATE</div><input id="fSpEnds" type="date">
+        <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b p" data-a="sprintStart">Start sprint</button></div>`
+       :`<p class="m" style="color:var(--tm)">Only the project team can start a sprint.</p>`}</div>`;}
+   return head("Sprint",p.n+" · live backend",`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
    `<div class="card" style="max-width:640px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-     <span style="font-size:15px">${esc(p.sprint.n)}</span>${pill("aktif","ok")}<span style="flex:1"></span>
-     ${p.sprint.endsAt?`<span class="m" style="color:var(--t2)">bitiş: ${p.sprint.endsAt}</span>`:""}</div>
-    <p style="font-size:12.5px;color:var(--t2);margin:9px 0 0">Hedef: ${esc(p.sprint.goal||"—")}</p>
+     <span style="font-size:15px">${esc(p.sprint.n)}</span>${pill("active","ok")}<span style="flex:1"></span>
+     ${p.sprint.endsAt?`<span class="m" style="color:var(--t2)">ends: ${p.sprint.endsAt}</span>`:""}</div>
+    <p style="font-size:12.5px;color:var(--t2);margin:9px 0 0">Goal: ${esc(p.sprint.goal||"—")}</p>
     <div style="margin-top:12px;height:9px;background:var(--s1);border-radius:20px;overflow:hidden">
      <div style="height:9px;width:${pct}%;background:var(--navy)"></div></div>
     <div class="m" style="color:var(--t2);margin-top:8px">${done} / ${committed} story point · %${pct}</div>
     ${cw("d.board")?`<div style="margin-top:13px;display:flex;justify-content:flex-end">
-     <button class="b ${canClose?"d":"off"}" data-a="${canClose?"sprintCloseAsk":"sprintNotYet"}">Sprint'i kapat</button></div>
-     ${!canClose?`<p class="m" style="color:var(--tm);margin-top:6px;text-align:right">Sprint yalnızca bitiş gününde kapatılabilir.</p>`:""}`:""}</div>
-    <div style="margin-top:14px">${table(["Kayıt","Başlık","Durum","SP","Atanan",""],inSprintItems.map(i=>`<tr>
+     <button class="b ${canClose?"d":"off"}" data-a="${canClose?"sprintCloseAsk":"sprintNotYet"}">Close sprint</button></div>
+     ${!canClose?`<p class="m" style="color:var(--tm);margin-top:6px;text-align:right">A sprint can only be closed on its end date.</p>`:""}`:""}</div>
+    <div style="margin-top:14px">${table(["Key","Title","Status","SP","Assignee",""],inSprintItems.map(i=>`<tr>
      <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td><td>${pill(FLOW[i.st])}</td>
      <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td>
-     <td style="text-align:right">${cw("d.board")?`<button class="b s d" data-a="sprintRemove:${p.k}:${i.key}">Sprintten çıkar</button>`:""}</td></tr>`).join("")||
-     `<tr><td colspan="6" style="color:var(--tm)">Bu sprintte henüz madde yok.</td></tr>`)}</div>
-    ${cw("d.board")?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">Yeni madde eklemek için Backlog ekranından "Sprinte al" düğmesini kullanın — sprint aktifken de çalışır.</p>`:""}`;}
-  if(!p.sprint)return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">Bu proje sprint kullanmıyor (${p.m}).</p>`;
+     <td style="text-align:right">${cw("d.board")?`<button class="b s d" data-a="sprintRemove:${p.k}:${i.key}">Remove from sprint</button>`:""}</td></tr>`).join("")||
+     `<tr><td colspan="6" style="color:var(--tm)">No items in this sprint yet.</td></tr>`)}</div>
+    ${cw("d.board")?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">To add a new item, use the "Add to sprint" button from the Backlog screen — this also works while the sprint is active.</p>`:""}`;}
+  if(!p.sprint)return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">This project does not use sprints (${p.m}).</p>`;
   const sp=p.sprint,pct=Math.round(sp.done/sp.committed*100);
   return head("Sprint",p.n,`<div style="display:flex;gap:7px">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
   `<div class="card" style="max-width:620px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-    <span style="font-size:15px">${sp.n}</span>${pill("aktif","ok")}<span style="flex:1"></span>
-    <span class="m" style="color:var(--t2)">${sp.left} gün kaldı</span></div>
-   <p style="font-size:12.5px;color:var(--t2);margin:9px 0 0">Hedef: ${esc(sp.goal)}</p>
+    <span style="font-size:15px">${sp.n}</span>${pill("active","ok")}<span style="flex:1"></span>
+    <span class="m" style="color:var(--t2)">${sp.left} days left</span></div>
+   <p style="font-size:12.5px;color:var(--t2);margin:9px 0 0">Goal: ${esc(sp.goal)}</p>
    <div style="margin-top:12px;height:9px;background:var(--s1);border-radius:20px;overflow:hidden">
     <div style="height:9px;width:${pct}%;background:var(--navy)"></div></div>
    <div class="m" style="color:var(--t2);margin-top:8px">${sp.done} / ${sp.committed} story point · %${pct}</div></div>
-   <div style="margin-top:14px">${table(["Kayıt","Başlık","Durum","SP","Atanan"],p.items.filter(i=>i.st!=="backlog").map(i=>`<tr>
+   <div style="margin-top:14px">${table(["Key","Title","Status","SP","Assignee"],p.items.filter(i=>i.st!=="backlog").map(i=>`<tr>
     <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td><td>${pill(FLOW[i.st])}</td>
     <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td></tr>`).join(""))}</div>`;}
 
@@ -1992,116 +1997,116 @@ function screenView(){
   const source=LIVE_BACKEND?(S.meetingsLive||[]):MEETINGS;
   const list=source.filter(m=>(fp==="ALL"||m.projKey===fp)&&canSeeMeeting(m))
    .sort((a,b)=>(b.date||"").localeCompare(a.date||"")||b.id-a.id);
-  return head("Meeting Notes","Proje bazlı toplantı notları ve gündem takibi"+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
+  return head("Meeting Notes","Project-based meeting notes and agenda tracking"+(LIVE_BACKEND?" · live backend":" · demo data"),
    `<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
      <select id="fMtProjFilterSel" style="width:auto;min-width:170px">
-      <option value="ALL" ${fp==="ALL"?"selected":""}>Tüm projeler</option>
+      <option value="ALL" ${fp==="ALL"?"selected":""}>All projects</option>
       ${PROJ.map(x=>`<option value="${x.k}" ${fp===x.k?"selected":""}>${x.k} — ${esc(x.n)}</option>`).join("")}</select>
-     ${canWrite?`<button class="b p" data-a="mtAdd">Yeni toplantı notu</button>`:""}</div>`)+
-  (LIVE_BACKEND&&S.meetingsLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
-  table(["Proje","Tarih","Başlık","Katılımcı","Maddeler",""],list.map(m=>{
+     ${canWrite?`<button class="b p" data-a="mtAdd">New meeting note</button>`:""}</div>`)+
+  (LIVE_BACKEND&&S.meetingsLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
+  table(["Project","Date","Title","Attendees","Items",""],list.map(m=>{
    const done=m.items.filter(i=>i.status==="done").length,total=m.items.length;
    return `<tr>
-    <td class="m" style="color:var(--ta)">${m.projKey==="OTHER"?"Diğer":m.projKey}</td>
+    <td class="m" style="color:var(--ta)">${m.projKey==="OTHER"?"Other":m.projKey}</td>
     <td class="m">${esc(m.date||"—")}${m.time?" "+esc(m.time):""}</td>
     <td>${esc(m.title)}</td>
     <td style="color:var(--t2)">${m.participants.length}</td>
-    <td>${pill(done+"/"+total+" tamam")}</td>
-    <td style="text-align:right"><button class="b s p" data-a="mtView:${m.id}">Görüntüle</button></td></tr>`;}).join("")
-   ||`<tr><td colspan="6" style="color:var(--tm)">Görebileceğiniz toplantı notu yok.</td></tr>`))+
-  `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Toplantı notları yalnızca katılımcılara ve
-    İç Kontrol, Teftiş, Bilgi Güvenliği ekiplerine — katılımcı olsun olmasın — her zaman görünür.
-    Oluşturma ve gündem güncelleme yetkisi proje yönetimi rolündedir (Proje Yöneticisi / Proje Yönetim Direktörü).</p>`;}
+    <td>${pill(done+"/"+total+" done")}</td>
+    <td style="text-align:right"><button class="b s p" data-a="mtView:${m.id}">View</button></td></tr>`;}).join("")
+   ||`<tr><td colspan="6" style="color:var(--tm)">There are no meeting notes you can view.</td></tr>`))+
+  `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Meeting notes are always visible to attendees and to the
+    Internal Control, Inspection, and Information Security teams — whether or not they attended.
+    Creating and updating the agenda is a project management responsibility (Project Manager / Project Management Director).</p>`;}
 
  if(v==="d.meetingview"){
   if(LIVE_BACKEND&&S.meetingsLive===null&&S.meetingsLiveLoading!==(S.mtProj||"ALL"))loadMeetingsLive(S.mtProj||"ALL");
   const source=LIVE_BACKEND?(S.meetingsLive||[]):MEETINGS;
   const m=source.find(x=>x.id===S.mtView);
   if(!m&&LIVE_BACKEND&&S.meetingsLiveLoading!==null)
-   return head("Toplantı notu","Yükleniyor…",`<button class="b" data-a="mtClose">Listeye dön</button>`);
-  if(!m)return head("Toplantı notu","Kayıt bulunamadı.",`<button class="b" data-a="mtClose">Listeye dön</button>`);
+   return head("Meeting note","Loading…",`<button class="b" data-a="mtClose">Back to list</button>`);
+  if(!m)return head("Meeting note","Record not found.",`<button class="b" data-a="mtClose">Back to list</button>`);
   const pr=PROJ.find(x=>x.k===m.projKey),canWrite=cw("d.meeting");
   const groups={open:[],done:[],cancelled:[],carried:[]};
   (m.items||[]).forEach(it=>{(groups[it.status]||groups.open).push(it);});
   const itemRow=(it,extra)=>`<div class="card" style="padding:8px 11px;margin-bottom:6px;display:flex;gap:9px;align-items:center">
-   ${canWrite?`<button class="sw ${it.status==="done"?"on":""}" data-a="mtCheck:${it.id}" title="Tamamlandı olarak işaretle"><i></i></button>`
+   ${canWrite?`<button class="sw ${it.status==="done"?"on":""}" data-a="mtCheck:${it.id}" title="Mark as done"><i></i></button>`
     :`<span style="width:16px"></span>`}
-   <span style="flex:1;font-size:12.5px">${it.carriedFrom?`<span class="pl wr" style="margin-right:6px">önceki toplantıdan</span>`:""}${esc(it.text)}</span>
+   <span style="flex:1;font-size:12.5px">${it.carriedFrom?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}</span>
    ${extra||""}</div>`;
-  return head(esc(m.title),(pr?pr.k+" · "+esc(pr.n):"Diğer"+(m.projOther?" · "+esc(m.projOther):""))+" · "+(m.date||"")+(m.time?" "+m.time:""),
-    `<button class="b" data-a="mtClose">Listeye dön</button>`)+
+  return head(esc(m.title),(pr?pr.k+" · "+esc(pr.n):"Other"+(m.projOther?" · "+esc(m.projOther):""))+" · "+(m.date||"")+(m.time?" "+m.time:""),
+    `<button class="b" data-a="mtClose">Back to list</button>`)+
    `<div class="card" style="margin-bottom:13px;font-size:12px;line-height:1.7">
-     <div class="lbl">Katılımcılar</div>
+     <div class="lbl">Attendees</div>
      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:${m.notes?8:0}px">
       ${m.participants.map(n=>pill(n)).join(" ")||"—"}</div>
-     ${m.notes?`<div class="lbl" style="margin-top:8px">Notlar</div><p style="margin:4px 0 0;white-space:pre-wrap">${esc(m.notes)}</p>`:""}
-     <p class="m" style="color:var(--tm);margin-top:9px">Oluşturan: ${esc(m.by)} · ${m.at}</p></div>
-    <div class="lbl">Açık — ${groups.open.length}</div>
-    ${groups.open.map(it=>itemRow(it,canWrite?`<button class="b s" data-a="mtCancelItem:${it.id}">İptal</button>
-      <button class="b s" data-a="mtCarryItem:${it.id}">Sonraki toplantıya aktar</button>`:"")).join("")
-     ||`<p class="m" style="color:var(--tm)">Açık madde yok.</p>`}
-    <div class="lbl" style="margin-top:14px">Tamamlandı — ${groups.done.length}</div>
-    ${groups.done.map(it=>itemRow(it)).join("")||`<p class="m" style="color:var(--tm)">Tamamlanan madde yok.</p>`}
-    <div class="lbl" style="margin-top:14px">İptal — ${groups.cancelled.length}</div>
+     ${m.notes?`<div class="lbl" style="margin-top:8px">Notes</div><p style="margin:4px 0 0;white-space:pre-wrap">${esc(m.notes)}</p>`:""}
+     <p class="m" style="color:var(--tm);margin-top:9px">Created by: ${esc(m.by)} · ${m.at}</p></div>
+    <div class="lbl">Open — ${groups.open.length}</div>
+    ${groups.open.map(it=>itemRow(it,canWrite?`<button class="b s" data-a="mtCancelItem:${it.id}">Cancel</button>
+      <button class="b s" data-a="mtCarryItem:${it.id}">Carry to next meeting</button>`:"")).join("")
+     ||`<p class="m" style="color:var(--tm)">No open items.</p>`}
+    <div class="lbl" style="margin-top:14px">Done — ${groups.done.length}</div>
+    ${groups.done.map(it=>itemRow(it)).join("")||`<p class="m" style="color:var(--tm)">No completed items.</p>`}
+    <div class="lbl" style="margin-top:14px">Cancelled — ${groups.cancelled.length}</div>
     ${groups.cancelled.map(it=>`<div class="card" style="padding:8px 11px;margin-bottom:6px;opacity:.6;display:flex;gap:9px;align-items:center">
       <span style="flex:1;font-size:12.5px;text-decoration:line-through">${esc(it.text)}</span>
-      ${canWrite?`<button class="b s" data-a="mtReopen:${it.id}">Geri al</button>`:""}</div>`).join("")
-     ||`<p class="m" style="color:var(--tm)">İptal edilen madde yok.</p>`}
-    <div class="lbl" style="margin-top:14px">Devredildi — ${groups.carried.length}</div>
+      ${canWrite?`<button class="b s" data-a="mtReopen:${it.id}">Undo</button>`:""}</div>`).join("")
+     ||`<p class="m" style="color:var(--tm)">No cancelled items.</p>`}
+    <div class="lbl" style="margin-top:14px">Carried over — ${groups.carried.length}</div>
     ${groups.carried.map(it=>`<div class="card" style="padding:8px 11px;margin-bottom:6px;display:flex;gap:9px;align-items:center">
-      <span style="flex:1;font-size:12.5px">${esc(it.text)}</span>${pill("sonraki toplantıya aktarıldı","wr")}
-      ${canWrite?`<button class="b s" data-a="mtReopen:${it.id}">Geri al</button>`:""}</div>`).join("")
-     ||`<p class="m" style="color:var(--tm)">Devredilen madde yok.</p>`}
-    ${groups.carried.length?`<p class="m" style="color:var(--tm);margin-top:6px">Bu maddeler, ${m.projKey} için yeni
-      bir toplantı notu oluşturulduğunda gündeme otomatik olarak eklenir.</p>`:""}`;}
+      <span style="flex:1;font-size:12.5px">${esc(it.text)}</span>${pill("carried to next meeting","wr")}
+      ${canWrite?`<button class="b s" data-a="mtReopen:${it.id}">Undo</button>`:""}</div>`).join("")
+     ||`<p class="m" style="color:var(--tm)">No carried-over items.</p>`}
+    ${groups.carried.length?`<p class="m" style="color:var(--tm);margin-top:6px">These items will be added to the agenda automatically
+      when a new meeting note is created for ${m.projKey}.</p>`:""}`;}
 
  /* --------------------------- Yeni toplantı notu (sayfa içi) --------------------------- */
  if(v==="d.meetingnew"){
   const f=S.f,parts=f.parts||[],items=f.items||[];
   const freeUsers=USERS.filter(u=>u.on&&!parts.includes(u.n));
-  return head("Yeni toplantı notu","Oluşturduğunuzda tüm katılımcılara e-posta ile bildirim gönderilir.",
-    `<button class="b" data-a="mtNewCancel">Vazgeç</button>`)+
+  return head("New meeting note","All attendees receive an email notification when you create this.",
+    `<button class="b" data-a="mtNewCancel">Cancel</button>`)+
   `<div class="card" style="max-width:640px">
-    <div class="lbl">Proje</div>
+    <div class="lbl">Project</div>
     <select id="fMtProjSel">
-     <option value="" ${!f.projKey?"selected":""}>Lütfen seçiniz</option>
+     <option value="" ${!f.projKey?"selected":""}>Please select</option>
      ${PROJ.map(p=>`<option value="${p.k}" ${f.projKey===p.k?"selected":""}>${p.k} — ${esc(p.n)}</option>`).join("")}
-     <option value="OTHER" ${f.projKey==="OTHER"?"selected":""}>Diğer</option></select>
-    ${f.projKey==="OTHER"?`<div class="lbl" style="margin-top:13px">Toplantı Konusu</div>
-     <input id="fMtOtherSubject" value="${esc(f.otherSubject||"")}" placeholder="Toplantının konusunu yazın">`:""}
+     <option value="OTHER" ${f.projKey==="OTHER"?"selected":""}>Other</option></select>
+    ${f.projKey==="OTHER"?`<div class="lbl" style="margin-top:13px">Meeting subject</div>
+     <input id="fMtOtherSubject" value="${esc(f.otherSubject||"")}" placeholder="Enter the subject of the meeting">`:""}
 
-    <div class="lbl" style="margin-top:13px">Toplantı tarihi ve saati</div>
+    <div class="lbl" style="margin-top:13px">Meeting date and time</div>
     <div style="display:flex;gap:8px">
      <input id="fMtDate" type="date" value="${esc(f.date||"")}" style="flex:1">
      <input id="fMtTime" type="time" value="${esc(f.time||"")}" style="width:120px"></div>
 
-    <div class="lbl" style="margin-top:13px">Başlık (opsiyonel)</div>
-    <input id="fMtTitle" value="${esc(f.title||"")}" placeholder="Örn: Haftalık durum toplantısı">
+    <div class="lbl" style="margin-top:13px">Title (optional)</div>
+    <input id="fMtTitle" value="${esc(f.title||"")}" placeholder="E.g.: Weekly status meeting">
 
-    <div class="lbl" style="margin-top:13px">Katılımcılar — personel listesinden seçilir</div>
+    <div class="lbl" style="margin-top:13px">Attendees — selected from the staff list</div>
     ${parts.length?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
      ${parts.map(n=>`<span class="pl ok" style="cursor:pointer" data-a="mtRemPart:${encodeURIComponent(n)}">${esc(n)} ✕</span>`).join("")}</div>`:""}
     <select id="fMtPartSel">
-     <option value="" selected>Lütfen seçiniz</option>
+     <option value="" selected>Please select</option>
      ${freeUsers.map(u=>`<option value="${esc(u.n)}">${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
-    <p class="m" style="color:var(--tm);margin:5px 0 0">Bir kişi seçtiğinizde listeye eklenir; birden fazla kişi için tekrar seçim yapın. Seçili: ${parts.length}</p>
+    <p class="m" style="color:var(--tm);margin:5px 0 0">Selecting a person adds them to the list; select again to add more. Selected: ${parts.length}</p>
 
-    <div class="lbl" style="margin-top:14px">Gündem maddeleri</div>
+    <div class="lbl" style="margin-top:14px">Agenda items</div>
     ${items.length?items.map((it,i)=>`<div class="card" style="padding:7px 10px;margin-bottom:5px;display:flex;gap:8px;align-items:center">
-     <span style="flex:1;font-size:12.5px">${it.carried?`<span class="pl wr" style="margin-right:6px">önceki toplantıdan</span>`:""}${esc(it.text)}</span>
-     <button class="b s d" data-a="mtRemItem:${i}">Sil</button></div>`).join("")
-     :`<p class="m" style="color:var(--tm);margin:4px 0">Henüz madde eklenmedi.</p>`}
+     <span style="flex:1;font-size:12.5px">${it.carried?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}</span>
+     <button class="b s d" data-a="mtRemItem:${i}">Delete</button></div>`).join("")
+     :`<p class="m" style="color:var(--tm);margin:4px 0">No items added yet.</p>`}
     <div style="display:flex;gap:6px">
-     <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="Yeni gündem maddesi..." style="flex:1">
-     <button class="b s" data-a="mtAddItem">Ekle</button></div>
+     <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="New agenda item..." style="flex:1">
+     <button class="b s" data-a="mtAddItem">Add</button></div>
 
-    <div class="lbl" style="margin-top:13px">Notlar</div>
-    <textarea id="fMtNotes" placeholder="Toplantıya dair serbest notlar">${esc(f.notes||"")}</textarea>
+    <div class="lbl" style="margin-top:13px">Notes</div>
+    <textarea id="fMtNotes" placeholder="Free-form notes about the meeting">${esc(f.notes||"")}</textarea>
 
     <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px;align-items:center">
      <span id="hint" class="m" style="color:var(--tm);flex:1"></span>
-     <button class="b" data-a="mtNewCancel">Vazgeç</button>
-     <button id="okBtn" class="b off" data-a="needFields">Oluştur ve bildir</button></div></div>`;}
+     <button class="b" data-a="mtNewCancel">Cancel</button>
+     <button id="okBtn" class="b off" data-a="needFields">Create and notify</button></div></div>`;}
 
  /* -------------------------------- Gantt Chart ------------------------------- */
  if(v==="d.gantt"){
@@ -2110,11 +2115,11 @@ function screenView(){
   const tasks=LIVE_BACKEND?(S.ganttLiveProj===p.k?(S.ganttLive||[]):[]):(GANTT[p.k]||(GANTT[p.k]=[]));
   const loading=LIVE_BACKEND&&S.ganttLiveProj!==p.k;
   const rng=ganttRange(tasks,p),totalDays=rng?Math.max(1,dayDiff(rng.min,rng.max)):1;
-  return head("Gantt Chart",p.k+" — "+p.n+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
+  return head("Gantt Chart",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":" · demo data"),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
      `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
-    ${canWrite?`<button class="b p" data-a="ganttAdd">Görev ekle</button>`:""}</div>`)+
-  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
+    ${canWrite?`<button class="b p" data-a="ganttAdd">Add task</button>`:""}</div>`)+
+  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
   (tasks.length?`<div class="card" style="overflow:auto">
     <div style="min-width:640px">
     ${rng?`<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--tm);margin-bottom:8px">
@@ -2131,13 +2136,13 @@ function screenView(){
          <div style="height:100%;width:${t.progress||0}%;background:var(--gold)"></div></div></div>
        <span class="m" style="width:110px;color:var(--tm);flex-shrink:0">${t.start||"?"} → ${t.end||"?"}</span>
        <span class="m" style="width:34px;text-align:right;flex-shrink:0">${t.progress||0}%</span>
-       ${canWrite?`<button class="b s d" data-a="ganttDel:${t.id}">Sil</button>`:""}</div>`;}).join("")}
+       ${canWrite?`<button class="b s d" data-a="ganttDel:${t.id}">Delete</button>`:""}</div>`;}).join("")}
     </div></div>`
-   :`<div class="card"><span style="font-size:12.5px;color:var(--tm)">Bu proje için henüz görev eklenmedi.</span></div>`))+
-  `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Gantt şeması yalnızca proje yönetimi rolündekilerce
-    (Proje Yöneticisi / Proje Yönetim Direktörü) hazırlanabilir; proje ekibi ve diğer yetkili roller salt okunur görür.</p>`;}
+   :`<div class="card"><span style="font-size:12.5px;color:var(--tm)">No tasks have been added for this project yet.</span></div>`))+
+  `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">The Gantt chart can only be prepared by project management roles
+    (Project Manager / Project Management Director); the project team and other authorized roles see it read-only.</p>`;}
 
- /* ---- raporlar ---- */
+ /* ---- reports ---- */
 
 
  /* ------------------------------ Project team ------------------------------ */
@@ -2145,17 +2150,17 @@ function screenView(){
   if(LIVE_BACKEND&&(S.teamLiveProj!==p.k||S.teamLive===null)&&S.teamLiveLoading!==p.k)loadTeamLive(p.k);
   const team=LIVE_BACKEND?(S.teamLiveProj===p.k?(S.teamLive||[]):[]):teamOf(p.k);
   const loading=LIVE_BACKEND&&S.teamLiveProj!==p.k;
-  return head("Project team",p.k+" — "+p.n+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
+  return head("Project team",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":" · demo data"),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
      `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
     ${cw("d.team")?`<button class="b p" data-a="teamAdd">Add member</button>`:""}</div>`)+
-  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
+  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
   table(["Name","Title","Unit","Project role",""],team.map((m,i)=>`<tr>
    <td>${esc(m.n)}</td><td style="color:var(--t2)">${esc(titleOf(m.n))}</td>
    <td style="color:var(--t2)">${esc((USERS.find(u=>u.n===m.n)||{}).unit||"—")}</td>
    <td>${pill(m.r)}</td>
    <td style="text-align:right">${(LIVE_BACKEND?m.mandatory:MANDATORY_ROLES.includes(m.r))
-     ? pill("zorunlu üye","wr")
+     ? pill("mandatory member","wr")
      : (cw("d.team")?`<button class="b s d" data-a="teamDel:${LIVE_BACKEND?encodeURIComponent(m.username):i}">Remove</button>`:"")}</td></tr>`).join("")
    ||`<tr><td colspan="5" style="color:var(--tm)">No members assigned yet.</td></tr>`))+
   `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Document approval order:
@@ -2170,7 +2175,7 @@ function screenView(){
   const rows=all.filter(x=>fp==="ALL"||x.pr.k===fp)
    .sort((a,b)=>a.pr.k.localeCompare(b.pr.k)||docTypeIdx(a.d.type)-docTypeIdx(b.d.type));
   const cur=P();
-  return head("Project documents","PDF only · a document cannot be approved before the previous one"+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
+  return head("Project documents","PDF only · a document cannot be approved before the previous one"+(LIVE_BACKEND?" · live backend":" · demo data"),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">
      <button class="b s ${fp==="ALL"?"p":""}" data-a="docProj:ALL">All projects</button>
      ${PROJ.map(x=>`<button class="b s ${fp===x.k?"p":""}" data-a="docProj:${x.k}">${x.k}</button>`).join("")}
@@ -2182,7 +2187,7 @@ function screenView(){
      <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
       ${kickoffReady(x)?pill("kick-off ready","ok"):pill("kick-off blocked","er")}
       ${goliveReady(x)?pill("go-live ready","ok"):pill("go-live blocked","wr")}</div></div>`).join("")}</div>`+
-  (LIVE_BACKEND&&S.docsLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
+  (LIVE_BACKEND&&S.docsLive===null?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
   table(["Project","Type","Document","File","Uploaded by","Approvals","Status",""],rows.map(({pr,d})=>{
    const done=docFullyApproved(d),mine=d.by===S.me.n,block=prevBlocking(pr,d);
    const steps=stepsFor(pr,d);
@@ -2205,17 +2210,17 @@ function screenView(){
     <b>Approval chain</b> — every document is approved by three tiers: the project owner unit manager,
     the internal audit manager and the IT manager. UAT additionally requires the business unit
     (Business Owner / Product Owner). Approvers must hold a Director-level title or above.<br>
-    <b>Order</b> — Proje Kartı → BRD → FRD → UAT → Go Live → Risk ve Uyumluluk → Kapanış.
+    <b>Order</b> — Project Charter → BRD → FRD → UAT → Go Live → Risk and Compliance → Closure.
     A document cannot be approved before the previous one is fully approved.<br>
-    <b>Gates</b> — kick-off requires Proje Kartı, BRD and FRD; go-live requires UAT.<br>
+    <b>Gates</b> — kick-off requires Project Charter, BRD and FRD; go-live requires UAT.<br>
     <b>Files</b> — PDF only and never replaced. The uploader may rename or remove a document until the
     first approval; after full approval it is view-only for everyone.</div>`;}
 
- /* Doküman görüntüleme ekranı: onay yalnızca buradan, görüntüledikten sonra verilir */
+ /* Document view screen: approval is only given here, after viewing the document */
  if(v==="d.docview"){const ref=S.docView2;
   if(LIVE_BACKEND&&S.docsLive===null&&!S.docsLiveLoading)loadDocsLive();
   if(!ref)return head("Document","No document selected.");
-  if(LIVE_BACKEND&&S.docsLive===null)return head("Document","Yükleniyor…");
+  if(LIVE_BACKEND&&S.docsLive===null)return head("Document","Loading…");
   const pr=PROJ.find(x=>x.k===ref.k),d=docsOf(ref.k).find(x=>x.id===ref.id);
   if(!pr||!d)return head("Document","Document not found.");
   const steps=stepsFor(pr,d),done=docFullyApproved(d),block=prevBlocking(pr,d);
@@ -2226,23 +2231,23 @@ function screenView(){
   `<div class="card" style="padding:10px 12px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
     ${pill(d.file)}${pill(d.pages+" pages")}${pill("uploaded "+d.at)}
     ${done?pill("approved · view only","ok"):pill("in approval","wr")}
-    ${LIVE_BACKEND?`<a href="/api/projects/${encodeURIComponent(pr.k)}/documents/${d.id}/file" target="_blank" rel="noopener" class="b s">Gerçek PDF'i aç</a>`:""}</div>
+    ${LIVE_BACKEND?`<a href="/api/projects/${encodeURIComponent(pr.k)}/documents/${d.id}/file" target="_blank" rel="noopener" class="b s">Open real PDF</a>`:""}</div>
    <div class="docframe ${S.docFull?"full":""}">
-    ${S.docFull?`<button class="b s" data-a="docFull" style="position:sticky;top:0;float:right;z-index:2">Küçült</button>`:""}
+    ${S.docFull?`<button class="b s" data-a="docFull" style="position:sticky;top:0;float:right;z-index:2">Collapse</button>`:""}
     <div class="sheet" style="max-width:${S.docFull?"960px":"820px"};margin:0 auto">
      <div style="font-size:14px;margin-bottom:12px"><b>${esc(DOC_TYPES[docTypeIdx(d.type)].n)}</b> — ${esc(pr.n)}</div>
      ${Array.from({length:d.pages||2},(_,i)=>`<p style="margin:0 0 12px">
-       ${i+1}. sayfa — bu prototipte doküman içeriği örnek metinle gösterilir. Gerçek kurulumda
-       yüklenen PDF gömülü görüntüleyicide açılır ve sayfa sayısı dosyadan okunur.</p>`).join("")}
+       Page ${i+1} — in this prototype, document content is shown with placeholder text. In a real
+       deployment, the uploaded PDF opens in an embedded viewer and the page count is read from the file.</p>`).join("")}
      <div style="border-top:1px solid #dcdfe4;margin-top:14px;padding-top:9px;color:#8a8a8a;font-size:10.5px">
       ${esc(d.file)} · ${pr.k}</div></div></div>
    <div style="display:flex;justify-content:flex-end;margin-top:8px">
-    <button class="b s" data-a="docFull">${S.docFull?"Küçült":"Tam ekran oku"}</button></div>
+    <button class="b s" data-a="docFull">${S.docFull?"Collapse":"Read fullscreen"}</button></div>
    <div class="lbl" style="margin-top:10px">Approval chain</div>
    ${table(["#","Tier","Expected approver","Approved by","Title","Date","Status"],steps.map((st,ix)=>`<tr>
      <td class="m" style="color:var(--tm)">${ix+1}</td><td>${st.n}</td>
-     <td style="color:var(--t2)">${esc(st.who||"tanımsız")}</td>
-     <td>${st.done?esc(st.done.n)+(st.done.onBehalf?` <span class="pl wr">vekaleten</span>`:""):"—"}</td>
+     <td style="color:var(--t2)">${esc(st.who||"undefined")}</td>
+     <td>${st.done?esc(st.done.n)+(st.done.onBehalf?` <span class="pl wr">on behalf</span>`:""):"—"}</td>
      <td style="color:var(--t2)">${st.done?esc(st.done.t):"—"}</td>
      <td class="m">${st.done?st.done.at:"—"}</td>
      <td>${st.done?pill("approved","ok")
@@ -2251,9 +2256,9 @@ function screenView(){
     <span style="font-size:11.5px;color:var(--tm);flex:1;min-width:200px">
      ${done?"Fully approved — this document is read-only."
       :block?(block.missing?`Blocked: ${block.missing} has not been uploaded yet.`:`Blocked: ${block.pending} is still in approval.`)
-      :step?(seen?"Sıradaki adım sizde: "+APPROVER_STEPS.find(x=>x.k===step).n
+      :step?(seen?"It's your turn: "+APPROVER_STEPS.find(x=>x.k===step).n
         :"Scroll through the document first — approval opens after you view it.")
-      :`Bu adımı ${(nextStep(pr,d)||{}).who||"tanımlı onaycı"} onaylamalı.`}</span>
+      :`This step must be approved by ${(nextStep(pr,d)||{}).who||"the assigned approver"}.`}</span>
     ${!seen&&!done?`<button class="b" data-a="pdocSeen:${pr.k}:${d.id}">I have reviewed the document</button>`:""}
     ${!done&&!block&&step&&seen?`<button class="b g" data-a="pdocAppr2:${pr.k}:${d.id}:${step}">Approve as ${step}</button>
       <button class="b d" data-a="pdocRej:${pr.k}:${d.id}">Reject</button>`:""}</div>`;}
@@ -2282,11 +2287,11 @@ function screenView(){
   const list=LIVE_BACKEND?(S.crLiveProj===p.k?(S.crLive||[]):[]):crsOf(p.k);
   const loading=LIVE_BACKEND&&S.crLiveProj!==p.k;
   const ST={taslak:["draft","wr"],onayda:["pending approval","wr"],onaylandi:["approved","ok"],reddedildi:["rejected","er"]};
-  return head("Change requests",p.k+" — scope, cost and schedule changes"+(LIVE_BACKEND?" · canlı backend":" · demo verisi"),
+  return head("Change requests",p.k+" — scope, cost and schedule changes"+(LIVE_BACKEND?" · live backend":" · demo data"),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>
      `<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}
     ${cw("d.cr")?`<button class="b p" data-a="crAdd">New request</button>`:""}</div>`)+
-  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`:
+  (loading?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
   table(["No","Title","Impact","Raised by","Date","Status","Approvals",""],list.map((c,i)=>{
    const key=LIVE_BACKEND?c.id:i;
    const teamForRole=LIVE_BACKEND?(S.teamLiveProj===p.k?(S.teamLive||[]):[]):teamOf(p.k);
@@ -2313,9 +2318,9 @@ function screenView(){
   if(LIVE_BACKEND){
    if(!p.itemsLoaded)loadIssuesLive(p.k);
    if(!p.sprintHistoryLoaded)loadSprintHistoryLive(p.k);
-   if(!p.itemsLoaded)return head("Project charts",p.k+" — "+p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;}
+   if(!p.itemsLoaded)return head("Project charts",p.k+" — "+p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;}
   const mt=metrics(p);
-  return head("Project charts",p.k+" — "+p.n+(LIVE_BACKEND?" · canlı backend":""),
+  return head("Project charts",p.k+" — "+p.n+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${PROJ.map((x,i)=>`<button class="b s ${i===S.proj?"p":""}" data-a="proj:${i}">${x.k}</button>`).join("")}</div>`)+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:13px">
    ${[["Progress",mt.pct+"%","open"],["Story points",mt.donePts+" / "+mt.pts,"open"],
@@ -2342,26 +2347,26 @@ function screenView(){
    <p style="font-size:12.5px;line-height:1.65;margin:8px 0 0">This report is available to <b>Director</b>,
     <b>Group Director</b> and <b>Executive Vice President</b> titles only. Your title: ${esc(S.me.title)}.</p></div>`;
   if(LIVE_BACKEND&&PROJ.some(p=>!p.itemsLoaded))
-   return head("Executive summary","")+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
+   return head("Executive summary","")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
   const rows=PROJ.map(p=>({p,mt:metrics(p)}));
   const tot={pts:rows.reduce((a,r)=>a+r.mt.pts,0),done:rows.reduce((a,r)=>a+r.mt.donePts,0),
    bugs:rows.reduce((a,r)=>a+r.mt.bugs,0),
-   late:rows.filter(r=>r.p.health==="Gecikmede").length,risk:rows.filter(r=>r.p.health==="Risk altında").length};
+   late:rows.filter(r=>r.p.health==="Delayed").length,risk:rows.filter(r=>r.p.health==="At risk").length};
   tot.pct=tot.pts?Math.round(tot.done/tot.pts*100):0;
   const attention=rows.filter(r=>r.mt.drift!==null&&r.mt.drift<=-15);
-  const units={};rows.forEach(r=>{const u=r.p.unitName||"Birim atanmadı";
+  const units={};rows.forEach(r=>{const u=r.p.unitName||"Unit not assigned";
    units[u]=units[u]||{u,n:0,pts:0,done:0};units[u].n++;units[u].pts+=r.mt.pts;units[u].done+=r.mt.donePts;});
-  /* Kutular tıklanabilir: aşağıdaki karşılaştırma tablosunu filtreler. */
+  /* Tiles are clickable: they filter the comparison table below. */
   const ef=S.execFilter||null;
   const eu=S.execUnit||null;
   const shown=rows.filter(r=>{
-   if(eu)return (r.p.unitName||"Birim atanmadı")===eu;
+   if(eu)return (r.p.unitName||"Unit not assigned")===eu;
    if(!ef)return true;
-   if(ef==="delayed")return r.p.health==="Gecikmede";
-   if(ef==="risk")return r.p.health==="Risk altında";
+   if(ef==="delayed")return r.p.health==="Delayed";
+   if(ef==="risk")return r.p.health==="At risk";
    if(ef==="bugs")return r.mt.bugs>0;
    if(ef==="attention")return r.mt.drift!==null&&r.mt.drift<=-20;
-   if(ef==="ontrack")return r.p.health==="Planında";
+   if(ef==="ontrack")return r.p.health==="On track";
    return true;});
   const FLABEL={delayed:"Delayed projects",risk:"Projects at risk",bugs:"Projects with open bugs",
    attention:"Projects behind schedule",ontrack:"Projects on track"};
@@ -2369,7 +2374,7 @@ function screenView(){
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
    ${[["Projects",PROJ.length,null],["Portfolio progress",tot.pct+"%",null],
       ["Story points",tot.done+" / "+tot.pts,null],["Delayed",tot.late,"delayed"],
-      ["At risk",tot.risk,"risk"],["On track",rows.filter(r=>r.p.health==="Planında").length,"ontrack"],
+      ["At risk",tot.risk,"risk"],["On track",rows.filter(r=>r.p.health==="On track").length,"ontrack"],
       ["Open bugs",tot.bugs,"bugs"]].map(x=>
     `<div class="card" ${x[2]?`data-a="execFilter:${x[2]}" style="cursor:pointer;${ef===x[2]?"border-color:var(--ta)":""}" title="Click to filter the table below"`:""}>
       <div class="lbl">${x[0]}${x[2]?` <span style="color:var(--ta)">→</span>`:""}</div>
@@ -4066,7 +4071,7 @@ app.addEventListener("click",async ev=>{
    }catch(e){toast(e.message,1);}
    return;}
   if(PROJ.some(x=>x.k===code)){toast("Bu proje kodu zaten kullanılıyor.",1);return;}
-  PROJ.push({k:code,n:f.b.trim(),m:f.method,lead:S.me.n,health:"Planında",hc:"#3B6D11",
+  PROJ.push({k:code,n:f.b.trim(),m:f.method,lead:S.me.n,health:"On track",hc:"#3B6D11",
    unitName:f.unit,timePct:0,burndown:null,velocityHist:[],
    sprint:f.method==="Scrum"?{n:"Sprint 1",left:14,committed:0,done:0,goal:"Tanımlanacak"}:null,
    gate:f.method==="Waterfall"?{n:"Başlangıç → Analiz",need:2,sign:[],crit:[["Project charter approved",0],["Resource plan ready",0]]}:null,
@@ -4326,6 +4331,7 @@ app.addEventListener("click",async ev=>{
   const defaults={company:"Tera Yatırım Menkul Değerler A.Ş.",companyShort:"Tera Yatırım",
    product:"Tera Portal",slogan:"Her şey bir arada, tek bir yerde.",
    loginTitle:"Oturum açın",loginHint:"Kurum hesabınızla devam edin.",
+   loginUserPlaceholder:"Kullanıcı Adı",loginPassPlaceholder:"Parolanızı giriniz",
    footer:"© "+new Date().getFullYear()+" Tera Yatırım Menkul Değerler A.Ş.",accent:"#B8894A"};
   if(LIVE_BACKEND){
    try{const data=await api("PUT","/api/admin/brand",defaults);S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();}

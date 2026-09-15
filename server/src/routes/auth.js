@@ -39,7 +39,15 @@ async function getEffectiveAuthMode() {
 router.get("/mode", async (req, res, next) => {
   try {
     const mode = await getEffectiveAuthMode();
-    res.json({ adActive: mode === "ldap" });
+    // Giriş ekranının marka metinleri (başlık, alt metin, kutu placeholder'ları)
+    // kimlik doğrulamadan ÖNCE gösterilmek zorunda, bu yüzden bu tek uçtan hem
+    // AD durumu hem bu birkaç marka alanı birlikte döner — hiçbiri hassas değil.
+    const { rows } = await query(
+      "SELECT key, value FROM brand_settings WHERE key IN ('loginTitle','loginHint','loginUserPlaceholder','loginPassPlaceholder')"
+    );
+    const brand = {};
+    rows.forEach((r) => { brand[r.key] = r.value; });
+    res.json({ adActive: mode === "ldap", brand });
   } catch (e) { next(e); }
 });
 
