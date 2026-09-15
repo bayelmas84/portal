@@ -18,6 +18,7 @@ async function attachUser(req, res, next) {
       [session.username]
     );
     req.user = rows[0] || null;
+    req.forcePasswordChange = !!session.force_password_change;
     next();
   } catch (e) {
     next(e);
@@ -70,4 +71,14 @@ function requireCsrf(req, res, next) {
   next();
 }
 
-module.exports = { attachUser, requireAuth, requireRead, requireWrite, requireCsrf };
+// Şifre değişikliği zorunlu olan bir oturum, bunu tamamlayana kadar (ya da
+// çıkış yapana kadar) başka hiçbir uca erişemez.
+const ALLOWED_DURING_PASSWORD_CHANGE = ["/api/auth/logout", "/api/auth/me", "/api/auth/change-password"];
+function blockIfForcePasswordChange(req, res, next) {
+  if (req.forcePasswordChange && !ALLOWED_DURING_PASSWORD_CHANGE.includes(req.path)) {
+    return res.status(403).json({ error: "Devam etmeden önce şifrenizi değiştirmeniz gerekiyor.", mustChangePassword: true });
+  }
+  next();
+}
+
+module.exports = { attachUser, requireAuth, requireRead, requireWrite, requireCsrf, blockIfForcePasswordChange };

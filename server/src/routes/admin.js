@@ -10,6 +10,8 @@ const {
 } = require("../lib/permissions");
 const { audit } = require("../lib/audit");
 const { notifyApprovalCreated } = require("../lib/notify");
+const { hashPassword, validatePasswordPolicy } = require("../lib/password");
+const { destroyAllSessionsForUser } = require("../auth/session");
 
 const router = express.Router();
 
@@ -187,7 +189,7 @@ const VALID_ROLES = Object.keys(DEFAULT_ACCESS).concat(["gmy", "opsdir"]).filter
 
 router.post("/users", requireWrite("m.users"), async (req, res, next) => {
   try {
-    const { username, name, email, role, unit, title, managerUsername } = req.body || {};
+    const { username, name, email, role, unit, title, managerUsername, initialPassword } = req.body || {};
     if (!username || !/^[a-z]+\.[a-z]+$/.test(username)) {
       return res.status(400).json({ error: "Kullanıcı adı 'ad.soyad' biçiminde olmalı." });
     }
@@ -196,15 +198,48 @@ router.post("/users", requireWrite("m.users"), async (req, res, next) => {
     // KURAL: "belmas" rolü yalnızca AD'den gelen sistem hesabına aittir, kimseye
     // sonradan atanamaz (yeni bir kullanıcı bu rolle oluşturulamaz).
     if (role === "belmas") return res.status(403).json({ error: "belmas rolü başka bir kullanıcıya atanamaz." });
+    // AD kapalıyken (yerel parola modu) her kullanıcının bir ilk giriş
+    // şifresiyle oluşturulması ZORUNLUDUR — şifresiz hesap oluşturulamaz.
+    const dirRow = await query("SELECT active FROM directory_settings WHERE id=1");
+    const adActive = !!(dirRow.rows[0] && dirRow.rows[0].active);
+    if (!adActive) {
+      if (!initialPassword) return res.status(400).json({ error: "AD kapalıyken ilk giriş şifresi zorunludur." });
+      const policyError = validatePasswordPolicy(initialPassword);
+      if (policyError) return res.status(400).json({ error: policyError });
+    }
     const existing = await query("SELECT 1 FROM users WHERE username=$1", [username]);
     if (existing.rowCount) return res.status(409).json({ error: "Bu kullanıcı adı zaten var." });
     await requestAdminApproval(req, res, "admin.user.create",
-      { username, name, email, role, unit, title, managerUsername },
+      { username, name, email, role, unit, title, managerUsername, initialPassword: adActive ? undefined : initialPassword },
       `Yeni kullanıcı: ${username} (${role})`);
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Bu kullanıcı adı zaten var." });
     next(e);
   }
+});
+
+// Şifre sıfırlama: kasıtlı olarak "şifremi unuttum" (self-service) akışı
+// YOKTUR — bunun yerine admin burada yeni bir GEÇİCİ şifre belirler, kullanıcı
+// bir sonraki girişte bunu KENDİ seçtiği bir şifreyle değiştirmek zorunda
+// kalır (aynı ilk-giriş akışı). Mevcut oturumları da sonlandırır.
+router.post("/users/:username/reset-password", requireWrite("m.users"), async (req, res, next) => {
+  try {
+    if (req.params.username === "belmas") {
+      return res.status(403).json({ error: "belmas sistem hesabı hiçbir şekilde değiştirilemez." });
+    }
+    const dirRow = await query("SELECT active FROM directory_settings WHERE id=1");
+    if (dirRow.rows[0] && dirRow.rows[0].active) {
+      return res.status(409).json({ error: "AD aktifken şifre bu portalden sıfırlanamaz — AD üzerinden yönetilir." });
+    }
+    const { newPassword } = req.body || {};
+    const policyError = validatePasswordPolicy(newPassword);
+    if (policyError) return res.status(400).json({ error: policyError });
+    const target = await query("SELECT username FROM users WHERE username=$1", [req.params.username]);
+    if (!target.rowCount) return res.status(404).json({ error: "Kullanıcı bulunamadı." });
+    await requestAdminApproval(req, res, "admin.user.reset_password",
+      { username: req.params.username, newPassword },
+      `Şifre sıfırlama: ${req.params.username}`);
+  } catch (e) { next(e); }
 });
 
 router.put("/users/:username", requireWrite("m.users"), async (req, res, next) => {

@@ -32,6 +32,12 @@ const USERS = [
 ];
 
 async function seed() {
+  const { hashPassword } = require("./lib/password");
+  // Test/dev kolaylığı: tüm örnek kullanıcılar aynı bilinen şifreyle ("demo1234")
+  // ve zaten değiştirilmiş (must_change_password=false) olarak eklenir — gerçek
+  // üretimde admin her kullanıcı için AYRI bir ilk giriş şifresi belirler ve
+  // must_change_password=true kalır (bkz. admin.js POST /users).
+  const DEMO_PASSWORD_HASH = await hashPassword("demo1234");
   for (const [code, name] of UNITS) {
     await query("INSERT INTO units (code,name) VALUES ($1,$2) ON CONFLICT (code) DO NOTHING", [code, name]);
   }
@@ -40,9 +46,9 @@ async function seed() {
   }
   for (const [username, name, role, unit, title] of USERS) {
     await query(
-      `INSERT INTO users (username,name,email,role,unit,title,color)
-       VALUES ($1,$2,$3,$4,$5,$6,'#0B1F48') ON CONFLICT (username) DO NOTHING`,
-      [username, name, username.replace(".", ".") + "@terayatirim.com.tr", role, unit, title]
+      `INSERT INTO users (username,name,email,role,unit,title,color,password_hash,must_change_password)
+       VALUES ($1,$2,$3,$4,$5,$6,'#0B1F48',$7,false) ON CONFLICT (username) DO NOTHING`,
+      [username, name, username.replace(".", ".") + "@terayatirim.com.tr", role, unit, title, DEMO_PASSWORD_HASH]
     );
   }
   // Yönetici ilişkisi ikinci geçişte (tüm kullanıcılar var olduktan sonra) kurulur.

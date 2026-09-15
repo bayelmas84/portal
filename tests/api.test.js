@@ -16,7 +16,7 @@ test.before(async () => {
 });
 
 async function login(username) {
-  const res = await request(app).post("/api/auth/login").send({ username });
+  const res = await request(app).post("/api/auth/login").send({ username, password: "demo1234" });
   const cookie = res.headers["set-cookie"][0];
   return { cookie, csrf: res.body.csrfToken, user: res.body.user };
 }
@@ -29,7 +29,7 @@ test("giriş: geçerli kullanıcı adıyla oturum ve CSRF token döner", async (
 });
 
 test("giriş: olmayan kullanıcı adı reddedilir", async () => {
-  const res = await request(app).post("/api/auth/login").send({ username: "yok.boyle.biri" });
+  const res = await request(app).post("/api/auth/login").send({ username: "yok.boyle.biri", password: "herhangi123" });
   assert.equal(res.status, 401);
 });
 

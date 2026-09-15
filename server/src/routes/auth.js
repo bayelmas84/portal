@@ -2,9 +2,11 @@
 const express = require("express");
 const { query } = require("../db");
 const { config } = require("../config");
-const { createSession, destroySession } = require("../auth/session");
+const { createSession, destroySession, completePasswordChange } = require("../auth/session");
 const { verifyAgainstDirectory } = require("../auth/ldap");
 const { audit } = require("../lib/audit");
+const { verifyPassword, validatePasswordPolicy, hashPassword } = require("../lib/password");
+const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -25,9 +27,9 @@ function setSessionCookie(res, session) {
 async function getEffectiveAuthMode() {
   try {
     const { rows } = await query("SELECT active FROM directory_settings WHERE id=1");
-    if (rows.length) return rows[0].active ? "ldap" : "mock";
+    if (rows.length) return rows[0].active ? "ldap" : "local";
   } catch (e) { /* tablo yoksa (eski migration) .env'e düş */ }
-  return config.authMode;
+  return config.authMode === "ldap" ? "ldap" : "local";
 }
 
 router.post("/login", async (req, res, next) => {
@@ -35,6 +37,9 @@ router.post("/login", async (req, res, next) => {
     const { username, password } = req.body || {};
     if (!username || typeof username !== "string") {
       return res.status(400).json({ error: "Kullanıcı adı gerekli." });
+    }
+    if (!password) {
+      return res.status(400).json({ error: "Parola gerekli." });
     }
     const uname = username.trim().toLowerCase();
     const { rows } = await query("SELECT * FROM users WHERE username=$1 AND active", [uname]);
@@ -46,7 +51,6 @@ router.post("/login", async (req, res, next) => {
 
     const authMode = await getEffectiveAuthMode();
     if (authMode === "ldap") {
-      if (!password) return res.status(400).json({ error: "Parola gerekli." });
       let ok;
       try {
         ok = await verifyAgainstDirectory(uname, password);
@@ -57,11 +61,26 @@ router.post("/login", async (req, res, next) => {
         await audit(`Başarısız giriş denemesi: ${uname}`, uname, false);
         return res.status(401).json({ error: "Kullanıcı adı veya parola hatalı." });
       }
+    } else {
+      // AD kapalı: kendi (yerel) parola sistemimiz devrede — kimse şifresiz
+      // giremez. Admin, kullanıcıyı oluştururken bir ilk giriş şifresi belirler;
+      // parola hash'i yoksa (örn. eski/bozuk kayıt) giriş reddedilir.
+      const ok = await verifyPassword(user.password_hash, password);
+      if (!ok) {
+        await audit(`Başarısız giriş denemesi: ${uname}`, uname, false);
+        return res.status(401).json({ error: "Kullanıcı adı veya parola hatalı." });
+      }
     }
-    // authMode === 'mock': yalnızca geliştirme/test — kullanıcı adı yeterli.
 
-    const session = await createSession(uname);
+    // must_change_password yalnızca yerel modda anlamlıdır (AD'de parola
+    // politikası AD'nin kendi sorumluluğundadır).
+    const forceChange = authMode === "local" && user.must_change_password;
+    const session = await createSession(uname, forceChange);
     setSessionCookie(res, session);
+    if (forceChange) {
+      await audit(`Giriş (1/2 — parola değişikliği zorunlu): ${uname}`, uname, true);
+      return res.json({ mustChangePassword: true, csrfToken: session.csrfSecret });
+    }
     await audit(`Giriş yapıldı: ${uname}`, uname, true);
     res.json({
       user: {
@@ -79,6 +98,45 @@ router.post("/login", async (req, res, next) => {
   } catch (e) {
     next(e);
   }
+});
+
+// Zorunlu (ilk giriş / admin sıfırlaması sonrası) VEYA gönüllü (kullanıcı
+// kendi isteğiyle) parola değişikliği — aynı uç, req.forcePasswordChange
+// bayrağına göre eski parola kontrolünü atlar ya da zorunlu kılar. Kasıtlı
+// olarak "şifremi unuttum" (self-service, e-posta ile sıfırlama) akışı
+// YOKTUR — bunun yerine admin "şifreyi sıfırla" eylemini kullanır.
+router.post("/change-password", requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ error: "Yeni şifre ile tekrarı eşleşmiyor." });
+    }
+    const policyError = validatePasswordPolicy(newPassword);
+    if (policyError) return res.status(400).json({ error: policyError });
+
+    const { rows } = await query("SELECT password_hash FROM users WHERE username=$1", [req.user.username]);
+    const currentHash = rows[0] && rows[0].password_hash;
+
+    if (!req.forcePasswordChange) {
+      // Gönüllü değişiklik: mevcut şifre doğrulanmalı.
+      const ok = await verifyPassword(currentHash, currentPassword);
+      if (!ok) return res.status(401).json({ error: "Mevcut şifre hatalı." });
+    }
+    // Zorunlu değişiklikte (ilk giriş / admin sıfırlaması) mevcut şifre zaten
+    // az önce login sırasında doğrulandı — tekrar istenmez.
+
+    const newHash = await hashPassword(newPassword);
+    await query("UPDATE users SET password_hash=$1, must_change_password=false WHERE username=$2",
+      [newHash, req.user.username]);
+
+    if (req.forcePasswordChange) {
+      await completePasswordChange(req.session.id);
+      await audit(`Giriş tamamlandı (2/2 — parola değiştirildi): ${req.user.username}`, req.user.username, true);
+      return res.json({ ok: true, user: req.user, csrfToken: req.session.csrf_secret });
+    }
+    await audit(`Şifre değiştirildi: ${req.user.username}`, req.user.username, true);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 router.post("/logout", async (req, res, next) => {

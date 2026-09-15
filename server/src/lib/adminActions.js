@@ -8,11 +8,13 @@ const { query } = require("../db");
 const { encryptSecret } = require("./crypto");
 const { saveSmtpSettings, setSmtpActive } = require("./mailer");
 const { setAccess, resetAccessToDefault, setAvailability } = require("./permissions");
+const { hashPassword } = require("./password");
+const { destroyAllSessionsForUser } = require("../auth/session");
 
 async function applyAdminAction(targetType, payload, actingUsername) {
   switch (targetType) {
     case "admin.user.create": {
-      const { username, name, email, role, unit, title } = payload;
+      const { username, name, email, role, unit, title, initialPassword } = payload;
       // KURAL: yönetici asla istemciden gelen değerle atanmaz — birim seçiliyse
       // GERÇEK birim yöneticisi backend tarafından zorla atanır (birimin
       // yöneticisini değiştirmenin tek yolu birim tanımını güncellemektir).
@@ -21,11 +23,21 @@ async function applyAdminAction(targetType, payload, actingUsername) {
         const u = await query("SELECT manager_username FROM units WHERE code=$1", [unit]);
         managerUsername = u.rows[0] ? u.rows[0].manager_username : null;
       }
+      const passwordHash = initialPassword ? await hashPassword(initialPassword) : null;
       await query(
-        `INSERT INTO users (username,name,email,role,unit,title,manager_username)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [username, name, email, role, unit || null, title || null, managerUsername]
+        `INSERT INTO users (username,name,email,role,unit,title,manager_username,password_hash,must_change_password)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true)`,
+        [username, name, email, role, unit || null, title || null, managerUsername, passwordHash]
       );
+      return;
+    }
+    case "admin.user.reset_password": {
+      const { username, newPassword } = payload;
+      const passwordHash = await hashPassword(newPassword);
+      await query("UPDATE users SET password_hash=$1, must_change_password=true WHERE username=$2",
+        [passwordHash, username]);
+      // Olası ele geçirilmiş/unutulmuş hesabın mevcut oturumlarını da keser.
+      await destroyAllSessionsForUser(username);
       return;
     }
     case "admin.user.update": {
