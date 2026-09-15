@@ -965,7 +965,8 @@ async function loadIssuesLive(k){
    pri:it.priority,pts:it.story_points,as:it.assignee_username?nameOf(it.assignee_username):null,
    assigneeUsername:it.assignee_username,parent:it.parent_key,inSprint:it.in_sprint,desc:it.description||"",
    rep:it.created_by?nameOf(it.created_by):null,at:String(it.created_at||"").slice(0,16).replace("T"," "),
-   upd:String(it.updated_at||"").slice(0,16).replace("T"," "),labels:it.labels||[]}));
+   upd:String(it.updated_at||"").slice(0,16).replace("T"," "),labels:it.labels||[],
+   due:it.due_date?String(it.due_date).slice(0,10):null}));
   proj.itemsLoaded=true;
  }catch(e){toast("Konular yüklenemedi: "+e.message,1);}
  render();}
@@ -2146,9 +2147,18 @@ function screenView(){
     <p class="m" style="color:var(--tm);margin:5px 0 0">Selecting a person adds them to the list; select again to add more. Selected: ${parts.length}</p>
 
     <div class="lbl" style="margin-top:14px">Agenda items</div>
-    ${items.length?items.map((it,i)=>`<div class="card" style="padding:7px 10px;margin-bottom:5px;display:flex;gap:8px;align-items:center">
-     <span style="flex:1;font-size:12.5px">${it.carried?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}</span>
-     <button class="b s d" data-a="mtRemItem:${i}">Delete</button></div>`).join("")
+    <p class="m" style="color:var(--tm);margin:2px 0 8px">Each item becomes a Task under this meeting's Epic in the "Toplantı" project, assigned directly to the selected person's backlog. Assignee is required; due date is optional.</p>
+    ${items.length?items.map((it,i)=>`<div class="card" style="padding:9px 10px;margin-bottom:6px">
+     <div style="display:flex;gap:8px;align-items:center">
+      <span style="flex:1;font-size:12.5px">${it.carried?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}</span>
+      <button class="b s d" data-a="mtRemItem:${i}">Delete</button></div>
+     <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
+      <select data-item-assign="${it.id}" style="flex:1;min-width:150px;font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid ${it.assignee?"var(--bd)":"var(--er-fg)"};background:var(--s2);color:var(--t1)">
+       <option value="" ${!it.assignee?"selected":""}>Select assignee… (required)</option>
+       ${USERS.filter(u=>u.on).map(u=>`<option value="${esc(u.n)}" ${it.assignee===u.n?"selected":""}>${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
+      <input type="date" data-item-due="${it.id}" value="${esc(it.due||"")}" title="Due date (optional)"
+       style="font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)"></div>
+     ${!it.assignee?`<p class="m" style="color:var(--er-fg);margin:5px 0 0">Assignee required for this item.</p>`:""}</div>`).join("")
      :`<p class="m" style="color:var(--tm);margin:4px 0">No items added yet.</p>`}
     <div style="display:flex;gap:6px">
      <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="New agenda item..." style="flex:1">
@@ -3302,6 +3312,8 @@ function dialogView(){
    <div class="lbl" style="margin-top:11px">STORY POINTS</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap">${[1,2,3,5,8,13].map(x=>
      `<button class="b s ${(f.pts||3)===x?"p":""}" data-a="iPts:${x}">${x}</button>`).join("")}</div>
+   <div class="lbl" style="margin-top:11px">DUE DATE (optional)</div>
+   <input id="fIssueDue" type="date" value="${esc(f.due||"")}">
    <div class="lbl" style="margin-top:11px">ASSIGNEE</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap">
     <button class="b s ${!f.as?"p":""}" data-a="iAs:">Unassigned</button>
@@ -3595,6 +3607,11 @@ function dialogView(){
    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${[1,2,3,5,8,13].map(x=>
      cw("d.board")?`<button class="b s ${i.pts===x?"p":""}" data-a="issueSetPts:${d.pi}:${i.key}:${x}">${x}</button>`
       :(i.pts===x?`<span class="m">${x}</span>`:"")).join("")}</div>
+   <div class="lbl" style="margin-top:10px">Due date</div>
+   <div style="display:flex;gap:8px;align-items:center;margin-top:5px">
+    ${cw("d.board")?`<input id="fIssueDetailDue" type="date" value="${esc(i.due||"")}" style="font-size:12.5px;padding:6px 8px">
+     <button class="b s" data-a="issueSetDue:${d.pi}:${i.key}">Save</button>`
+     :`<span style="font-size:12.5px">${esc(i.due||"—")}</span>`}</div>
    <div class="lbl" style="margin-top:10px">Labels</div>
    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
     ${(i.labels||[]).map(lb=>`<span class="pl">${esc(lb)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueLabelDel:${d.pi}:${i.key}:${encodeURIComponent(lb)}">✕</span>`:""}</span>`).join("")}
@@ -3668,6 +3685,7 @@ function validate(){
   else if(f.projKey==="OTHER"&&!(f.otherSubject||"").trim())miss.push("toplantı konusu");
   if(!f.date)miss.push("tarih");
   if(!(f.parts&&f.parts.length))miss.push("katılımcı");
+  if((f.items||[]).some(it=>!it.assignee))miss.push("her gündem maddesi için sorumlu (assignee)");
   return [miss.length===0,"mtSave",miss.length?"Eksik: "+miss.join(", "):""];}
  const d=S.dlg,f=S.f;if(!d)return null;
  if(d.type==="gantt"){
@@ -3819,6 +3837,8 @@ function afterRender(){
   PENDING_ISSUE_FILE=file;S.f.docFile=file.name;render();};
  const fidesc=document.getElementById("fIssueDesc");
  if(fidesc)fidesc.oninput=e=>{S.f.desc=e.target.value;};
+ const fidue=document.getElementById("fIssueDue");
+ if(fidue)fidue.onchange=e=>{S.f.due=e.target.value||null;};
  const filabel=document.getElementById("fIssueLabel");
  if(filabel){filabel.oninput=e=>{S.f.pendingLabel=e.target.value;};
   filabel.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();app.querySelector('[data-a="iLabelAdd"]').click();}};}
@@ -3873,7 +3893,7 @@ function afterRender(){
  const mtProjSel=document.getElementById("fMtProjSel");
  if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
   S.f.items=S.f.projKey&&S.f.projKey!=="OTHER"
-   ?(CARRY[S.f.projKey]||[]).map(c=>({id:"mi"+(nextMeetingItem++),text:c.text,status:"open",carried:true}))
+   ?(CARRY[S.f.projKey]||[]).map(c=>({id:"mi"+(nextMeetingItem++),text:c.text,status:"open",carried:true,assignee:null,due:""}))
    :[];
   render();};
  const mtPartSel=document.getElementById("fMtPartSel");
@@ -3939,6 +3959,16 @@ app.addEventListener("drop",e=>{
   return;}
  audit("İş durumu sürükle-bırak ile değişti: "+it.key+" "+FLOW[from]+" → "+FLOW[to]);
  toast(it.key+": "+FLOW[from]+" → "+FLOW[to]);});
+/* Dinamik sayıdaki toplantı gündem maddesi satırlarının assignee/due date
+   alanları için event delegation (her satır ayrı id yerine data-item-assign /
+   data-item-due üzerinden yakalanır — satır sayısı ekleme/silme ile değişir). */
+app.addEventListener("change",e=>{
+ const ia=e.target.closest("[data-item-assign]");
+ if(ia){const id=ia.dataset.itemAssign,it=(S.f.items||[]).find(x=>x.id===id);
+  if(it){it.assignee=ia.value||null;render();}return;}
+ const idd=e.target.closest("[data-item-due]");
+ if(idd){const id=idd.dataset.itemDue,it=(S.f.items||[]).find(x=>x.id===id);
+  if(it){it.due=idd.value||"";render();}return;}});
 app.addEventListener("click",async ev=>{
  const go=ev.target.closest("[data-go]");
  if(go){window.open(go.dataset.go,"_blank","noopener");toast(go.dataset.go+" yeni sekmede açılıyor.");return;}
@@ -4306,7 +4336,7 @@ app.addEventListener("click",async ev=>{
     const created=await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/issues",{
      issueType:S.f.ty||"Story",title:S.f.a.trim(),description:(S.f.desc||"").trim(),status:S.f.st||"backlog",
      priority:S.f.pri||"Medium",storyPoints:S.f.pts||3,assigneeUsername:asUser,parentKey:S.f.parent||null,
-     labels:S.f.labels||[]});
+     labels:S.f.labels||[],dueDate:S.f.due||null});
     if(PENDING_ISSUE_FILE&&created&&created.item){
      const fd=new FormData();fd.append("file",PENDING_ISSUE_FILE);
      try{await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(created.item.issue_key)+"/attachments",fd,true);}
@@ -4321,7 +4351,7 @@ app.addEventListener("click",async ev=>{
   const key=pr.k+"-"+((nums.length?Math.max.apply(null,nums):0)+1);
   pr.items.push({key,ty:S.f.ty||"Story",t:S.f.a.trim(),st:S.f.st||"backlog",
    pri:S.f.pri||"Medium",pts:S.f.pts||3,as:S.f.as||null,parent:S.f.parent||null,
-   desc:(S.f.desc||"").trim(),doc:S.f.docFile||null,rep:S.me.n,at:now(),labels:S.f.labels||[]});
+   desc:(S.f.desc||"").trim(),doc:S.f.docFile||null,rep:S.me.n,at:now(),labels:S.f.labels||[],due:S.f.due||null});
   audit("İş kalemi oluşturuldu: "+key);PENDING_ISSUE_FILE=null;S.dlg=null;S.f={};
   toast(key+" created in "+(S.f&&S.f.st==="todo"?"To Do":"Backlog")+".");return;}
 
@@ -4365,22 +4395,24 @@ app.addEventListener("click",async ev=>{
  if(k==="mtRemPart"){const n=dec(p[1]);S.f.parts=(S.f.parts||[]).filter(x=>x!==n);render();return;}
  if(k==="mtAddItem"){const t=(S.f.newItem||"").trim();
   if(!t){toast("Madde metni boş olamaz.",1);return;}
-  S.f.items=[...(S.f.items||[]),{id:"mi"+(nextMeetingItem++),text:t,status:"open"}];S.f.newItem="";render();return;}
+  S.f.items=[...(S.f.items||[]),{id:"mi"+(nextMeetingItem++),text:t,status:"open",assignee:null,due:""}];S.f.newItem="";render();return;}
  if(k==="mtRemItem"){S.f.items=(S.f.items||[]).filter((_,i)=>i!==+p[1]);render();return;}
  if(k==="mtSave"){const f=S.f,pr=PROJ.find(x=>x.k===f.projKey);
   const subject=f.projKey==="OTHER"?(f.otherSubject||"").trim():"";
+  const usernamesOf=names=>names.map(n=>{const u2=USERS.find(x=>x.n===n);return u2?u2.u:n;});
   if(LIVE_BACKEND){
    try{
-    const usernamesOf=names=>names.map(n=>{const u2=USERS.find(x=>x.n===n);return u2?u2.u:n;});
     const data=await api("POST","/api/projects/meetings",{
      projectK:f.projKey==="OTHER"?null:f.projKey,otherSubject:subject,
      title:(f.title||"").trim()||undefined,date:f.date,time:f.time||undefined,
      notes:(f.notes||"").trim()||undefined,participants:usernamesOf(f.parts||[]),
-     items:(f.items||[]).map(it=>({text:it.text,carriedFromMeetingId:it.carried?true:undefined}))});
-    S.dlg=null;S.f={};S.meetingsLive=null;
+     items:(f.items||[]).map(it=>({text:it.text,carriedFromMeetingId:it.carried?true:undefined,
+      assigneeUsername:usernamesOf([it.assignee])[0],dueDate:it.due||null}))});
+    S.dlg=null;S.f={};S.meetingsLive=null;ISSUE_ATTACH_LIVE={};ISSUE_LINKS_LIVE={};
+    await loadProjectsLive(); // "Toplantı" projesi yeni açılmış olabilir, proje listesi tazelenmeli
     toast(data.mailSent===data.mailTotal&&data.mailTotal
-     ?"Toplantı notu oluşturuldu, "+data.mailSent+" katılımcıya e-posta gönderildi."
-     :"Toplantı notu oluşturuldu; SMTP ayarları tanımlı/etkin olmadığından e-posta gönderilemedi.",
+     ?"Toplantı notu oluşturuldu, "+data.mailSent+" katılımcıya e-posta gönderildi. Gündem maddeleri 'Toplantı' projesinde Task olarak backlog'a düşürüldü."
+     :"Toplantı notu oluşturuldu; SMTP ayarları tanımlı/etkin olmadığından e-posta gönderilemedi. Gündem maddeleri 'Toplantı' projesinde Task olarak backlog'a düşürüldü.",
      data.mailSent===data.mailTotal&&data.mailTotal?0:1);
     S.mtView=+data.item.id;S.mod="delivery";S.scr="d.meetingview";render();
    }catch(e){toast("Kaydedilemedi: "+e.message,1);}
@@ -4388,16 +4420,40 @@ app.addEventListener("click",async ev=>{
   const m={id:nextMeeting++,projKey:f.projKey,projOther:subject,
    title:(f.title||"").trim()||(f.projKey==="OTHER"?subject:"Toplantı Notu"),
    date:f.date,time:f.time||"",participants:[...(f.parts||[])],notes:(f.notes||"").trim(),
-   items:(f.items||[]).map(it=>({id:it.id,text:it.text,status:"open",carriedFrom:!!it.carried})),
+   items:(f.items||[]).map(it=>({id:it.id,text:it.text,status:"open",carriedFrom:!!it.carried,
+    assignee:it.assignee,due:it.due||null,linkedIssueKey:null})),
    by:S.me.n,at:now()};
+  // Gündem maddeleri "Toplantı" projesinde bu toplantıya özel bir Epic'in
+  // altına Task olarak açılır — doğrudan seçilen kişiye atanır ve backlog'a
+  // düşer (board'a alınmaz). Demo modda da canlı backend ile birebir aynı
+  // davranış sergilenir.
+  if(m.items.length){
+   let mp=PROJ.find(x=>x.k==="TOPLANTI");
+   if(!mp){mp={k:"TOPLANTI",n:"Toplantı",m:"Kanban",lead:S.me.n,health:"On track",hc:"#3B6D11",
+    unitName:null,start:null,target:null,timePct:null,burndown:null,velocityHist:[],sprint:null,gate:null,items:[]};
+    PROJ.push(mp);}
+   TEAM.TOPLANTI=TEAM.TOPLANTI||[];
+   [...new Set(m.items.map(it=>it.assignee).filter(Boolean))].forEach(n=>{
+    if(!TEAM.TOPLANTI.some(x=>x.n===n))TEAM.TOPLANTI.push({n,r:"Katılımcı"});});
+   const nextKey=()=>{const nums=mp.items.map(i=>+String(i.key).split("-")[1]||0);
+    return mp.k+"-"+((nums.length?Math.max.apply(null,nums):0)+1);};
+   const epicKey=nextKey();
+   mp.items.push({key:epicKey,ty:"Epic",t:m.title,st:"backlog",pri:"Medium",pts:0,as:null,parent:null,
+    desc:m.notes,rep:S.me.n,at:now(),labels:[],due:null});
+   m.items.forEach(it=>{
+    const taskKey=nextKey();
+    mp.items.push({key:taskKey,ty:"Task",t:it.text,st:"backlog",pri:"Medium",pts:0,as:it.assignee||null,
+     parent:epicKey,desc:"",rep:S.me.n,at:now(),labels:[],due:it.due||null});
+    it.linkedIssueKey=taskKey;});
+  }
   MEETINGS.unshift(m);if(f.projKey!=="OTHER")CARRY[f.projKey]=[];
   const to=[...new Set((m.participants||[]).map(mailOf))];
   const sent=to.filter(addr=>mail(addr,m.title+" — "+(pr?pr.k:subject)+" toplantı notu paylaşıldı"));
   audit("Toplantı notu oluşturuldu: "+m.title+" ("+(pr?pr.k:"Diğer")+") · bildirim: "+(sent.join(", ")||"gönderilmedi"));
   S.dlg=null;S.f={};
   toast(sent.length===to.length&&to.length
-   ?"Toplantı notu oluşturuldu, "+m.participants.length+" katılımcıya e-posta gönderildi."
-   :"Toplantı notu oluşturuldu; SMTP ayarları tanımlı/etkin olmadığından e-posta gönderilemedi.",
+   ?"Toplantı notu oluşturuldu, "+m.participants.length+" katılımcıya e-posta gönderildi. Gündem maddeleri 'Toplantı' projesinde Task olarak backlog'a düşürüldü."
+   :"Toplantı notu oluşturuldu; SMTP ayarları tanımlı/etkin olmadığından e-posta gönderilemedi. Gündem maddeleri 'Toplantı' projesinde Task olarak backlog'a düşürüldü.",
    sent.length===to.length&&to.length?0:1);
   S.mtView=m.id;S.mod="delivery";S.scr="d.meetingview";render();return;}
  if(k==="mtView"){S.mtView=+p[1];S.mod="delivery";S.scr="d.meetingview";S.dlg=null;render();return;}
@@ -4710,6 +4766,17 @@ app.addEventListener("click",async ev=>{
    catch(e){it.pts=old;toast(e.message,1);render();}
    return;}
   audit("Story point değişti: "+key+" -> "+val);return;}
+ if(k==="issueSetDue"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const inp=document.getElementById("fIssueDetailDue");
+  const val=inp?(inp.value||null):null;
+  const it=itemByKey(PROJ[pi],key);if(!it)return;
+  const old=it.due;it.due=val;render();
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{dueDate:val});
+    toast("Bitiş tarihi güncellendi.");}
+   catch(e){it.due=old;toast(e.message,1);render();}
+   return;}
+  audit("Bitiş tarihi değişti: "+key+" -> "+(val||"kaldırıldı"));toast("Bitiş tarihi güncellendi.");return;}
  if(k==="issueLabelAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailLabel");
   const v=(inp?inp.value:"").trim().slice(0,30);

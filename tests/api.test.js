@@ -59,7 +59,7 @@ test("Toplantı notu: pm oluşturabilir, katılımcı olmayan görmez, Teftiş h
       projectK: "TRADE",
       date: "2026-11-05",
       participants: ["mert.balkan"],
-      items: [{ text: "Test maddesi" }],
+      items: [{ text: "Test maddesi", assigneeUsername: "mert.balkan" }],
     });
   assert.equal(create.status, 201);
   assert.equal(create.body.mailSent, 0); // SMTP henüz etkin değil
@@ -83,7 +83,7 @@ test("Toplantı maddesi: devredilince proje devir kuyruğuna düşer", async () 
     .post("/api/projects/meetings")
     .set("Cookie", pm.cookie)
     .set("X-CSRF-Token", pm.csrf)
-    .send({ projectK: "TRADE", date: "2026-11-06", participants: ["mert.balkan"], items: [{ text: "Devredilecek" }] });
+    .send({ projectK: "TRADE", date: "2026-11-06", participants: ["mert.balkan"], items: [{ text: "Devredilecek", assigneeUsername: "mert.balkan" }] });
   const meetingId = create.body.item.id;
   const itemsRes = await request(app).get("/api/projects/meetings?project=TRADE").set("Cookie", pm.cookie);
   const meeting = itemsRes.body.items.find((m) => m.id === meetingId);
@@ -98,6 +98,50 @@ test("Toplantı maddesi: devredilince proje devir kuyruğuna düşer", async () 
 
   const queue = await request(app).get("/api/projects/TRADE/meetings/carry-queue").set("Cookie", pm.cookie);
   assert.ok(queue.body.items.some((i) => i.text === "Devredilecek"));
+});
+
+test("Toplantı maddesi: assignee olmadan reddedilir", async () => {
+  const pm = await login("tolga.firat");
+  const res = await request(app)
+    .post("/api/projects/meetings")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({ projectK: "TRADE", date: "2026-11-07", participants: ["mert.balkan"], items: [{ text: "Sorumlusuz madde" }] });
+  assert.equal(res.status, 400);
+});
+
+test("Toplantı maddesi: TOPLANTI projesinde Epic+Task olarak otomatik açılır, backlog'a düşer", async () => {
+  const pm = await login("tolga.firat");
+  const create = await request(app)
+    .post("/api/projects/meetings")
+    .set("Cookie", pm.cookie)
+    .set("X-CSRF-Token", pm.csrf)
+    .send({
+      projectK: "TRADE",
+      title: "Otomatik görev testi",
+      date: "2026-11-08",
+      participants: ["mert.balkan"],
+      items: [{ text: "Otomatik task maddesi", assigneeUsername: "mert.balkan", dueDate: "2026-11-15" }],
+    });
+  assert.equal(create.status, 201);
+
+  const itemsRes = await request(app)
+    .get("/api/projects/meetings?project=TRADE")
+    .set("Cookie", pm.cookie);
+  const meeting = itemsRes.body.items.find((m) => m.id === create.body.item.id);
+  assert.ok(meeting.items[0].linked_issue_key, "linked_issue_key doldurulmalı");
+
+  const issuesRes = await request(app)
+    .get("/api/projects/TOPLANTI/issues")
+    .set("Cookie", pm.cookie);
+  const task = issuesRes.body.items.find((i) => i.issue_key === meeting.items[0].linked_issue_key);
+  assert.equal(task.issue_type, "Task");
+  assert.equal(task.status, "backlog");
+  assert.equal(task.assignee_username, "mert.balkan");
+  assert.ok(task.due_date, "due_date dolmalı");
+
+  const epic = issuesRes.body.items.find((i) => i.issue_key === task.parent_key);
+  assert.equal(epic.issue_type, "Epic");
 });
 
 test("SMTP: etkin değilken e-posta gönderilmez, denetim kaydına başarısız olarak düşer", async () => {

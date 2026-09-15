@@ -156,6 +156,27 @@ function sanitizeLabels(labels) {
 // ------------------------------- Konular (issue tracker) -------------------------------
 const ISSUE_PARENT_OF = { Epic: null, Story: "Epic", Task: "Story", Bug: "Story" };
 
+// Konu oluşturmanın çekirdek adımı (sıra numarası + INSERT). Hem normal
+// POST /:k/issues uç noktası hem de toplantı notlarından otomatik
+// Epic/Task üretimi bu ortak fonksiyonu kullanır — anahtar üretim mantığı
+// tek yerde kalır.
+async function insertIssueRow(client, projectK, opts) {
+  const seq = await client.query(
+    "SELECT count(*)::int AS n FROM project_issues WHERE project_k=$1", [projectK]
+  );
+  const issueKey = `${projectK}-${seq.rows[0].n + 1}`;
+  const ins = await client.query(
+    `INSERT INTO project_issues (project_k, issue_key, issue_type, title, description, status, priority, story_points,
+       assignee_username, parent_key, created_by, labels, due_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+    [projectK, issueKey, opts.issueType, opts.title.trim(), (opts.description || "").trim(),
+     opts.status || "backlog", opts.priority || "Medium", Number(opts.storyPoints) || 0,
+     opts.assigneeUsername || null, opts.parentKey || null, opts.createdBy,
+     sanitizeLabels(opts.labels), opts.dueDate || null]
+  );
+  return ins.rows[0];
+}
+
 router.get("/:k/issues", requireRead("d.board"), async (req, res, next) => {
   try {
     const { rows } = await query(
@@ -170,7 +191,7 @@ router.get("/:k/issues", requireRead("d.board"), async (req, res, next) => {
 
 router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
   try {
-    const { issueType, title, description, priority, storyPoints, assigneeUsername, parentKey, status, labels } = req.body || {};
+    const { issueType, title, description, priority, storyPoints, assigneeUsername, parentKey, status, labels, dueDate } = req.body || {};
     if (!["Epic", "Story", "Task", "Bug"].includes(issueType)) return res.status(400).json({ error: "Geçersiz konu tipi." });
     if (!title || !title.trim()) return res.status(400).json({ error: "Başlık zorunlu." });
     const needParent = ISSUE_PARENT_OF[issueType];
@@ -192,20 +213,10 @@ router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
     const proj = await query("SELECT k FROM projects WHERE k=$1", [req.params.k]);
     if (!proj.rowCount) return res.status(404).json({ error: "Proje bulunamadı." });
 
-    const result = await withTransaction(async (client) => {
-      const seq = await client.query(
-        "SELECT count(*)::int AS n FROM project_issues WHERE project_k=$1", [req.params.k]
-      );
-      const issueKey = `${req.params.k}-${seq.rows[0].n + 1}`;
-      const ins = await client.query(
-        `INSERT INTO project_issues (project_k, issue_key, issue_type, title, description, status, priority, story_points,
-           assignee_username, parent_key, created_by, labels)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-        [req.params.k, issueKey, issueType, title.trim(), (description || "").trim(), status || "backlog", priority || "Medium",
-         Number(storyPoints) || 0, assigneeUsername || null, needParent ? parentKey : null, req.user.username, sanitizeLabels(labels)]
-      );
-      return ins.rows[0];
-    });
+    const result = await withTransaction((client) => insertIssueRow(client, req.params.k, {
+      issueType, title, description, priority, storyPoints, assigneeUsername,
+      parentKey: needParent ? parentKey : null, status, labels, dueDate, createdBy: req.user.username,
+    }));
     await audit(`Konu oluşturuldu: ${result.issue_key} — ${title.trim()}`, req.user.username);
     res.status(201).json({ item: result });
   } catch (e) {
@@ -219,7 +230,7 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     const { rows } = await query("SELECT * FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
     const issue = rows[0];
     if (!issue) return res.status(404).json({ error: "Konu bulunamadı." });
-    const { status, assigneeUsername, priority, storyPoints, title, description, inSprint, labels } = req.body || {};
+    const { status, assigneeUsername, priority, storyPoints, title, description, inSprint, labels, dueDate } = req.body || {};
     if (status && !["backlog", "todo", "prog", "review", "test", "done"].includes(status)) {
       return res.status(400).json({ error: "Geçersiz durum." });
     }
@@ -240,6 +251,7 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     if (title !== undefined) { fields.push(`title=$${i++}`); values.push(title.trim()); }
     if (description !== undefined) { fields.push(`description=$${i++}`); values.push(description.trim()); }
     if (labels !== undefined) { fields.push(`labels=$${i++}`); values.push(sanitizeLabels(labels)); }
+    if (dueDate !== undefined) { fields.push(`due_date=$${i++}`); values.push(dueDate || null); }
     if (inSprint !== undefined) { fields.push(`in_sprint=$${i++}`); values.push(!!inSprint); }
     if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });
     fields.push(`updated_at=now()`);
@@ -893,6 +905,40 @@ router.post("/:k/change-requests/:id/reject", requireRead("d.cr"), async (req, r
 });
 
 // ------------------------------ Toplantı notları ----------------------------
+// Her toplantı gündem maddesi otomatik olarak "Toplantı" adlı sabit bir proje
+// altında, o toplantıya özel bir Epic'in altına Task olarak açılır. Böylece
+// toplantıda alınan aksiyonlar proje yönetimi modülünde de (atanan kişinin
+// "İşlerim" ekranı dahil) izlenebilir hale gelir.
+const MEETING_PROJECT_K = "TOPLANTI";
+const MEETING_PROJECT_NAME = "Toplantı";
+
+async function ensureMeetingProject(client, creatorUsername) {
+  const existing = await client.query("SELECT k FROM projects WHERE k=$1", [MEETING_PROJECT_K]);
+  if (existing.rowCount) return;
+  await client.query(
+    `INSERT INTO projects (k, name, method, lead_username, created_by)
+     VALUES ($1,$2,'Kanban',$3,$3)`,
+    [MEETING_PROJECT_K, MEETING_PROJECT_NAME, creatorUsername]
+  );
+  await client.query(
+    `INSERT INTO project_team (project_k, username, project_role, mandatory)
+     VALUES ($1,$2,'Product Owner',false) ON CONFLICT DO NOTHING`,
+    [MEETING_PROJECT_K, creatorUsername]
+  );
+}
+
+// Toplantı maddesi ataması yapılacak kişi, "Toplantı" projesinin ekibinde
+// değilse otomatik eklenir — aksi halde konu oluşturmadaki "atanacak kişi
+// ekipte olmalı" kuralı toplantı katılımcıları için de zorlanmış olur ve
+// hiçbir katılımcıya görev atanamazdı.
+async function ensureMeetingTeamMember(client, username) {
+  await client.query(
+    `INSERT INTO project_team (project_k, username, project_role, mandatory)
+     VALUES ($1,$2,'Katılımcı',false) ON CONFLICT DO NOTHING`,
+    [MEETING_PROJECT_K, username]
+  );
+}
+
 function canSeeMeeting(role, username, participants, createdByWrite) {
   if (MEETING_ALWAYS_ROLES.includes(role)) return true;
   if (createdByWrite) return true; // pm/pmdir tüm notları görür
@@ -925,20 +971,57 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
     if (!projectK && !otherSubject) return res.status(400).json({ error: "Proje veya toplantı konusu (Diğer) zorunlu." });
     if (!date) return res.status(400).json({ error: "Tarih zorunlu." });
     if (!Array.isArray(participants) || !participants.length) return res.status(400).json({ error: "En az bir katılımcı gerekli." });
+    // Her gündem maddesi mutlaka bir kişiye atanmalıdır (bitiş tarihi opsiyoneldir).
+    for (const it of items || []) {
+      if (!it.text || !it.text.trim()) return res.status(400).json({ error: "Gündem maddesi metni boş olamaz." });
+      if (!it.assigneeUsername) {
+        return res.status(400).json({ error: `"${it.text}" maddesi için bir sorumlu (assignee) seçilmelidir.` });
+      }
+    }
 
+    const meetingTitle = (title || "").trim() || otherSubject || "Toplantı Notu";
     const meeting = await withTransaction(async (client) => {
       const m = await client.query(
         `INSERT INTO meetings (project_k, project_other_subject, title, meeting_date, meeting_time, notes, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [projectK || null, projectK ? null : otherSubject, title || otherSubject || "Toplantı Notu", date, time || null, notes || null, req.user.username]
+        [projectK || null, projectK ? null : otherSubject, meetingTitle, date, time || null, notes || null, req.user.username]
       );
       for (const p of participants) {
         await client.query("INSERT INTO meeting_participants (meeting_id, username) VALUES ($1,$2)", [m.rows[0].id, p]);
       }
+
+      let epicKey = null;
+      if ((items || []).length) {
+        await ensureMeetingProject(client, req.user.username);
+        const uniqueAssignees = [...new Set(items.map((it) => it.assigneeUsername))];
+        for (const u of uniqueAssignees) await ensureMeetingTeamMember(client, u);
+        const epic = await insertIssueRow(client, MEETING_PROJECT_K, {
+          issueType: "Epic",
+          title: `${meetingTitle} — ${date}`,
+          description: notes || "",
+          createdBy: req.user.username,
+        });
+        epicKey = epic.issue_key;
+      }
+
       for (const it of items || []) {
+        let linkedIssueKey = null;
+        if (epicKey) {
+          const task = await insertIssueRow(client, MEETING_PROJECT_K, {
+            issueType: "Task",
+            title: it.text,
+            parentKey: epicKey,
+            assigneeUsername: it.assigneeUsername,
+            dueDate: it.dueDate || null,
+            status: "backlog", // Jira "board"a değil doğrudan backlog'a düşer
+            createdBy: req.user.username,
+          });
+          linkedIssueKey = task.issue_key;
+        }
         await client.query(
-          "INSERT INTO meeting_items (meeting_id, text, status, carried_from_meeting_id) VALUES ($1,$2,'open',$3)",
-          [m.rows[0].id, it.text, it.carriedFromMeetingId || null]
+          `INSERT INTO meeting_items (meeting_id, text, status, carried_from_meeting_id, assignee_username, due_date, linked_issue_key)
+           VALUES ($1,$2,'open',$3,$4,$5,$6)`,
+          [m.rows[0].id, it.text, it.carriedFromMeetingId || null, it.assigneeUsername, it.dueDate || null, linkedIssueKey]
         );
       }
       if (projectK) {
