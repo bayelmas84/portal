@@ -2071,18 +2071,31 @@ function screenView(){
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("Backlog",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
   const canRank=cw("d.backlog");
+  const backlogItems=p.items.filter(i=>i.st==="backlog");
+  const selected=(S.bulkSelected||[]).filter(k=>backlogItems.some(i=>i.key===k));
   return head("Backlog",p.n+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
     ${cw("d.backlog")?`<button class="b s" data-a="manageVC:${S.proj}">Versions & Components</button>
     <button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
-   table(["Type","Key","Title","SP",""],p.items.filter(i=>i.st==="backlog").map(i=>`<tr
+   (canRank&&selected.length?`<div class="card" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+     <span style="font-size:12.5px;font-weight:600">${selected.length} selected</span>
+     <select id="fBulkPriority" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+      <option value="">Priority…</option>${["Highest","High","Medium","Low"].map(pr=>`<option value="${pr}">${pr}</option>`).join("")}</select>
+     <select id="fBulkAssignee" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+      <option value="">Assignee…</option>${teamOf(p.k).map(m=>{const uname=m.username||nameToUsername(m.n);return uname?`<option value="${uname}">${esc(m.n)}</option>`:"";}).join("")}</select>
+     <input id="fBulkLabel" placeholder="add label…" style="max-width:130px;font-size:12px;padding:6px 9px">
+     <button class="b s p" data-a="bulkApply:${S.proj}">Apply</button>
+     <button class="b s" data-a="bulkClearSelection">Clear</button></div>`:"")+
+   table([canRank?"":null,"Type","Key","Title","SP",""].filter(x=>x!==null),backlogItems.map(i=>`<tr
     ${canRank?`draggable="true" data-key="${i.key}" data-rank-target="${i.key}" style="cursor:grab"`:""}>
+    ${canRank?`<td style="width:26px"><input type="checkbox" data-a="toggleBulkSelect:${i.key}" ${selected.includes(i.key)?"checked":""}></td>`:""}
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
     <td>${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td><td class="m">${i.pts}</td>
     <td style="text-align:right;white-space:nowrap">
     ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${S.proj}:${i.key}">${p.m==="Kanban"?"Add to board":"Add to sprint"}</button>`:""}</td></tr>`).join("")||
-    `<tr><td colspan="5" style="color:var(--tm)">Backlog is empty.</td></tr>`)+
-   (canRank&&p.items.some(i=>i.st==="backlog")?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">Drag a row to reorder priority — this ranking is saved and shared with the whole team.</p>`:"");}
+    `<tr><td colspan="${canRank?6:5}" style="color:var(--tm)">Backlog is empty.</td></tr>`)+
+   (canRank&&backlogItems.length?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">Drag a row to reorder priority — this ranking is saved and shared with the whole team.
+    Check rows to bulk-edit priority, assignee, or labels.</p>`:"");}
 
  if(v==="d.gate"){
   if(LIVE_BACKEND){
@@ -5889,6 +5902,30 @@ app.addEventListener("click",async ev=>{
    return;}
   syncMeetingItemFromTaskDemo(pr.k,p[2],to,from);
   return;}
+ if(k==="toggleBulkSelect"){const key=p[1];
+  const cur=S.bulkSelected||[];
+  S.bulkSelected=cur.includes(key)?cur.filter(x=>x!==key):[...cur,key];
+  render();return;}
+ if(k==="bulkClearSelection"){S.bulkSelected=[];render();return;}
+ if(k==="bulkApply"){const pi=+p[1],pr=PROJ[pi],pk=pr.k;
+  const selected=S.bulkSelected||[];
+  if(!selected.length){toast("No rows selected.",1);return;}
+  const priority=document.getElementById("fBulkPriority").value||undefined;
+  const assigneeUsername=document.getElementById("fBulkAssignee").value||undefined;
+  const addLabel=(document.getElementById("fBulkLabel").value||"").trim()||undefined;
+  if(!priority&&!assigneeUsername&&!addLabel){toast("Choose at least one change to apply.",1);return;}
+  if(LIVE_BACKEND){
+   try{
+    const res=await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/bulk-update",
+     {issueKeys:selected,priority,assigneeUsername,addLabel});
+    await loadIssuesLive(pk);S.bulkSelected=[];toast(res.updated+" issue(s) updated.");render();
+   }catch(e){toast(e.message,1);}
+   return;}
+  selected.forEach(key=>{const it=itemByKey(pr,key);if(!it)return;
+   if(priority)it.pri=priority;
+   if(assigneeUsername){const m=teamOf(pk).find(x=>(x.username||nameToUsername(x.n))===assigneeUsername);it.as=m?m.n:it.as;it.assigneeUsername=assigneeUsername;}
+   if(addLabel)it.labels=[...new Set([...(it.labels||[]),addLabel])];});
+  S.bulkSelected=[];toast(selected.length+" issue(s) updated.");render();return;}
  if(k==="toSprint"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]);
   const msg=p[2]+(pr.m==="Kanban"?" board'a alındı.":" sprinte alındı.");

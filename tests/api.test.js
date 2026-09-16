@@ -721,6 +721,42 @@ test("Mail bildirim tercihleri: kapatılan tür için e-posta atlanır ama zil b
     .send({ emailOnComment: true, emailOnMention: true, emailOnAssignment: true });
 });
 
+test("Backlog toplu güncelleme (bulk-update): priority + label birden fazla konuya uygulanır, geçersiz assignee reddedilir", async () => {
+  const pm = await login("tolga.firat");
+  const a = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Bulk A ${Date.now()}` });
+  const b = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Bulk B ${Date.now()}` });
+  const keyA = a.body.item.issue_key, keyB = b.body.item.issue_key;
+
+  const bulk = await request(app)
+    .post("/api/projects/TRADE/issues/bulk-update")
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueKeys: [keyA, keyB], priority: "High", addLabel: "toplu-test" });
+  assert.equal(bulk.status, 200);
+  assert.equal(bulk.body.updated, 2);
+
+  const list = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  const foundA = list.body.items.find((i) => i.issue_key === keyA);
+  const foundB = list.body.items.find((i) => i.issue_key === keyB);
+  assert.equal(foundA.priority, "High");
+  assert.deepEqual(foundA.labels, ["toplu-test"]);
+  assert.equal(foundB.priority, "High");
+  assert.deepEqual(foundB.labels, ["toplu-test"]);
+
+  const invalidAssignee = await request(app)
+    .post("/api/projects/TRADE/issues/bulk-update")
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueKeys: [keyA], assigneeUsername: "nazli.han" });
+  assert.equal(invalidAssignee.status, 400);
+
+  const emptyKeys = await request(app)
+    .post("/api/projects/TRADE/issues/bulk-update")
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueKeys: [], priority: "Low" });
+  assert.equal(emptyKeys.status, 400);
+});
+
 test.after(async () => {
   await pool.end();
 });

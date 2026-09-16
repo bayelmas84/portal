@@ -507,6 +507,59 @@ router.get("/:k/issues", requireRead("d.board"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Backlog'da çoklu seçimle toplu güncelleme (Jira "bulk edit"). Yalnızca
+// gönderilen alanlar uygulanır; addLabel var olan etiketlere EKLER (üzerine
+// yazmaz). Tek bir işlem başarısız olursa TÜMÜ geri alınır (transaction).
+router.post("/:k/issues/bulk-update", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { issueKeys, assigneeUsername, priority, addLabel, addFixVersion } = req.body || {};
+    if (!Array.isArray(issueKeys) || !issueKeys.length) {
+      return res.status(400).json({ error: "En az bir konu seçilmeli." });
+    }
+    if (issueKeys.length > 100) return res.status(400).json({ error: "Tek seferde en fazla 100 konu güncellenebilir." });
+    if (assigneeUsername) {
+      const inTeam = await query("SELECT 1 FROM project_team WHERE project_k=$1 AND username=$2", [req.params.k, assigneeUsername]);
+      if (!inTeam.rowCount) return res.status(400).json({ error: "Atanacak kişi bu projenin ekibinde değil." });
+    }
+    if (priority && !["Highest", "High", "Medium", "Low"].includes(priority)) {
+      return res.status(400).json({ error: "Geçersiz öncelik." });
+    }
+    let validVersion = null;
+    if (addFixVersion) {
+      const versions = await sanitizeVersionRefs(req.params.k, [addFixVersion]);
+      if (!versions.length) return res.status(400).json({ error: "Geçersiz sürüm." });
+      validVersion = versions[0];
+    }
+    const updatedKeys = await withTransaction(async (client) => {
+      const { rows: found } = await client.query(
+        "SELECT issue_key, labels, fix_versions FROM project_issues WHERE project_k=$1 AND issue_key = ANY($2::text[])",
+        [req.params.k, issueKeys]
+      );
+      for (const row of found) {
+        const fields = [], values = [];
+        let i = 1;
+        if (assigneeUsername !== undefined) { fields.push(`assignee_username=$${i++}`); values.push(assigneeUsername || null); }
+        if (priority) { fields.push(`priority=$${i++}`); values.push(priority); }
+        if (addLabel) {
+          const nextLabels = sanitizeLabels([...(row.labels || []), addLabel]);
+          fields.push(`labels=$${i++}`); values.push(nextLabels);
+        }
+        if (validVersion) {
+          const nextVersions = [...new Set([...(row.fix_versions || []), validVersion])];
+          fields.push(`fix_versions=$${i++}`); values.push(nextVersions);
+        }
+        if (!fields.length) continue;
+        fields.push(`updated_at=now()`);
+        values.push(req.params.k, row.issue_key);
+        await client.query(`UPDATE project_issues SET ${fields.join(", ")} WHERE project_k=$${i++} AND issue_key=$${i}`, values);
+      }
+      return found.map((r) => r.issue_key);
+    });
+    await audit(`Toplu güncelleme: ${req.params.k} — ${updatedKeys.length} konu`, req.user.username);
+    res.json({ ok: true, updated: updatedKeys.length, issueKeys: updatedKeys });
+  } catch (e) { next(e); }
+});
+
 // Backlog'da sürükle-bırak ile öncelik sırasını değiştirir (Jira "Rank").
 // prevKey/nextKey: konunun YENİ konumunda hemen öncesinde/sonrasında kalacak
 // komşu konuların anahtarları (ikisi de opsiyonel — biri uçta olabilir).
