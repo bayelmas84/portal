@@ -1,7 +1,7 @@
 "use strict";
 // Ağ seviyesinde erişim kısıtlaması: yalnızca kurumsal ağdaki (Tera domain)
 // cihazlardan erişime izin verir. ÖNEMLİ DÜRÜST NOT: bir web sunucusu,
-// bir istemcinin gerçekten Windows AD domainine (tera.local) üye olup
+// bir istemcinin gerçekten Windows AD domainine (byelmas.local) üye olup
 // olmadığını doğrudan doğrulayamaz — bu, istemci tarafı entegre kimlik
 // doğrulaması (Kerberos/NTLM, IIS/Nginx modülü) gerektirir ve bu ortamın
 // kapsamı dışındadır. Burada uygulanan PRATİK EŞDEĞER: kurumsal ağın IP

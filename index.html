@@ -542,12 +542,12 @@ let UNITS=[{k:"BT",n:"Bilgi Teknolojileri",on:1},{k:"TFT",n:"Teftiş Kurulu",on:
 let TITLES=[{k:"GMY",n:"Genel Müdür Yardımcısı",on:1},{k:"GDIR",n:"Grup Direktörü",on:1},
  {k:"PYD",n:"Proje Yönetim Direktörü",on:1},{k:"DIR",n:"Direktör",on:1},
  {k:"MDR",n:"Müdür",on:1},{k:"UZM",n:"Uzman",on:1},{k:"STJ",n:"Stajyer",on:0}];
-let SHORTS=[{n:"İK Portalı",url:"https://ik.tera.local",icon:"ti-users-group",c:"#0F6E56",on:1},
+let SHORTS=[{n:"İK Portalı",url:"https://ik.byelmas.local",icon:"ti-users-group",c:"#0F6E56",on:1},
  {n:"Makas",url:"https://makas.teragrup.com/",icon:"ti-scissors",c:"#A32D2D",on:1},
- {n:"eBA",url:"https://zeta.terayatirim.com/eba.net/Desktop/Login.aspx",icon:"ti-file-symlink",c:"#4B3B8F",on:1},
+ {n:"eBA",url:"https://zeta.byelmas.com/eba.net/Desktop/Login.aspx",icon:"ti-file-symlink",c:"#4B3B8F",on:1},
  {n:"TRA Portal",url:"https://support.trabilisim.com/home",icon:"ti-chart-candle",c:"#0B1F48",on:1},
  {n:"Connect",url:"https://connect.borsaistanbul.com/",icon:"ti-messages",c:"#0178BA",on:1},
- {n:"CRM",url:"https://crm.tera.local",icon:"ti-address-book",c:"#B8894A",on:0}];
+ {n:"CRM",url:"https://crm.byelmas.local",icon:"ti-address-book",c:"#B8894A",on:0}];
 
 const P1="1. GENEL İLKELER\n\nTüm çalışanlar görevlerini dürüstlük, tarafsızlık, gizlilik ve mesleki özen ilkeleri çerçevesinde yerine getirir. Şirket kaynakları yalnızca görevin gerektirdiği amaçlarla kullanılır. Müşteri çıkarı her durumda çalışanın kişisel çıkarının önündedir.\n\n2. ÇIKAR ÇATIŞMASI\n\nÇalışanın kişisel çıkarı ile şirketin veya müşterinin çıkarının çakıştığı her durum, öğrenildiği anda Uyum Birimine yazılı olarak bildirilir.";
 const P2="3. HEDİYE VE AĞIRLAMA\n\nSembolik değeri aşan hediyeler kabul edilemez. Kabul edilen her hediye değeri, tarihi ve verenin kimliğiyle kayda işlenir. Nakit ve nakit benzeri hiçbir hediye kabul edilemez.\n\n4. İÇSEL BİLGİ\n\nHenüz kamuya açıklanmamış bilgiye dayanarak sermaye piyasası işlemi yapmak yasaktır ve disiplin sürecine tabidir.";
@@ -1457,7 +1457,7 @@ let SMTP={host:"",port:"587",fromAddr:"",user:"",passwordSet:false,tls:true,
  active:false,lastTestAt:null,lastTestOk:null,lastTestMsg:null,
  updatedBy:null,updatedAt:null};
 
-let MAILS=[{to:"burak.temel@terayatirim.com.tr",sub:"PR-BGYS-014 Teftiş onayı bekliyor",at:"bugün 08:05"}];
+let MAILS=[{to:"burak.temel@byelmas.com.tr",sub:"PR-BGYS-014 Teftiş onayı bekliyor",at:"bugün 08:05"}];
 let AUDIT=[{ev:"PR-BGYS-014 Teftiş kuyruğuna eklendi",who:"Burak Temel",at:"bugün 08:05",ok:1},
  {ev:"Nazlı Han zorunlu okuma süresi aşıldı",who:"sistem",at:"bugün 07:00",ok:0}];
 const REMIND=[{p:"Nazlı Han",doc:"PL-ETIK-002",left:"süresi geçti",next:"her gün",cc:"evet"},
@@ -1473,9 +1473,9 @@ const mail=(to,sub)=>{
  MAILS.unshift({to,sub,at:now()});return true;};
 const mailOf=n=>String(n||"").toLocaleLowerCase("tr").replace(/\s+/g,".")
  .replace(/ç/g,"c").replace(/ğ/g,"g").replace(/ı/g,"i").replace(/ö/g,"o").replace(/ş/g,"s").replace(/ü/g,"u")
- +"@terayatirim.com.tr";
-const TEFTIS_GRUP="teftis-kurulu@terayatirim.com.tr";
-const TUM="tum-personel@terayatirim.com.tr";
+ +"@byelmas.com.tr";
+const TEFTIS_GRUP="teftis-kurulu@byelmas.com.tr";
+const TUM="tum-personel@byelmas.com.tr";
 /* Parametrik bildirim tanımları — yalnızca Admin düzenler */
 let NOTIF=[
  {k:"ann.submit",n:"Duyuru onaya gönderildi",to:{req:1,mgr:0,appr:1,insp:0,all:0}},
@@ -3699,7 +3699,7 @@ function screenView(){
    `<span class="pl ${DIR.active?"ok":"wr"}">${DIR.active?"etkin":"devre dışı"}</span>`)+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
    <div class="card">
-    <div class="lbl">SUNUCU ADRESİ</div><input id="dUrl" value="${esc(f.url)}" placeholder="ldaps://dc01.tera.local:636" ${cw("m.dir")?"":"disabled"}>
+    <div class="lbl">SUNUCU ADRESİ</div><input id="dUrl" value="${esc(f.url)}" placeholder="ldaps://dc01.byelmas.local:636" ${cw("m.dir")?"":"disabled"}>
     <p class="m" style="color:var(--tm);margin:6px 0 0">Üretimde yalnızca ldaps:// kabul edilir.</p>
     <div class="lbl" style="margin-top:11px">BASE DN</div><input id="dBase" value="${esc(f.baseDn)}" placeholder="DC=tera,DC=local" ${cw("m.dir")?"":"disabled"}>
     <div class="lbl" style="margin-top:11px">SERVİS HESABI DN</div><input id="dBind" value="${esc(f.bindDn)}" placeholder="CN=svc-portal,OU=Servis,DC=tera,DC=local" ${cw("m.dir")?"":"disabled"}>
@@ -3744,9 +3744,9 @@ function screenView(){
    `<span class="pl ${SMTP.active?"ok":"wr"}">${SMTP.active?"etkin":"devre dışı"}</span>`)+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
    <div class="card">
-    <div class="lbl">SUNUCU ADRESİ</div><input id="smHost" value="${esc(SMTP.host)}" placeholder="smtp.tera.local" ${w?"":"disabled"}>
+    <div class="lbl">SUNUCU ADRESİ</div><input id="smHost" value="${esc(SMTP.host)}" placeholder="smtp.byelmas.local" ${w?"":"disabled"}>
     <div class="lbl" style="margin-top:11px">PORT</div><input id="smPort" value="${esc(SMTP.port)}" placeholder="587" ${w?"":"disabled"}>
-    <div class="lbl" style="margin-top:11px">GÖNDEREN ADRESİ</div><input id="smFrom" value="${esc(SMTP.fromAddr)}" placeholder="portal@terayatirim.com.tr" ${w?"":"disabled"}>
+    <div class="lbl" style="margin-top:11px">GÖNDEREN ADRESİ</div><input id="smFrom" value="${esc(SMTP.fromAddr)}" placeholder="portal@byelmas.com.tr" ${w?"":"disabled"}>
     <div class="lbl" style="margin-top:11px">KULLANICI ADI</div><input id="smUser" value="${esc(SMTP.user)}" placeholder="svc-portal-mail" ${w?"":"disabled"}>
     <div class="lbl" style="margin-top:11px">PAROLA</div>
     <input id="smPass" type="password" autocomplete="new-password" placeholder="${SMTP.passwordSet?"kayıtlı — değiştirmek için yazın":"parola"}" ${w?"":"disabled"}>
@@ -5701,7 +5701,7 @@ app.addEventListener("click",async ev=>{
    text:esc(d.no)+" — "+esc(d.t)+" için Teftiş onay talebi iptal edilecek ve kayıt kaldırılacaktır. Onaylıyor musunuz?",
    act:"docCancelOk:"+p[1]};render();return;}
  if(k==="docCancelOk"){S.docView=null;const d=DOCS[+p[1]];DOCS.splice(+p[1],1);
-  mail("kerem.aslan@terayatirim.com.tr",d.no+" onay talebi yükleyen tarafından iptal edildi");
+  mail("kerem.aslan@byelmas.com.tr",d.no+" onay talebi yükleyen tarafından iptal edildi");
   audit(d.no+" onay talebi iptal edildi (yükleyen)",0);S.dlg=null;
   toast("Onay talebi iptal edildi; doküman kuyruktan kaldırıldı.");return;}
  if(k==="annCancel"){const a=ANN.find(x=>x.id===+p[1]);
@@ -7236,7 +7236,7 @@ app.addEventListener("click",async ev=>{
        const username=f.a.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z\s]/g,"").trim().replace(/\s+/g,".");
        const initPw=(document.getElementById("fInitPw")||{}).value||undefined;
        return api("POST","/api/admin/users",{username,name:f.a.trim(),
-        email:username+"@terayatirim.com.tr",role:f.role||"staff",unit:unitCode,title:titleCode,initialPassword:initPw});
+        email:username+"@byelmas.com.tr",role:f.role||"staff",unit:unitCode,title:titleCode,initialPassword:initPw});
       })()
      :api("PUT","/api/admin/users/"+encodeURIComponent(d.idx),{name:f.a.trim(),unit:unitCode,title:titleCode,
        role:f.role||undefined,active:!!f.on}));

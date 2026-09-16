@@ -175,9 +175,9 @@ router.post("/daily-digest/email", requireAuth, async (req, res, next) => {
       digest.pendingApprovals.length ? `Onayınızı bekleyen ${digest.pendingApprovals.length} talep var.` : null,
       digest.unreadAnnouncements.length ? `${digest.unreadAnnouncements.length} okunmamış duyurunuz var: ${digest.unreadAnnouncements.map((a) => a.title).join(", ")}` : null,
       digest.pendingTraining.length ? `${digest.pendingTraining.length} bekleyen eğitim/okumanız var: ${digest.pendingTraining.map((t) => t.title).join(", ")}` : null,
-      "", "Tera Portal",
+      "", "BY Portal",
     ].filter(Boolean);
-    const sent = await sendMail(req.user.email, "Tera Portal — günlük özetiniz", lines.join("\n"));
+    const sent = await sendMail(req.user.email, "BY Portal — günlük özetiniz", lines.join("\n"));
     await audit(`Günlük özet e-postası gönderildi: ${req.user.username} (${sent ? "başarılı" : "SMTP kapalı"})`, req.user.username, sent);
     res.json({ ok: true, sent });
   } catch (e) { next(e); }

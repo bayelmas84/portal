@@ -47,7 +47,7 @@ async function seed() {
     await query(
       `INSERT INTO users (username,name,email,role,unit,title,color,password_hash,must_change_password)
        VALUES ($1,$2,$3,$4,$5,$6,'#0B1F48',$7,false) ON CONFLICT (username) DO NOTHING`,
-      [username, name, username.replace(".", ".") + "@terayatirim.com.tr", role, unit, title, DEMO_PASSWORD_HASH]
+      [username, name, username.replace(".", ".") + "@byelmas.com.tr", role, unit, title, DEMO_PASSWORD_HASH]
     );
   }
   // Yönetici ilişkisi ikinci geçişte (tüm kullanıcılar var olduktan sonra) kurulur.

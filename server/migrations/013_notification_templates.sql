@@ -18,9 +18,9 @@ CREATE TABLE IF NOT EXISTS notification_templates (
   updated_at TIMESTAMPTZ
 );
 
--- Gönderen adresi ve görünen ad: portal@terayatirim.com / "Tera Portal".
+-- Gönderen adresi ve görünen ad: portal@byelmas.com / "BY Portal".
 -- (Bu kutuya gerçek erişim/yetki ayrıca kurumsal süreçle talep edilecek;
 -- burada yalnızca varsayılan değer olarak ayarlanıyor.)
-ALTER TABLE smtp_settings ADD COLUMN IF NOT EXISTS from_name TEXT NOT NULL DEFAULT 'Tera Portal';
-UPDATE smtp_settings SET from_addr = 'portal@terayatirim.com', from_name = 'Tera Portal'
+ALTER TABLE smtp_settings ADD COLUMN IF NOT EXISTS from_name TEXT NOT NULL DEFAULT 'BY Portal';
+UPDATE smtp_settings SET from_addr = 'portal@byelmas.com', from_name = 'BY Portal'
   WHERE id = 1 AND (from_addr IS NULL OR from_addr = '');

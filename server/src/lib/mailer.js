@@ -15,7 +15,7 @@ async function saveSmtpSettings({ host, port, fromAddr, fromName, username, pass
   await query(
     `UPDATE smtp_settings SET host=$1, port=$2, from_addr=$3, from_name=$4, username=$5,
        password_encrypted=$6, tls=$7, updated_by=$8, updated_at=now() WHERE id=1`,
-    [host, port, fromAddr, fromName || s.from_name || "Tera Portal", username, passwordEncrypted, tls, updatedBy]
+    [host, port, fromAddr, fromName || s.from_name || "BY Portal", username, passwordEncrypted, tls, updatedBy]
   );
   await audit(`SMTP ayarları güncellendi (parola ${password ? "değişti" : "korundu"})`, updatedBy);
 }
@@ -77,7 +77,7 @@ async function sendMail(to, subject, text) {
   const password = decryptSecret(s.password_encrypted);
   try {
     const transport = buildTransport(s, password);
-    // Görünen ad + adres birlikte gönderilir: "Tera Portal <portal@terayatirim.com>"
+    // Görünen ad + adres birlikte gönderilir: "BY Portal <portal@byelmas.com>"
     const from = s.from_name ? `"${s.from_name}" <${s.from_addr}>` : s.from_addr;
     await transport.sendMail({ from, to, subject, text: text || subject });
     await query("INSERT INTO mail_log (to_addr, subject) VALUES ($1,$2)", [to, subject]);
