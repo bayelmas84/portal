@@ -623,6 +623,15 @@ let BIREP=[
 let nbi=53;
 
 const TYC={Epic:"#7A4FBF",Story:"#0F6E56",Task:"#0178BA",Bug:"#A32D2D"};
+/* Konu şablonları: sık açılan konu tiplerinde açıklama alanına önceden
+   doldurulmuş bir yapı sunar (kullanıcı üzerine yazabilir/silebilir).
+   Sadece frontend'de tutulur — sunucuya kaydedilen bir veri değil. */
+const ISSUE_TEMPLATES={
+ "": {label:"No template",body:""},
+ bug:{label:"Bug report",body:"Steps to reproduce:\n1. \n2. \n3. \n\nExpected result:\n\n\nActual result:\n\n\nEnvironment / version:\n"},
+ feature:{label:"Feature request",body:"User story: As a ___, I want ___, so that ___.\n\nAcceptance criteria:\n- \n- \n- \n"},
+ task:{label:"Task checklist",body:"Goal:\n\n\nSteps:\n- [ ] \n- [ ] \n- [ ] \n"},
+};
 /* Jira hiyerarşisi: Epic → Story → Task/Bug.
    Task ve Bug doğrudan Epic altına açılamaz; önce bir Story gerekir. */
 const PARENT_OF={Epic:null,Story:"Epic",Task:"Story",Bug:"Story"};
@@ -4441,6 +4450,8 @@ function dialogView(){
   return wrap(`<div style="font-size:15px">New issue — ${p.k}</div>
    <div class="lbl" style="margin-top:11px">SUMMARY</div><input id="fA" value="${esc(f.a||"")}" placeholder="Short, actionable summary">
    <div class="lbl" style="margin-top:11px">DESCRIPTION</div>
+   <select id="fIssueTemplate" style="margin-bottom:6px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+    ${Object.keys(ISSUE_TEMPLATES).map(k=>`<option value="${k}" ${(f.template||"")===k?"selected":""}>${ISSUE_TEMPLATES[k].label}</option>`).join("")}</select>
    <textarea id="fIssueDesc" rows="3" placeholder="Optional details, steps to reproduce, context…" style="width:100%;resize:vertical">${esc(f.desc||"")}</textarea>
    <div class="lbl" style="margin-top:11px">TYPE</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap">${["Epic","Story","Task","Bug"].map(t=>
@@ -5213,6 +5224,19 @@ app.addEventListener("change",e=>{
  const idd=e.target.closest("[data-item-due]");
  if(idd){const id=idd.dataset.itemDue,it=(S.f.items||[]).find(x=>x.id===id);
   if(it){it.due=idd.value||"";render();}return;}
+ if(e.target.id==="fIssueTemplate"){
+  const tpl=ISSUE_TEMPLATES[e.target.value];
+  const descBox=document.getElementById("fIssueDesc");
+  const currentDesc=(descBox?descBox.value:S.f.desc)||"";
+  if(tpl&&tpl.body&&currentDesc.trim()){
+   if(!confirm("This will replace the current description. Continue?")){
+    // Vazgeçildi: hem seçimi hem mevcut metni koru (render() textarea'yı
+    // S.f.desc'ten yeniden oluşturacağı için, önce KULLANICININ EKRANDA
+    // YAZDIĞI METNİ S.f.desc'e yazmam gerekiyor — aksi halde kaybolur.
+    S.f.desc=currentDesc;e.target.value=S.f.template||"";render();return;}}
+  S.f.template=e.target.value;
+  S.f.desc=tpl?tpl.body:"";
+  render();return;}
  const cap=e.target.closest("[data-capacity-edit]");
  if(cap){const username=cap.dataset.capacityEdit,pk=P().k;
   const n=Number(cap.value);
