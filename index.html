@@ -352,6 +352,7 @@ const MODULES=[
 const SCREENS={
  delivery:[["d.my","My Work","ti-user-check"],["d.projects","Projects","ti-layout-grid"],
    ["d.board","Board","ti-layout-kanban"],["d.backlog","Backlog","ti-list-details"],
+   ["d.allissues","All Issues","ti-list-search"],
    ["d.sprint","Sprint","ti-clock"],["d.gate","Stage Gates","ti-checkbox"],
    ["d.charts","Project Charts","ti-chart-histogram"],["d.exec","Executive Summary","ti-target"],
    ["d.team","Project Team","ti-users-group"],["d.docs","Project Documents","ti-files"],
@@ -385,7 +386,7 @@ const SCREENS={
 /* Admin: her ekranda okuma; yazma yalnızca Duyurular ve Admin Panel */
 const ACC={
  admin:{delivery:R,documents:R,announce:W,training:R,reports:R,approvals:W,admin:W,
-  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.gate":R,"d.charts":R,"d.exec":R,
+  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.allissues":R,"d.gate":R,"d.charts":R,"d.exec":R,
   "d.team":R,"d.docs":R,"d.docview":R,"d.appr":R,"d.cr":R,"k.docs":R,
   /* a.del verilmez: silme talebini duyuruyu giren kişi açar, Teftiş karara bağlar. */
   "a.list":W,"a.new":W,"t.un":R,"t.done":R,"t.author":W,"r.list":R,"r.view":R,
@@ -395,7 +396,7 @@ const ACC={
     kapı imzasında tek imza yeterlidir. Diğer modüllerde okuma düzeyindedir. */
  /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (okuma, yazma, ekleme, silme),
     faz kapısını tek imzayla onaylayabilir. Diğer modüllerde okuma düzeyindedir. */
- pmdir:{delivery:W,"d.my":W,"d.projects":W,"d.board":W,"d.backlog":W,"d.sprint":W,
+ pmdir:{delivery:W,"d.my":W,"d.projects":W,"d.board":W,"d.backlog":W,"d.allissues":W,"d.sprint":W,
   "d.gate":W,"d.gate.approve":W,"d.delete":W,"d.projadmin":W,
   "d.charts":W,"d.exec":W,"d.team":W,"d.docs":W,"d.docview":W,"d.appr":W,"d.cr":W,
   documents:R,"k.docs":R,announce:R,"a.list":R,training:R,"t.un":W,"t.done":W,
@@ -416,7 +417,7 @@ const ACC={
   "r.list":R,"r.view":R,"r.dev":R,"r.usage":R,
   "p.in":W,"p.my":W,"p.done":W,
   "c.read":W,"c.rem":W,"c.audit":W,audit:R,
-  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.sprint":R,"d.gate":R,"d.charts":R,"d.exec":R,
+  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.allissues":R,"d.sprint":R,"d.gate":R,"d.charts":R,"d.exec":R,
   "d.team":R,"d.cr":R,"d.meeting":R,"d.meetingview":R,"d.meetingnew":R,"d.gantt":R,"t.readlive":R,
   admin:R,"m.ann":R,"m.users":R,"m.units":R,"m.titles":R,"m.roles":R,"m.access":R,"m.notif":R,
   "m.mailtpl":R,"m.settings":R,"m.approvalrules":R,"m.dir":R,"m.smtp":R,"m.brand":R,"m.avail":R,"m.short":R},
@@ -427,7 +428,7 @@ const ACC={
   "d.docs":R,"d.docview":R,
   "k.docs":W,"k.new":W,"a.list":W,"a.new":W,"a.del":W,"t.un":W,"t.done":W,
   "r.list":R,"r.view":R,"p.in":W,"p.my":W,"p.done":W,"k.mail":R,
-  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.sprint":R,"d.gate":R,"d.charts":R,"d.exec":R,
+  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.allissues":R,"d.sprint":R,"d.gate":R,"d.charts":R,"d.exec":R,
   "d.team":R,"d.appr":R,"d.cr":R,"d.meeting":R,"d.meetingview":R,"d.meetingnew":R,"d.gantt":R,
   "t.author":R,"t.readlive":R,"r.dev":R,"r.usage":R,"k.queue":R,compliance:R,"c.read":R,"c.rem":R,audit:R,"c.audit":R,
   admin:R,"m.ann":R,"m.users":R,"m.units":R,"m.titles":R,"m.roles":R,"m.access":R,"m.notif":R,
@@ -438,7 +439,7 @@ const ACC={
   "d.docs":R,"d.docview":R,"d.appr":R,
   "k.docs":W,"k.new":W,"a.list":W,"a.new":W,"a.del":W,"t.un":W,"t.done":W,"r.list":R,"r.view":R,
   "p.in":W,"p.my":W,"p.done":W,"compliance":W,"c.read":W,"c.rem":W,"c.audit":W,audit:R,"k.mail":R,
-  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.sprint":R,"d.gate":R,"d.charts":R,"d.exec":R,
+  "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.allissues":R,"d.sprint":R,"d.gate":R,"d.charts":R,"d.exec":R,
   "d.team":R,"d.cr":R,"d.meeting":R,"d.meetingview":R,"d.meetingnew":R,"d.gantt":R,
   "t.author":R,"t.readlive":R,"r.dev":R,"r.usage":R,"k.queue":R,
   admin:R,"m.ann":R,"m.users":R,"m.units":R,"m.titles":R,"m.roles":R,"m.access":R,"m.notif":R,
@@ -453,14 +454,14 @@ const ACC={
     değiştirme, silme) ve faz kapısında tek imzayla ilerletme. Admin Panel'e dahil değildir:
     kullanıcı ve yetki yönetimi ayrı görevdir. */
  pm:{delivery:W,documents:R,announce:R,training:R,reports:R,approvals:W,
-  "d.my":W,"d.projects":W,"d.board":W,"d.backlog":W,"d.sprint":W,"d.gate":W,"d.charts":W,"d.exec":R,
+  "d.my":W,"d.projects":W,"d.board":W,"d.backlog":W,"d.allissues":W,"d.sprint":W,"d.gate":W,"d.charts":W,"d.exec":R,
   "d.team":W,"d.docs":W,"d.docview":W,"d.appr":R,"d.cr":W,
   "k.docs":R,"a.list":R,"r.dev":W,"r.usage":R,
   "t.un":W,"t.done":W,"r.list":R,"r.view":R,"p.in":W,"p.my":W,"p.done":W},
  /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (ekleme, değiştirme, silme)
     ve faz kapısı onay yetkisi. Diğer modüllerde okuma. */
  dev:{delivery:R,documents:R,announce:R,training:R,approvals:W,
-  "d.my":W,"d.board":W,"d.backlog":R,"d.projects":R,"d.charts":R,"d.team":R,"d.docs":R,"d.docview":R,"d.cr":R,"k.docs":R,"a.list":R,"t.un":W,"t.done":W,
+  "d.my":W,"d.board":W,"d.backlog":R,"d.allissues":R,"d.projects":R,"d.charts":R,"d.team":R,"d.docs":R,"d.docview":R,"d.cr":R,"k.docs":R,"a.list":R,"t.un":W,"t.done":W,
   "p.in":W,"p.my":W,"p.done":W},
  /* Personel: proje yönetiminde yalnızca proje dokümanlarını görür.
     Proje ekibine atanmışsa board, sprint, backlog, kapı ve CR ekranları
@@ -1652,7 +1653,7 @@ const app=document.getElementById("app");
 /* Proje ekibine atanmış kişiler (PO, BO, QA, Vendor, Analyst...) proje bilgilerini
    görebilir ama işlem yapamaz: aşağıdaki ekranlar salt okunur açılır.
    Ekipte olmayan ve proje yönetimi rolünde olmayan kişiler yalnızca dokümanları görür. */
-const TEAM_READ=["delivery","d.projects","d.board","d.backlog","d.sprint","d.gate","d.cr",
+const TEAM_READ=["delivery","d.projects","d.board","d.backlog","d.allissues","d.sprint","d.gate","d.cr",
                  "d.docs","d.docview","d.appr"];
 /* Ekip üyeliği board, sprint, backlog, kapı ve CR ekranlarını salt okunur açar.
    Teftiş ve Risk zorunlu üyeliği yalnızca onay zinciri içindir; bu iki rol tek başına
@@ -2030,7 +2031,7 @@ function screenView(){
    cw("d.projects")?`<button class="b p" data-a="projNew">Yeni proje</button>`:"")+readOnly("d.projects")+
   table(["Code","Project","Method","Lead","Progress","Mine","Open","Health",""],PROJ.map((p,i)=>{const mt=metrics(p);
    return `<tr>
-   <td class="m" style="color:var(--ta)">${p.k}</td><td>${esc(p.n)}</td><td>${pill(p.m)}</td>
+   <td class="m" style="color:var(--ta);cursor:pointer;text-decoration:underline" data-a="viewAllIssues:${i}" title="View all issues in this project">${p.k}</td><td>${esc(p.n)}</td><td>${pill(p.m)}</td>
    <td style="color:var(--t2)">${esc(p.lead)}</td>
    <td style="min-width:130px">${bar(mt.pct,mt.drift!==null&&mt.drift<=-15?"#A32D2D":"#0B1F48")}
      <span class="m" style="color:var(--tm)">${mt.pct}% · ${mt.donePts}/${mt.pts} SP${mt.timePct!==null?` · time ${mt.timePct}%`:""}</span></td>
@@ -2157,6 +2158,26 @@ function screenView(){
     `<tr><td colspan="${canRank?7:6}" style="color:var(--tm)">Backlog is empty.</td></tr>`)+
    (canRank&&backlogItems.length?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">Drag a row to reorder priority — this ranking is saved and shared with the whole team.
     Check rows to bulk-edit priority, assignee, or labels.</p>`:"");}
+
+ /* Bir projenin TÜM konularını (Epic/Story/Task/Bug, her durumda) tek
+    listede gösterir — Backlog'un aksine yalnızca "backlog" durumundakilerle
+    sınırlı değildir. Projects ekranında proje koduna tıklanınca açılır. */
+ if(v==="d.allissues"){
+  const p=P();
+  if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
+  if(LIVE_BACKEND&&!p.itemsLoaded)return head("All Issues",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+  const allItems=[...p.items].sort((a,b)=>a.key.localeCompare(b.key,undefined,{numeric:true}));
+  return head("All Issues",p.k+" — "+p.n+" · "+allItems.length+" issues"+(LIVE_BACKEND?" · live backend":""),
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
+  table(["Type","Epic","Key","Title","Status","Assignee","SP"],allItems.map(i=>{const par=i.parent?itemByKey(p,i.parent):null;
+   return `<tr>
+    <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
+    <td class="m" style="color:var(--tm)">${par?esc(par.t):"—"}</td>
+    <td>${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td>
+    <td>${pill(FLOW[i.st],"")}</td>
+    <td style="color:var(--t2)">${esc(i.as||"Unassigned")}</td>
+    <td class="m">${i.pts||"—"}</td></tr>`;}).join("")||
+   `<tr><td colspan="7" style="color:var(--tm)">This project has no issues yet.</td></tr>`);}
 
  if(v==="d.gate"){
   if(LIVE_BACKEND){
@@ -4733,7 +4754,25 @@ function railView(){const pending=inbox().length;
     style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:8px;letter-spacing:.14em;
     color:rgba(255,255,255,.09);margin:8px 0 4px;user-select:none">bayelmas</div></nav>`;}
 
+/* app.innerHTML her render()'da TAMAMEN yeniden oluşturulduğu için, asıl
+   kaydırılabilir eleman (.main, CSS'te overflow-y:auto) da yeniden
+   yaratılır ve scrollTop=0'a döner — bu, özellikle @mention gibi HER
+   TUŞ VURUŞUNDA render() tetikleyen özelliklerde sayfanın sürekli
+   yukarı zıplamasına yol açar. Çözüm: AYNI ekranda kalınırken (örn.
+   yazarken, bir madde eklerken) scroll konumu korunur; GERÇEKTEN
+   farklı bir ekrana/diyaloğa geçilince (kullanıcı yeni bir sayfaya
+   girdiği için) scroll doğal olarak en üstten başlar. Bunu ayırt etmek
+   için bir önceki render()'ın "görünüm imzası" saklanır. */
+let _lastViewSignature=null;
+let _savedMainScrollTop=0;
+let _restoreScrollThisRender=false;
 function render(){
+ const _mainBefore=document.querySelector(".main");
+ if(_mainBefore)_savedMainScrollTop=_mainBefore.scrollTop;
+ const _curSig=S.view+"|"+S.mod+"|"+S.scr+"|"+S.proj+"|"+S.projAll+"|"+
+  (S.dlg?S.dlg.type+":"+(S.dlg.key||S.dlg.pi||S.dlg.idx||""):"none");
+ _restoreScrollThisRender=(_curSig===_lastViewSignature);
+ _lastViewSignature=_curSig;
  document.documentElement.className=S.dark?"dark":"";
  if(S.gate&&S.me&&overdue().length&&S.read===null&&S.quiz===null){
   app.innerHTML=lockView()+(S.pop!==null?popupView():"")+toastView();return;}
@@ -4783,6 +4822,8 @@ function render(){
 const toastView=()=>S.toast?`<div class="toast ${S.toast.bad?"er":"ok"}">${esc(S.toast.msg)}</div>`:"";
 
 function afterRender(){
+ const _mainAfter=document.querySelector(".main");
+ if(_mainAfter&&_restoreScrollThisRender)_mainAfter.scrollTop=_savedMainScrollTop;
  /* Dizin formu alanları: her tuşta durumda saklanır. */
  const fpd=document.getElementById("fPdoc");
  if(fpd)fpd.onchange=e=>{const file=e.target.files&&e.target.files[0];if(!file)return;
@@ -5358,6 +5399,7 @@ app.addEventListener("click",async ev=>{
  if(k==="pickProj"){S.proj=+p[1];S.projAll=false;render();return;}
  if(k==="onlyMine"){S.onlyMine=!S.onlyMine;render();return;}
  if(k==="openProj"){S.proj=+p[1];S.projAll=false;S.mod="delivery";S.scr="d.board";S.dlg=null;render();return;}
+ if(k==="viewAllIssues"){S.proj=+p[1];S.projAll=false;S.mod="delivery";S.scr="d.allissues";S.dlg=null;render();return;}
  if(k==="searchJump"){const kind=p[1],projK=dec(p[2]),issueKey=dec(p[3]);
   const pi=PROJ.findIndex(x=>x.k===projK);
   if(pi<0){toast("Proje bulunamadı.",1);return;}
