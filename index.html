@@ -280,10 +280,22 @@ textarea{min-height:74px;resize:vertical}
 }
 .login-legal{margin:16px 0 0;text-align:center;color:rgba(255,255,255,.5);font-size:11.5px}
 .login-legal .sig{opacity:.24;margin-left:10px}
+#printArea{display:none}
+@media print{
+ body *{visibility:hidden}
+ #printArea,#printArea *{visibility:visible}
+ #printArea{display:block;position:absolute;top:0;left:0;width:100%}
+ #printArea h1{font-size:18px;margin:0 0 4px}
+ #printArea .pdate{font-size:11px;color:#555;margin:0 0 14px}
+ #printArea table{width:100%;border-collapse:collapse;font-size:10px}
+ #printArea th,#printArea td{border:1px solid #999;padding:4px 6px;text-align:left}
+ #printArea th{background:#eee}
+}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="printArea"></div>
 <script>
 (function(){
 "use strict";
@@ -1841,6 +1853,24 @@ function downloadCSV(filename,content){
   a.href=url;a.download=filename;document.body.appendChild(a);a.click();
   document.body.removeChild(a);URL.revokeObjectURL(url);
  }catch(e){toast("Export failed: "+e.message,1);}}
+/* PDF export: uygulama tamamen self-contained (harici JS bağımlılığı yok,
+   offline çalışabilir) olduğu için bir PDF kütüphanesi (jsPDF vb.) CDN'den
+   yüklemek yerine tarayıcının yerleşik "Yazdır → PDF olarak kaydet"
+   özelliğini kullanır: gizli bir "printable" alanına biçimlendirilmiş bir
+   tablo yazılır, @media print kuralları geri kalan her şeyi (sol menü,
+   toast'lar vb.) yazdırmadan gizler, window.print() çağrılır. Kullanıcı
+   yazdırma diyaloğunda "PDF olarak kaydet"i seçer. */
+function printIssuesAsPDF(title,items,p){
+ const el=document.getElementById("printArea");
+ if(!el)return;
+ const rows=items.map(i=>{const par=i.parent?itemByKey(p,i.parent):null;
+  return `<tr><td>${esc(i.ty)}</td><td>${esc(par?par.t:"")}</td><td>${esc(i.key)}</td>
+   <td>${esc(i.t)}</td><td>${esc(FLOW[i.st]||i.st)}</td><td>${esc(i.as||"Unassigned")}</td>
+   <td>${esc(i.pri)}</td><td>${i.pts||0}</td></tr>`;}).join("");
+ el.innerHTML=`<h1>${esc(title)}</h1><p class="pdate">${esc(p.n)} (${esc(p.k)}) — generated ${now().slice(0,10)}</p>
+  <table><thead><tr><th>Type</th><th>Epic</th><th>Key</th><th>Title</th><th>Status</th><th>Assignee</th><th>Priority</th><th>SP</th></tr></thead>
+  <tbody>${rows}</tbody></table>`;
+ window.print();}
 /* Yetki durumu kullanıcıya yazıyla bildirilmez; yapamayacağı işlemin düğmesi hiç gösterilmez. */
 const readOnly=()=>"";
 
@@ -2223,6 +2253,7 @@ function screenView(){
   return head("Backlog",p.n+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
     <button class="b s" data-a="exportCSV:backlog:${S.proj}">Export CSV</button>
+    <button class="b s" data-a="exportPDF:backlog:${S.proj}">Export PDF</button>
     ${cw("d.backlog")?`<button class="b s" data-a="manageVC:${S.proj}">Versions & Components</button>
     <button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
    (canRank&&selected.length?`<div class="card" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -2259,7 +2290,8 @@ function screenView(){
   const allItems=[...p.items].sort((a,b)=>a.key.localeCompare(b.key,undefined,{numeric:true}));
   return head("All Issues",p.k+" — "+p.n+" · "+allItems.length+" issues"+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
-    <button class="b s" data-a="exportCSV:allissues:${S.proj}">Export CSV</button></div>`)+
+    <button class="b s" data-a="exportCSV:allissues:${S.proj}">Export CSV</button>
+    <button class="b s" data-a="exportPDF:allissues:${S.proj}">Export PDF</button></div>`)+
   table(["Type","Epic","Key","Title","Status","Assignee","SP"],allItems.map(i=>{const par=i.parent?itemByKey(p,i.parent):null;
    return `<tr>
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
@@ -5637,6 +5669,11 @@ app.addEventListener("click",async ev=>{
   const csv=issuesToCSV(items,pr);
   downloadCSV(pr.k+"-"+kind+"-"+now().slice(0,10)+".csv",csv);
   toast(items.length+" issue(s) exported.");return;}
+ if(k==="exportPDF"){const kind=p[1],pi=+p[2],pr=PROJ[pi];
+  const items=kind==="backlog"?pr.items.filter(i=>i.st==="backlog"):[...pr.items].sort((a,b)=>a.key.localeCompare(b.key,undefined,{numeric:true}));
+  if(!items.length){toast("Nothing to export.",1);return;}
+  printIssuesAsPDF(kind==="backlog"?"Backlog":"All Issues",items,pr);
+  return;}
  if(k==="searchJump"){const kind=p[1],projK=dec(p[2]),issueKey=dec(p[3]);
   const pi=PROJ.findIndex(x=>x.k===projK);
   if(pi<0){toast("Project not found.",1);return;}
