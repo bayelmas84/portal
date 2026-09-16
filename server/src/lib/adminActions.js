@@ -7,7 +7,7 @@
 const { query, withTransaction } = require("../db");
 const { encryptSecret } = require("./crypto");
 const { saveSmtpSettings, setSmtpActive } = require("./mailer");
-const { setAccess, resetAccessToDefault, setAvailability } = require("./permissions");
+const { setAccess, resetAccessToDefault, setAvailability, isProjectModuleKey } = require("./permissions");
 const { hashPassword } = require("./password");
 const { destroyAllSessionsForUser } = require("../auth/session");
 
@@ -188,7 +188,12 @@ async function applyAdminAction(targetType, payload, actingUsername) {
     }
     case "admin.availability.bulk": {
       const { targets } = payload;
+      // Proje yönetimi modülü (delivery + d.*) bu toplu işlemin dışında
+      // tutulur — admin'in "Tümünü aç"/"Varsayılana dön" gibi genel
+      // işlemleri, pmdir'in Project Admin'den yaptığı özelleştirmeleri
+      // etkilememeli (m.access'teki resetAccessToDefault ile AYNI kural).
       for (const [key, status] of Object.entries(targets || {})) {
+        if (isProjectModuleKey(key)) continue;
         await setAvailability(key, status);
       }
       return;

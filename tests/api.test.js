@@ -871,6 +871,56 @@ test("Project Admin: proje modülü ekran/rol yetkileri yalnızca pmdir tarafın
   assert.equal(afterReset.body.access.staff["d.roadmap"], "read", "admin reset'i proje modülü özelleştirmesini silmemeli");
 });
 
+test("Project Admin: proje modülü ekran DURUMU (availability) yalnızca pmdir tarafından değiştirilebilir", async () => {
+  const pmdir = await login("bayram.elmas");
+  const pm = await login("tolga.firat");
+
+  const getAvail = await request(app).get("/api/projects/module-availability").set("Cookie", pmdir.cookie);
+  assert.equal(getAvail.status, 200);
+
+  const pmTry = await request(app).get("/api/projects/module-availability").set("Cookie", pm.cookie);
+  assert.equal(pmTry.status, 403);
+
+  const invalidKey = await request(app)
+    .put("/api/projects/module-availability")
+    .set("Cookie", pmdir.cookie).set("X-CSRF-Token", pmdir.csrf)
+    .send({ screenKey: "m.users", status: "kapali" });
+  assert.equal(invalidKey.status, 400);
+
+  const setOk = await request(app)
+    .put("/api/projects/module-availability")
+    .set("Cookie", pmdir.cookie).set("X-CSRF-Token", pmdir.csrf)
+    .send({ screenKey: "d.gantt", status: "bakim" });
+  assert.equal(setOk.status, 200);
+
+  const afterSet = await request(app).get("/api/projects/module-availability").set("Cookie", pmdir.cookie);
+  assert.equal(afterSet.body.availability["d.gantt"], "bakim");
+
+  // lib/permissions.js'in genel setAvailability'si proje modülünü reddeder.
+  const { setAvailability } = require("../server/src/lib/permissions");
+  await assert.rejects(() => setAvailability("d.gantt", "kapali"));
+
+  // Reset to open so it doesn't affect other tests' navigation.
+  await request(app)
+    .put("/api/projects/module-availability")
+    .set("Cookie", pmdir.cookie).set("X-CSRF-Token", pmdir.csrf)
+    .send({ screenKey: "d.gantt", status: "acik" });
+});
+
+test("Admin'in toplu ekran durumu değişikliği (bulk) proje modülü anahtarına takılıp çökmez, onu sessizce atlar", async () => {
+  const { applyAdminAction } = require("../server/src/lib/adminActions");
+  const { getProjectModuleAvailability, getAvailability, setAvailability } = require("../server/src/lib/permissions");
+
+  await applyAdminAction("admin.availability.bulk", { targets: { "d.roadmap": "kapali", "m.short": "bakim" } });
+
+  const pmAvail = await getProjectModuleAvailability();
+  assert.notEqual(pmAvail["d.roadmap"], "kapali", "bulk işlem proje modülünü etkilememeli");
+  const shortStatus = await getAvailability("m.short");
+  assert.equal(shortStatus, "bakim", "bulk işlem proje-modülü-dışı anahtarları doğru uygulamalı");
+
+  await setAvailability("m.short", "acik"); // diğer testleri etkilememesi için sıfırla
+});
+
 test.after(async () => {
   await pool.end();
 });

@@ -6,7 +6,7 @@ const crypto = require("crypto");
 const multer = require("multer");
 const { query, withTransaction } = require("../db");
 const { requireRead, requireWrite, requireAuth } = require("../middleware/auth");
-const { canWrite, MEETING_ALWAYS_ROLES, DEFAULT_ACCESS, setProjectModuleAccess, getProjectModuleAccess, isProjectModuleKey } = require("../lib/permissions");
+const { canWrite, MEETING_ALWAYS_ROLES, DEFAULT_ACCESS, setProjectModuleAccess, getProjectModuleAccess, isProjectModuleKey, setProjectModuleAvailability, getProjectModuleAvailability } = require("../lib/permissions");
 const { audit } = require("../lib/audit");
 const { sendMail } = require("../lib/mailer");
 const { getEmailPrefs } = require("../lib/notify");
@@ -140,6 +140,29 @@ router.put("/module-access", requireAuth, async (req, res, next) => {
     if (role === req.user.role) return res.status(409).json({ error: "Kendi rolünüzün yetkisini değiştiremezsiniz." });
     await setProjectModuleAccess(role, screenKey, level);
     await audit(`Proje modülü ekran yetkisi değişti: ${role} · ${screenKey} → ${level}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// Proje yönetimi modülünün (delivery + d.*) ekran durumu (açık/bakımda/
+// kapalı) — Admin Panel'in genel "Ekran yönetimi" (m.avail) mekanizması bu
+// modüle asla dokunamaz; yalnızca pmdir buradan yönetir. Kilitlenme riski
+// yok çünkü Admin Panel zaten bu modülün dışında.
+router.get("/module-availability", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user.role !== "pmdir") return res.status(403).json({ error: "Yalnızca Proje Yönetim Direktörü erişebilir." });
+    res.json({ availability: await getProjectModuleAvailability() });
+  } catch (e) { next(e); }
+});
+
+router.put("/module-availability", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user.role !== "pmdir") return res.status(403).json({ error: "Yalnızca Proje Yönetim Direktörü değiştirebilir." });
+    const { screenKey, status } = req.body || {};
+    if (!isProjectModuleKey(screenKey)) return res.status(400).json({ error: "Bu anahtar proje yönetimi modülüne ait değil." });
+    if (!["acik", "bakim", "kapali"].includes(status)) return res.status(400).json({ error: "Geçersiz durum." });
+    await setProjectModuleAvailability(screenKey, status);
+    await audit(`Proje modülü ekran durumu değişti: ${screenKey} → ${status}`, req.user.username);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

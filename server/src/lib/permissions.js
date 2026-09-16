@@ -236,6 +236,9 @@ async function getAvailability(screenKey) {
   return map[screenKey] || "acik";
 }
 async function setAvailability(screenKey, status) {
+  if (isProjectModuleKey(screenKey)) {
+    throw new Error("Proje yönetimi modülünün ekran durumu Admin Panel üzerinden değiştirilemez; yalnızca Project Admin ekranından (Proje Yönetim Direktörü) değiştirilebilir.");
+  }
   if (!["acik", "bakim", "kapali"].includes(status)) throw new Error("Gecersiz durum.");
   await query(
     "INSERT INTO screen_availability (screen_key, status) VALUES ($1,$2) ON CONFLICT (screen_key) DO UPDATE SET status=$2",
@@ -243,8 +246,44 @@ async function setAvailability(screenKey, status) {
   );
   availCache = null;
 }
+// Proje yönetimi modülünün (delivery + d.*) ekran durumunu (açık/bakımda/
+// kapalı) SADECE Project Admin ekranından (pmdir) değiştirmeye yarar.
+async function setProjectModuleAvailability(screenKey, status) {
+  if (!isProjectModuleKey(screenKey)) {
+    throw new Error("Bu anahtar proje yönetimi modülüne ait değil.");
+  }
+  if (!["acik", "bakim", "kapali"].includes(status)) throw new Error("Gecersiz durum.");
+  await query(
+    "INSERT INTO screen_availability (screen_key, status) VALUES ($1,$2) ON CONFLICT (screen_key) DO UPDATE SET status=$2",
+    [screenKey, status]
+  );
+  availCache = null;
+}
+// Herkesin gezinmesi için gereken TAM harita (proje modülü dahil) — gerçek
+// erişim/navigasyon kontrolü bunu kullanmaya devam eder, DEĞİŞMEDİ.
 async function getAllAvailability() {
   return loadAvailability();
+}
+// Admin Panel > Ekran yönetimi (m.avail) ekranının okuduğu harita: proje
+// yönetimi modülü buradan TAMAMEN çıkarılır (m.access'teki getAllAccess ile
+// AYNI desen) — durumları gerçek navigasyonda aynen kullanılmaya devam
+// eder, yalnızca bu YÖNETİM ekranında görünmez/değiştirilemez.
+async function getAdminAvailability() {
+  const map = await loadAvailability();
+  const filtered = {};
+  for (const [key, status] of Object.entries(map)) {
+    if (!isProjectModuleKey(key)) filtered[key] = status;
+  }
+  return filtered;
+}
+// Project Admin ekranının okuduğu harita: YALNIZCA proje yönetimi modülü.
+async function getProjectModuleAvailability() {
+  const map = await loadAvailability();
+  const filtered = {};
+  for (const [key, status] of Object.entries(map)) {
+    if (isProjectModuleKey(key)) filtered[key] = status;
+  }
+  return filtered;
 }
 
 module.exports = {
@@ -261,5 +300,8 @@ module.exports = {
   isProjectModuleKey,
   getAvailability,
   setAvailability,
+  setProjectModuleAvailability,
   getAllAvailability,
+  getAdminAvailability,
+  getProjectModuleAvailability,
 };

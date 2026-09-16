@@ -1318,6 +1318,15 @@ async function loadProjectModuleAccessLive(){
  try{const data=await api("GET","/api/projects/module-access");PROJECT_MODULE_ACCESS_LIVE=data.access;}
  catch(e){toast("Proje modülü yetki matrisi yüklenemedi: "+e.message,1);PROJECT_MODULE_ACCESS_LIVE={};}
  PROJECT_MODULE_ACCESS_LOADING=false;render();}
+/* Project Admin'in "Screen Availability" bölümü — proje modülünün
+   (delivery + d.*) açık/bakımda/kapalı durumu, m.avail (Ekran Yönetimi)
+   ile AYNI mekanizma, ama YALNIZCA pmdir görebilir/değiştirebilir. */
+let PROJECT_MODULE_AVAIL_LIVE=null,PROJECT_MODULE_AVAIL_LOADING=false;
+async function loadProjectModuleAvailLive(){
+ PROJECT_MODULE_AVAIL_LOADING=true;
+ try{const data=await api("GET","/api/projects/module-availability");PROJECT_MODULE_AVAIL_LIVE=data.availability;}
+ catch(e){toast("Proje modülü ekran durumu yüklenemedi: "+e.message,1);PROJECT_MODULE_AVAIL_LIVE={};}
+ PROJECT_MODULE_AVAIL_LOADING=false;render();}
 /* Bir ekran anahtarının insan-okunur adı: önce modül adları arasında, sonra
    modüllerin ekran listelerinde aranır. */
 function screenLabel(key){
@@ -2858,6 +2867,24 @@ function screenView(){
       return `<td style="text-align:center"><span class="pl ${cls}" title="${own?"your own role — locked":""}"
        style="cursor:${!own?"pointer":"not-allowed"};${own?"outline:1px dashed var(--bds)":""}"
        ${!own?`data-a="projAccessCycle:${r}:${key}"`:""}>${txt}</span></td>`;}).join("")+`</tr>`;});}
+  // Screen Availability: proje modülünün açık/bakımda/kapalı durumu —
+  // m.avail (Ekran Yönetimi) ile AYNI mekanizma, ama yalnızca burada,
+  // yalnızca pmdir için. "d.projadmin" kendisi kilitli (kilitlenme riski).
+  let availRows="";
+  if(LIVE_BACKEND){
+   if(PROJECT_MODULE_AVAIL_LIVE===null&&!PROJECT_MODULE_AVAIL_LOADING)loadProjectModuleAvailLive();
+   if(PROJECT_MODULE_AVAIL_LIVE===null){availRows=null;}
+   else{pmKeys.forEach(([key,label])=>{const cur=PROJECT_MODULE_AVAIL_LIVE[key]||"acik",locked=key==="d.projadmin";
+    availRows+=`<tr><td style="min-width:150px">${label}<div class="m" style="color:var(--tm)">${key}</div></td>
+     <td>${cur==="acik"?pill("open","ok"):cur==="bakim"?pill("maintenance","wr"):pill("closed","er")}</td>
+     <td style="text-align:right;white-space:nowrap">${locked?pill("cannot be closed")
+      :["acik","bakim","kapali"].map(x=>`<button class="b s ${cur===x?(x==="acik"?"p":x==="bakim"?"g":"d"):""}" data-a="projAvailCycle:${key}:${x}">${x==="acik"?"Open":x==="bakim"?"Maintenance":"Closed"}</button>`).join(" ")}</td></tr>`;});}
+  }else{
+   pmKeys.forEach(([key,label])=>{const cur=AVAIL[key]||"acik",locked=key==="d.projadmin";
+    availRows+=`<tr><td style="min-width:150px">${label}<div class="m" style="color:var(--tm)">${key}</div></td>
+     <td>${cur==="acik"?pill("open","ok"):cur==="bakim"?pill("maintenance","wr"):pill("closed","er")}</td>
+     <td style="text-align:right;white-space:nowrap">${locked?pill("cannot be closed")
+      :["acik","bakim","kapali"].map(x=>`<button class="b s ${cur===x?(x==="acik"?"p":x==="bakim"?"g":"d"):""}" data-a="projAvailCycle:${key}:${x}">${x==="acik"?"Open":x==="bakim"?"Maintenance":"Closed"}</button>`).join(" ")}</td></tr>`;});}
   return head("Project Admin",p.k+" — "+p.n,
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
   `<div class="card" style="max-width:640px">
@@ -2874,6 +2901,12 @@ function screenView(){
     `<div class="card wr" style="margin-bottom:12px;font-size:12px;line-height:1.6">
       Your own role (<b>${ROLE[S.me.r]}</b>) is locked — no one can change their own access.</div>
     ${table(["Screen"].concat(roles.map(r=>ROLE[r].split(" ")[0]+(r===S.me.r?" (you)":""))),permRows)}`}
+   <div class="lbl" style="margin-top:22px">Screen Availability — entire project module</div>
+   <p class="m" style="color:var(--tm);margin:4px 0 10px">Open, put into maintenance, or close any screen in the Project
+    Management module, independent of role. This is the only place these screens' availability can be changed —
+    the Admin Panel's general Screen Management never shows this module.</p>
+   ${availRows===null?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
+    table(["Screen","Status",""],availRows)}
    <p style="font-size:11.5px;color:var(--tm);margin-top:12px">More project-wide administration settings will appear here over time.</p>`;}
 
  /* ---- reports ---- */
@@ -3536,17 +3569,14 @@ function screenView(){
     <td>${cur==="acik"?pill("açık","ok"):cur==="bakim"?pill("bakımda","wr"):pill("kapalı","er")}</td>
     <td style="text-align:right;white-space:nowrap">${locked?pill("kapatılamaz")
      :["acik","bakim","kapali"].map(x=>`<button class="b s ${cur===x?(x==="acik"?"p":x==="bakim"?"g":"d"):""}" data-a="avail:${k}:${x}">${AV_LABEL[x]}</button>`).join(" ")}</td></tr>`;};
-  let rows="";MODULES.forEach(m=>{rows+=cell(m[0],m[1],true);
-   (SCREENS[m[0]]||[]).forEach(x=>{rows+=cell(x[0],x[1],false);});});
-  const kap=Object.keys(AVAIL).filter(k=>AVAIL[k]==="kapali").length;
-  const bak=Object.keys(AVAIL).filter(k=>AVAIL[k]==="bakim").length;
+  // Proje yönetimi modülü (delivery + d.*) bu ekranda hiç gösterilmez —
+  // yalnızca pmdir'in Project Admin ekranından yönetilir (m.access ile
+  // AYNI desen, bkz. isProjectModuleKey).
+  let rows="";MODULES.forEach(m=>{if(isProjectModuleKey(m[0]))return;rows+=cell(m[0],m[1],true);
+   (SCREENS[m[0]]||[]).filter(x=>!isProjectModuleKey(x[0])).forEach(x=>{rows+=cell(x[0],x[1],false);});});
   return head("Ekran yönetimi","Modül ve ekranları rollerden bağımsız açın, bakıma alın veya kapatın",
    `<button class="b" data-a="availDefault">Varsayılana dön</button>
     <button class="b" data-a="availReset">Tümünü aç</button>`)+
-  `<div class="card wr" style="margin-bottom:12px;font-size:12px;line-height:1.65">
-    <b>Kapalı</b> bölüm hiç kimseye görünmez: sol menüden, ana ekran kutularından ve diğer ekranlardaki yönlendirmelerden kalkar.<br>
-    <b>Bakımda</b> bölüm menüde kalır; açıldığında bakım bilgisi çıkar, ana ekrandaki kutular ve yönlendirmeler gizlenir.<br>
-    Şu an ${kap} kapalı, ${bak} bakımda. Admin Panel ve bu ekran güvenlik gereği kapatılamaz.</div>`+
   table(["Modül / ekran","Durum",""],rows);}
  if(v==="m.short")return head("Kısayol yönetimi",SHORTS.filter(s=>s.on).length+" aktif / "+SHORTS.length+" kayıt",
    cw("m.short")?`<button class="b p" data-a="recNew:short">Kısayol ekle</button>`:"")+
@@ -3860,6 +3890,205 @@ function orgChartView(){
   </div>`;}
 
 /* --------------------------------- diyalog -------------------------------- */
+/* Issue detayı ARTIK bir yan panel (side dialog) DEĞİL, Jira'daki gibi
+   tam ekran bir görünüm — sol rail + alt menü SABİT kalır, yalnızca
+   ana içerik alanı (body) bu görünümle değişir. render() bu fonksiyonu
+   S.dlg.type==="issue" olduğunda screenView() YERİNE çağırır. */
+function issueFullView(d){const f=S.f;const p=PROJ[d.pi],i=p.items.find(x=>x.key===d.key);if(!i)return "";
+  const kids=i.ty==="Epic"?allDescendants(p,i.key):childrenOf(p,i.key),par=i.parent?itemByKey(p,i.parent):null;
+  const attKey=p.k+"::"+i.key;
+  const atts=LIVE_BACKEND?(ISSUE_ATTACH_LIVE[attKey]||null):null;
+  const links=LIVE_BACKEND?(ISSUE_LINKS_LIVE[attKey]||null):demoLinksFor(p.k,i.key);
+  const comments=LIVE_BACKEND?(ISSUE_COMMENTS_LIVE[attKey]||null):demoCommentsFor(p.k,i.key);
+  const worklogs=LIVE_BACKEND?(ISSUE_WORKLOGS_LIVE[attKey]||null):demoWorklogsFor(p.k,i.key);
+  const history=LIVE_BACKEND?(ISSUE_HISTORY_LIVE[attKey]||null):demoHistoryFor(p.k,i.key);
+  const checklist=LIVE_BACKEND?(ISSUE_CHECKLIST_LIVE[attKey]||null):demoChecklistFor(p.k,i.key);
+  const linkProjectK=S.f.linkProject||p.k;
+  const linkProject=PROJ.find(x=>x.k===linkProjectK)||p;
+  const linkCandidates=(linkProject.items||[])
+   .filter(x=>!(linkProject.k===p.k&&x.key===i.key))
+   .filter(x=>x.st!=="done");
+  return `<div class="card" style="max-width:820px">
+   <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+    <span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span>
+    <span class="m" style="color:var(--ta)">${i.key}</span><span style="flex:1"></span>${pill(FLOW[i.st],"")}
+    <button class="b s" data-a="dlgClose" title="Kapat" style="padding:4px 9px">✕</button></div>
+   <div style="font-size:15px;margin:11px 0 13px">${esc(i.t)}</div>
+   ${[["Project",p.k+" · "+esc(p.n)],["Assignee",esc(i.as||"Unassigned")],
+     ["Reported by",esc(i.rep||"—")],["Created",esc(i.at||"—")],
+     ...(i.upd?[["Updated",esc(i.upd)]]:[]),
+     ["Parent",par?`<span class="m" style="color:var(--ta);cursor:pointer;text-decoration:underline" data-a="issue:${d.pi}:${par.key}">${par.key}</span> · ${esc(par.t)}`:(PARENT_OF[i.ty]?"—":"top level")],
+     [i.ty==="Epic"?"All descendants":"Children",kids.length?`<div style="display:flex;flex-direction:column;gap:4px">${kids.map(c=>`<span class="pl" style="cursor:pointer;width:fit-content" data-a="issue:${d.pi}:${c.key}"
+        title="Open ${c.key}">${c.ty}: ${c.key} — ${esc(String(c.t).slice(0,40))} (${FLOW[c.st]})</span>`).join("")}</div>`:"—"]]
+    .map(x=>`<div style="display:flex;gap:11px;margin-bottom:8px">
+    <span class="lbl" style="width:88px;margin:0">${x[0]}</span><span style="flex:1;font-size:12.5px">${x[1]}</span></div>`).join("")}
+   <div class="lbl" style="margin-top:4px">Priority</div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${["Highest","High","Medium","Low"].map(x=>
+     cw("d.board")?`<button class="b s ${i.pri===x?"p":""}" data-a="issueSetPri:${d.pi}:${i.key}:${x}">${x}</button>`
+      :(i.pri===x?`<span class="m" style="color:${PRIC[x]}">${x}</span>`:"")).join("")}</div>
+   <div class="lbl" style="margin-top:10px">Story points</div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${[1,2,3,5,8,13].map(x=>
+     cw("d.board")?`<button class="b s ${i.pts===x?"p":""}" data-a="issueSetPts:${d.pi}:${i.key}:${x}">${x}</button>`
+      :(i.pts===x?`<span class="m">${x}</span>`:"")).join("")}</div>
+   <div class="lbl" style="margin-top:10px">Due date</div>
+   <div style="display:flex;gap:8px;align-items:center;margin-top:5px">
+    ${cw("d.board")?`<input id="fIssueDetailDue" type="date" value="${esc(i.due||"")}" style="font-size:12.5px;padding:6px 8px">
+     <button class="b s" data-a="issueSetDue:${d.pi}:${i.key}">Save</button>`
+     :`<span style="font-size:12.5px">${esc(i.due||"—")}</span>`}</div>
+   <div class="lbl" style="margin-top:10px">Labels</div>
+   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
+    ${(i.labels||[]).map(lb=>`<span class="pl">${esc(lb)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueLabelDel:${d.pi}:${i.key}:${encodeURIComponent(lb)}">✕</span>`:""}</span>`).join("")}
+    ${!(i.labels||[]).length?`<span class="m" style="color:var(--tm)">No labels.</span>`:""}</div>
+   ${cw("d.board")?`<div style="display:flex;gap:6px;margin-top:6px">
+    <input id="fIssueDetailLabel" placeholder="add label…" style="flex:1;font-size:12px;padding:6px 9px">
+    <button class="b s" data-a="issueLabelAdd:${d.pi}:${i.key}">Add</button></div>`:""}
+   <div class="lbl" style="margin-top:10px">Fix Versions</div>
+   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
+    ${(i.fixVersions||[]).map(vn=>`<span class="pl">${esc(vn)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueVersionDel:${d.pi}:${i.key}:${encodeURIComponent(vn)}">✕</span>`:""}</span>`).join("")}
+    ${!(i.fixVersions||[]).length?`<span class="m" style="color:var(--tm)">No fix versions.</span>`:""}</div>
+   ${cw("d.board")?(()=>{const avail=versionsOf(p.k).filter(v=>!(i.fixVersions||[]).includes(v.name));
+     return avail.length?`<div style="display:flex;gap:6px;margin-top:6px">
+      <select id="fIssueDetailVersion" style="flex:1;font-size:12px;padding:6px 9px">
+       ${namesAlpha(avail,v=>v.name).map(v=>`<option value="${esc(v.name)}">${esc(v.name)}${v.released?" (released)":""}</option>`).join("")}</select>
+      <button class="b s" data-a="issueVersionAdd:${d.pi}:${i.key}">Add</button></div>`
+     :``;})():""}
+   <div class="lbl" style="margin-top:10px">Components</div>
+   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
+    ${(i.components||[]).map(cn=>`<span class="pl">${esc(cn)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueComponentDel:${d.pi}:${i.key}:${encodeURIComponent(cn)}">✕</span>`:""}</span>`).join("")}
+    ${!(i.components||[]).length?`<span class="m" style="color:var(--tm)">No components.</span>`:""}</div>
+   ${cw("d.board")?(()=>{const avail=componentsOf(p.k).filter(c=>!(i.components||[]).includes(c.name));
+     return avail.length?`<div style="display:flex;gap:6px;margin-top:6px">
+      <select id="fIssueDetailComponent" style="flex:1;font-size:12px;padding:6px 9px">
+       ${namesAlpha(avail,c=>c.name).map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join("")}</select>
+      <button class="b s" data-a="issueComponentAdd:${d.pi}:${i.key}">Add</button></div>`
+     :``;})():""}
+   ${i.desc?`<div class="lbl" style="margin-top:12px">Description</div>
+    <div class="card" style="margin-top:6px;font-size:12.5px;white-space:pre-wrap">${esc(i.desc)}</div>`:""}
+   <div class="lbl" style="margin-top:12px">Documents</div>
+   ${LIVE_BACKEND?(atts===null?`<p class="m" style="color:var(--tm);margin:4px 0 0">Loading…</p>`
+     :atts.length?atts.map(a=>`<div class="card" style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:9px">
+       <a href="/api/projects/${p.k}/issues/${i.key}/attachments/${a.id}/file" target="_blank" style="flex:1;color:var(--ta)">${esc(a.file_name)}</a>
+       <span class="m" style="color:var(--tm)">${(a.size_bytes/1024).toFixed(0)} KB</span>
+       ${cw("d.board")?`<button class="b s d" data-a="issueAttDel:${d.pi}:${i.key}:${a.id}" title="Sil">✕</button>`:""}</div>`).join("")
+     :`<p class="m" style="color:var(--tm);margin:4px 0 0">No documents</p>`)
+    :(i.doc?`<div class="card" style="margin-top:6px;font-size:12px">${esc(i.doc)} <span class="m" style="color:var(--tm)">(demo)</span></div>`
+      :`<p class="m" style="color:var(--tm);margin:4px 0 0">No documents</p>`)}
+   ${LIVE_BACKEND&&cw("d.board")?`<div style="display:flex;gap:7px;align-items:center;margin-top:8px">
+    <input type="file" id="fIssueDetailDoc" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="padding:6px;flex:1">
+    <button class="b s" data-a="issueAttAdd:${d.pi}:${i.key}">Add</button></div>`:""}
+   <div class="lbl" style="margin-top:12px">Linked issues</div>
+   ${links===null?`<p class="m" style="color:var(--tm);margin:4px 0 0">Loading…</p>`
+    :links.length?links.map(lk=>`<div class="card" style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:8px">
+      <span style="color:var(--tm);white-space:nowrap">${esc(lk.label)}</span>
+      ${issueKeyLink(d.pi,lk.otherKey)}<span style="flex:1;color:var(--t2)">${esc(lk.otherTitle||"")}</span>
+      ${lk.otherStatus?pill(FLOW[lk.otherStatus]||lk.otherStatus):""}
+      ${cw("d.board")?`<button class="b s d" data-a="issueLinkDel:${d.pi}:${i.key}:${lk.id}" title="Kaldır">✕</button>`:""}</div>`).join("")
+    :`<p class="m" style="color:var(--tm);margin:4px 0 0">No linked issues.</p>`}
+   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+    <select id="fLinkType" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     <option value="" ${!f.linkType?"selected":""}>Select relationship…</option>
+     ${["blocks","clones","duplicates","relates"].map(t=>`<option value="${t}" ${f.linkType===t?"selected":""}>${LINK_FORWARD_LABEL[t]}</option>`).join("")}</select>
+    <select id="fLinkProject" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     ${projsAlpha().map(x=>`<option value="${x.k}" ${x.k===linkProjectK?"selected":""}>${esc(x.k)} — ${esc(x.n)}</option>`).join("")}</select></div>
+    <input id="fLinkSearch" placeholder="Search by key or title…" style="margin-top:6px;width:100%">
+    <select id="fLinkTarget" style="width:100%;margin-top:6px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     <option value="">Select issue… (${linkCandidates.length} open in ${esc(linkProject.k)})</option>
+     ${namesAlpha(linkCandidates,x=>x.t).map(x=>`<option value="${x.key}" ${f.linkTarget===x.key?"selected":""}>${x.key} — ${esc(String(x.t).slice(0,40))}</option>`).join("")}</select>
+    <div style="display:flex;justify-content:flex-end;margin-top:6px">
+     <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
+   ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">${effectiveNext(p,i.st).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
+   <div class="lbl" style="margin-top:12px">Checklist${checklist?" ("+checklist.filter(c=>c.done).length+"/"+checklist.length+")":""}</div>
+   ${checklist===null?`<p class="m" style="color:var(--tm)">Loading…</p>`:(()=>{
+     const total=checklist.length,done=checklist.filter(c=>c.done).length;
+     return (total?`<div style="height:5px;border-radius:3px;background:var(--s2);overflow:hidden;margin-bottom:8px">
+       <div style="height:100%;width:${Math.round(done/total*100)}%;background:var(--ok-fg)"></div></div>`:"")+
+     checklist.map(c=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+       <input type="checkbox" ${c.done?"checked":""} ${cw("d.board")?`data-a="checklistToggle:${d.pi}:${i.key}:${c.id}:${c.done?0:1}"`:"disabled"}>
+       <span style="flex:1;font-size:12.5px;${c.done?"text-decoration:line-through;color:var(--tm)":""}">${esc(c.text)}</span>
+       ${cw("d.board")?`<span style="cursor:pointer;color:var(--tm)" data-a="checklistDelete:${d.pi}:${i.key}:${c.id}">✕</span>`:""}</div>`).join("")
+     ||`<p class="m" style="color:var(--tm)">No checklist items yet.</p>`;})()}
+   ${cw("d.board")?`<div style="display:flex;gap:6px;margin-top:6px">
+    <input id="fChecklistNew" placeholder="Add a checklist item…" style="flex:1;font-size:12px;padding:6px 9px">
+    <button class="b s" data-a="checklistAdd:${d.pi}:${i.key}">Add</button></div>`:""}
+   <div class="lbl" style="margin-top:12px">Time Tracking</div>
+   ${(()=>{const spent=(worklogs||[]).reduce((s,w)=>s+w.time_spent_minutes,0);
+     const orig=i.origEst,rem=i.remEst;
+     const barTotal=Math.max(orig||0,spent+(rem||0),1);
+     const spentPct=Math.min(100,Math.round(spent/barTotal*100));
+     const remPct=rem?Math.min(100-spentPct,Math.round(rem/barTotal*100)):0;
+     return `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:6px">
+      <span>Original: <b>${fmtMinutes(orig)}</b></span>
+      <span>Remaining: <b>${fmtMinutes(rem)}</b></span>
+      <span>Logged: <b>${fmtMinutes(spent)}</b></span></div>
+     <div style="height:7px;border-radius:4px;background:var(--s2);overflow:hidden;display:flex">
+      <div style="width:${spentPct}%;background:var(--ta)"></div>
+      <div style="width:${remPct}%;background:var(--bd)"></div></div>`;})()}
+   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+     <span class="m" style="color:var(--tm)">Original (h)</span>
+     <input id="fEstOrig" type="number" min="0" step="0.5" value="${i.origEst!=null?(i.origEst/60):""}" style="max-width:80px">
+     <span class="m" style="color:var(--tm)">Remaining (h)</span>
+     <input id="fEstRem" type="number" min="0" step="0.5" value="${i.remEst!=null?(i.remEst/60):""}" style="max-width:80px">
+     <button class="b s" data-a="issueEstSave:${d.pi}:${i.key}">Save</button></div>`:""}
+   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">
+     <input id="fWorklogHours" type="number" min="0" step="0.25" placeholder="hours" style="max-width:90px">
+     <input id="fWorklogDate" type="date" value="${now().slice(0,10)}" style="max-width:150px">
+     <input id="fWorklogComment" placeholder="what did you work on? (optional)" style="flex:1;min-width:160px">
+     <button class="b s" data-a="worklogAdd:${d.pi}:${i.key}">Log work</button></div>`:""}
+   <div class="lbl" style="margin-top:14px">Activity${(comments&&history&&worklogs)?" ("+(comments.length+history.length+worklogs.length)+")":""}</div>
+   ${(comments===null||history===null||worklogs===null)?`<p class="m" style="color:var(--tm)">Loading…</p>`:(()=>{
+     // Yorum/geçmiş/harcanan-zaman kayitlarini TEK bir kronolojik akista
+     // (en eski ustte, konusma gibi okunur sirada) birlestirir. Her tur
+     // kendi mini-render'ını (yorum: edit/delete, worklog: delete,
+     // history: salt okunur) korur.
+     const events=[
+      ...history.map(h=>({kind:"history",at:h.created_at,data:h})),
+      ...comments.map(c=>({kind:"comment",at:c.created_at,data:c})),
+      ...worklogs.map(w=>({kind:"worklog",at:w.created_at,data:w})),
+     ].sort((a,b)=>String(a.at).localeCompare(String(b.at)));
+     if(!events.length)return `<p class="m" style="color:var(--tm)">No activity yet.</p>`;
+     return events.map(ev=>{
+      if(ev.kind==="history"){const h=ev.data;
+       return `<div style="padding:6px 2px;border-left:2px solid var(--bd);padding-left:10px;margin-bottom:6px">
+        <span class="m" style="color:var(--tm)">${String(h.created_at).replace("T"," ").slice(0,16)} · ${esc(h.user_name||"")}</span>
+        <p style="font-size:12px;margin:2px 0 0;color:var(--t2)">${esc(h.message)}</p></div>`;}
+      if(ev.kind==="worklog"){const w=ev.data;const isOwner=w.author_username===S.me.u;const canDelete=isOwner||canModerateComments();
+       return `<div class="card" style="padding:7px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+        <span class="m" style="color:var(--ok-fg)">⏱</span>
+        <span style="font-size:12px;font-weight:600">${fmtMinutes(w.time_spent_minutes)}</span>
+        <span class="m" style="color:var(--tm)">${esc(w.author_name||w.author_username)} · ${String(w.work_date).slice(0,10)}</span>
+        ${w.comment?`<span class="m" style="color:var(--t2)">— ${esc(w.comment)}</span>`:""}
+        <span style="flex:1"></span>
+        ${canDelete?`<span style="cursor:pointer;color:var(--tm)" data-a="worklogDelete:${d.pi}:${i.key}:${w.id}">✕</span>`:""}</div>`;}
+      const c=ev.data;const isOwner=c.author_username===S.me.u;const canDelete=isOwner||canModerateComments();
+      const when=String(c.created_at).replace("T"," ").slice(0,16)+(c.updated_at?" (edited)":"");
+      if(String(S.f.editingComment)===String(c.id))return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
+        <textarea id="fCommentEdit" style="min-height:60px">${esc(c.body)}</textarea>
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">
+         <button class="b s" data-a="commentEditCancel">Cancel</button>
+         <button class="b s p" data-a="commentEditSave:${d.pi}:${i.key}:${c.id}">Save</button></div></div>`;
+      return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
+        <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+         <span style="font-size:12.5px;font-weight:600">${esc(c.author_name||c.author_username)}</span>
+         <span class="m" style="color:var(--tm)">${when}</span><span style="flex:1"></span>
+         ${isOwner?`<button class="b s" data-a="commentEditStart:${c.id}">Edit</button>`:""}
+         ${canDelete?`<button class="b s d" data-a="commentDelete:${d.pi}:${i.key}:${c.id}">Delete</button>`:""}</div>
+        <p style="font-size:12.5px;margin:6px 0 0;white-space:pre-wrap">${esc(c.body)}</p></div>`;
+     }).join("");})()}
+   <textarea id="fCommentNew" placeholder="Add a comment… (type @ to mention someone)" style="min-height:60px;margin-top:6px">${esc(S.f.commentBody||"")}</textarea>
+   ${(()=>{if(S.f.mentionQuery===null||S.f.mentionQuery===undefined)return"";
+     const q=S.f.mentionQuery.toLowerCase();
+     const candidates=USERS.filter(u=>u.on).filter(u=>!q||u.n.toLowerCase().includes(q)||u.u.toLowerCase().includes(q));
+     const sugg=namesAlpha(candidates,u=>u.n).slice(0,q?5:2);
+     if(!sugg.length)return"";
+     return `<div class="card" style="margin-top:4px;padding:4px">
+      ${sugg.map(u=>`<div style="padding:6px 9px;cursor:pointer;font-size:12.5px;border-radius:6px" data-a="mentionPick:${encodeURIComponent(u.u)}"
+        onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">${esc(u.n)} <span class="m" style="color:var(--tm)">· @${esc(u.u)}</span></div>`).join("")}</div>`;})()}
+   <div style="display:flex;justify-content:flex-end;margin-top:6px">
+    <button class="b s p" data-a="commentAdd:${d.pi}:${i.key}">Comment</button></div>
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="openProj:${d.pi}">Board\'a git</button><button class="b p" data-a="dlgClose">Kapat</button></div></div>`;}
+
 function dialogView(){
  const d=S.dlg;if(!d)return "";const f=S.f;
  const wrap=inner=>`<div class="ov"><div class="dlg">${inner}</div></div>`;
@@ -4313,191 +4542,6 @@ function dialogView(){
     <span class="m" style="color:var(--tm)">${f.on?"aktif — atamalarda seçilebilir":"pasif — yeni atamalarda seçilemez"}</span></span></div>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px"><button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b off" data-a="needFields">${isNew?"Ekle":"Kaydet"}</button></div>`);}
- if(d.type==="issue"){const p=PROJ[d.pi],i=p.items.find(x=>x.key===d.key);if(!i)return "";
-  const kids=i.ty==="Epic"?allDescendants(p,i.key):childrenOf(p,i.key),par=i.parent?itemByKey(p,i.parent):null;
-  const attKey=p.k+"::"+i.key;
-  const atts=LIVE_BACKEND?(ISSUE_ATTACH_LIVE[attKey]||null):null;
-  const links=LIVE_BACKEND?(ISSUE_LINKS_LIVE[attKey]||null):demoLinksFor(p.k,i.key);
-  const comments=LIVE_BACKEND?(ISSUE_COMMENTS_LIVE[attKey]||null):demoCommentsFor(p.k,i.key);
-  const worklogs=LIVE_BACKEND?(ISSUE_WORKLOGS_LIVE[attKey]||null):demoWorklogsFor(p.k,i.key);
-  const history=LIVE_BACKEND?(ISSUE_HISTORY_LIVE[attKey]||null):demoHistoryFor(p.k,i.key);
-  const checklist=LIVE_BACKEND?(ISSUE_CHECKLIST_LIVE[attKey]||null):demoChecklistFor(p.k,i.key);
-  const linkProjectK=S.f.linkProject||p.k;
-  const linkProject=PROJ.find(x=>x.k===linkProjectK)||p;
-  const linkCandidates=(linkProject.items||[])
-   .filter(x=>!(linkProject.k===p.k&&x.key===i.key))
-   .filter(x=>x.st!=="done");
-  return wrapSide(`<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
-    <span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span>
-    <span class="m" style="color:var(--ta)">${i.key}</span><span style="flex:1"></span>${pill(FLOW[i.st],"")}
-    <button class="b s" data-a="dlgClose" title="Kapat" style="padding:4px 9px">✕</button></div>
-   <div style="font-size:15px;margin:11px 0 13px">${esc(i.t)}</div>
-   ${[["Project",p.k+" · "+esc(p.n)],["Assignee",esc(i.as||"Unassigned")],
-     ["Reported by",esc(i.rep||"—")],["Created",esc(i.at||"—")],
-     ...(i.upd?[["Updated",esc(i.upd)]]:[]),
-     ["Parent",par?`<span class="m" style="color:var(--ta);cursor:pointer;text-decoration:underline" data-a="issue:${d.pi}:${par.key}">${par.key}</span> · ${esc(par.t)}`:(PARENT_OF[i.ty]?"—":"top level")],
-     [i.ty==="Epic"?"All descendants":"Children",kids.length?`<div style="display:flex;flex-direction:column;gap:4px">${kids.map(c=>`<span class="pl" style="cursor:pointer;width:fit-content" data-a="issue:${d.pi}:${c.key}"
-        title="Open ${c.key}">${c.ty}: ${c.key} — ${esc(String(c.t).slice(0,40))} (${FLOW[c.st]})</span>`).join("")}</div>`:"—"]]
-    .map(x=>`<div style="display:flex;gap:11px;margin-bottom:8px">
-    <span class="lbl" style="width:88px;margin:0">${x[0]}</span><span style="flex:1;font-size:12.5px">${x[1]}</span></div>`).join("")}
-   <div class="lbl" style="margin-top:4px">Priority</div>
-   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${["Highest","High","Medium","Low"].map(x=>
-     cw("d.board")?`<button class="b s ${i.pri===x?"p":""}" data-a="issueSetPri:${d.pi}:${i.key}:${x}">${x}</button>`
-      :(i.pri===x?`<span class="m" style="color:${PRIC[x]}">${x}</span>`:"")).join("")}</div>
-   <div class="lbl" style="margin-top:10px">Story points</div>
-   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${[1,2,3,5,8,13].map(x=>
-     cw("d.board")?`<button class="b s ${i.pts===x?"p":""}" data-a="issueSetPts:${d.pi}:${i.key}:${x}">${x}</button>`
-      :(i.pts===x?`<span class="m">${x}</span>`:"")).join("")}</div>
-   <div class="lbl" style="margin-top:10px">Due date</div>
-   <div style="display:flex;gap:8px;align-items:center;margin-top:5px">
-    ${cw("d.board")?`<input id="fIssueDetailDue" type="date" value="${esc(i.due||"")}" style="font-size:12.5px;padding:6px 8px">
-     <button class="b s" data-a="issueSetDue:${d.pi}:${i.key}">Save</button>`
-     :`<span style="font-size:12.5px">${esc(i.due||"—")}</span>`}</div>
-   <div class="lbl" style="margin-top:10px">Labels</div>
-   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
-    ${(i.labels||[]).map(lb=>`<span class="pl">${esc(lb)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueLabelDel:${d.pi}:${i.key}:${encodeURIComponent(lb)}">✕</span>`:""}</span>`).join("")}
-    ${!(i.labels||[]).length?`<span class="m" style="color:var(--tm)">No labels.</span>`:""}</div>
-   ${cw("d.board")?`<div style="display:flex;gap:6px;margin-top:6px">
-    <input id="fIssueDetailLabel" placeholder="add label…" style="flex:1;font-size:12px;padding:6px 9px">
-    <button class="b s" data-a="issueLabelAdd:${d.pi}:${i.key}">Add</button></div>`:""}
-   <div class="lbl" style="margin-top:10px">Fix Versions</div>
-   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
-    ${(i.fixVersions||[]).map(vn=>`<span class="pl">${esc(vn)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueVersionDel:${d.pi}:${i.key}:${encodeURIComponent(vn)}">✕</span>`:""}</span>`).join("")}
-    ${!(i.fixVersions||[]).length?`<span class="m" style="color:var(--tm)">No fix versions.</span>`:""}</div>
-   ${cw("d.board")?(()=>{const avail=versionsOf(p.k).filter(v=>!(i.fixVersions||[]).includes(v.name));
-     return avail.length?`<div style="display:flex;gap:6px;margin-top:6px">
-      <select id="fIssueDetailVersion" style="flex:1;font-size:12px;padding:6px 9px">
-       ${namesAlpha(avail,v=>v.name).map(v=>`<option value="${esc(v.name)}">${esc(v.name)}${v.released?" (released)":""}</option>`).join("")}</select>
-      <button class="b s" data-a="issueVersionAdd:${d.pi}:${i.key}">Add</button></div>`
-     :`<p class="m" style="color:var(--tm);margin-top:4px">No versions defined yet — manage them from the Backlog screen.</p>`;})():""}
-   <div class="lbl" style="margin-top:10px">Components</div>
-   <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">
-    ${(i.components||[]).map(cn=>`<span class="pl">${esc(cn)}${cw("d.board")?` <span style="cursor:pointer" data-a="issueComponentDel:${d.pi}:${i.key}:${encodeURIComponent(cn)}">✕</span>`:""}</span>`).join("")}
-    ${!(i.components||[]).length?`<span class="m" style="color:var(--tm)">No components.</span>`:""}</div>
-   ${cw("d.board")?(()=>{const avail=componentsOf(p.k).filter(c=>!(i.components||[]).includes(c.name));
-     return avail.length?`<div style="display:flex;gap:6px;margin-top:6px">
-      <select id="fIssueDetailComponent" style="flex:1;font-size:12px;padding:6px 9px">
-       ${namesAlpha(avail,c=>c.name).map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join("")}</select>
-      <button class="b s" data-a="issueComponentAdd:${d.pi}:${i.key}">Add</button></div>`
-     :`<p class="m" style="color:var(--tm);margin-top:4px">No components defined yet — manage them from the Backlog screen.</p>`;})():""}
-   ${i.desc?`<div class="lbl" style="margin-top:12px">Description</div>
-    <div class="card" style="margin-top:6px;font-size:12.5px;white-space:pre-wrap">${esc(i.desc)}</div>`:""}
-   <div class="lbl" style="margin-top:12px">Documents</div>
-   ${LIVE_BACKEND?(atts===null?`<p class="m" style="color:var(--tm);margin:4px 0 0">Loading…</p>`
-     :atts.length?atts.map(a=>`<div class="card" style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:9px">
-       <a href="/api/projects/${p.k}/issues/${i.key}/attachments/${a.id}/file" target="_blank" style="flex:1;color:var(--ta)">${esc(a.file_name)}</a>
-       <span class="m" style="color:var(--tm)">${(a.size_bytes/1024).toFixed(0)} KB</span>
-       ${cw("d.board")?`<button class="b s d" data-a="issueAttDel:${d.pi}:${i.key}:${a.id}" title="Sil">✕</button>`:""}</div>`).join("")
-     :`<p class="m" style="color:var(--tm);margin:4px 0 0">No documents attached yet.</p>`)
-    :(i.doc?`<div class="card" style="margin-top:6px;font-size:12px">${esc(i.doc)} <span class="m" style="color:var(--tm)">(demo)</span></div>`
-      :`<p class="m" style="color:var(--tm);margin:4px 0 0">No documents attached yet.</p>`)}
-   ${LIVE_BACKEND&&cw("d.board")?`<div style="display:flex;gap:7px;align-items:center;margin-top:8px">
-    <input type="file" id="fIssueDetailDoc" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" style="padding:6px;flex:1">
-    <button class="b s" data-a="issueAttAdd:${d.pi}:${i.key}">Add</button></div>`:""}
-   <div class="lbl" style="margin-top:12px">Linked issues</div>
-   ${links===null?`<p class="m" style="color:var(--tm);margin:4px 0 0">Loading…</p>`
-    :links.length?links.map(lk=>`<div class="card" style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:8px">
-      <span style="color:var(--tm);white-space:nowrap">${esc(lk.label)}</span>
-      ${issueKeyLink(d.pi,lk.otherKey)}<span style="flex:1;color:var(--t2)">${esc(lk.otherTitle||"")}</span>
-      ${lk.otherStatus?pill(FLOW[lk.otherStatus]||lk.otherStatus):""}
-      ${cw("d.board")?`<button class="b s d" data-a="issueLinkDel:${d.pi}:${i.key}:${lk.id}" title="Kaldır">✕</button>`:""}</div>`).join("")
-    :`<p class="m" style="color:var(--tm);margin:4px 0 0">No linked issues.</p>`}
-   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
-    <select id="fLinkType" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
-     <option value="" ${!f.linkType?"selected":""}>Select relationship…</option>
-     ${["blocks","clones","duplicates","relates"].map(t=>`<option value="${t}" ${f.linkType===t?"selected":""}>${LINK_FORWARD_LABEL[t]}</option>`).join("")}</select>
-    <select id="fLinkProject" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
-     ${projsAlpha().map(x=>`<option value="${x.k}" ${x.k===linkProjectK?"selected":""}>${esc(x.k)} — ${esc(x.n)}</option>`).join("")}</select></div>
-    <input id="fLinkSearch" placeholder="Search by key or title…" style="margin-top:6px;width:100%">
-    <select id="fLinkTarget" style="width:100%;margin-top:6px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
-     <option value="">Select issue… (${linkCandidates.length} open in ${esc(linkProject.k)})</option>
-     ${namesAlpha(linkCandidates,x=>x.t).map(x=>`<option value="${x.key}" ${f.linkTarget===x.key?"selected":""}>${x.key} — ${esc(String(x.t).slice(0,40))}</option>`).join("")}</select>
-    <div style="display:flex;justify-content:flex-end;margin-top:6px">
-     <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
-   ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
-    <div style="display:flex;gap:7px;flex-wrap:wrap">${effectiveNext(p,i.st).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
-   <div class="lbl" style="margin-top:12px">Checklist${checklist?" ("+checklist.filter(c=>c.done).length+"/"+checklist.length+")":""}</div>
-   ${checklist===null?`<p class="m" style="color:var(--tm)">Loading…</p>`:(()=>{
-     const total=checklist.length,done=checklist.filter(c=>c.done).length;
-     return (total?`<div style="height:5px;border-radius:3px;background:var(--s2);overflow:hidden;margin-bottom:8px">
-       <div style="height:100%;width:${Math.round(done/total*100)}%;background:var(--ok-fg)"></div></div>`:"")+
-     checklist.map(c=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-       <input type="checkbox" ${c.done?"checked":""} ${cw("d.board")?`data-a="checklistToggle:${d.pi}:${i.key}:${c.id}:${c.done?0:1}"`:"disabled"}>
-       <span style="flex:1;font-size:12.5px;${c.done?"text-decoration:line-through;color:var(--tm)":""}">${esc(c.text)}</span>
-       ${cw("d.board")?`<span style="cursor:pointer;color:var(--tm)" data-a="checklistDelete:${d.pi}:${i.key}:${c.id}">✕</span>`:""}</div>`).join("")
-     ||`<p class="m" style="color:var(--tm)">No checklist items yet.</p>`;})()}
-   ${cw("d.board")?`<div style="display:flex;gap:6px;margin-top:6px">
-    <input id="fChecklistNew" placeholder="Add a checklist item…" style="flex:1;font-size:12px;padding:6px 9px">
-    <button class="b s" data-a="checklistAdd:${d.pi}:${i.key}">Add</button></div>`:""}
-   <div class="lbl" style="margin-top:12px">Time Tracking</div>
-   ${(()=>{const spent=(worklogs||[]).reduce((s,w)=>s+w.time_spent_minutes,0);
-     const orig=i.origEst,rem=i.remEst;
-     const barTotal=Math.max(orig||0,spent+(rem||0),1);
-     const spentPct=Math.min(100,Math.round(spent/barTotal*100));
-     const remPct=rem?Math.min(100-spentPct,Math.round(rem/barTotal*100)):0;
-     return `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:6px">
-      <span>Original: <b>${fmtMinutes(orig)}</b></span>
-      <span>Remaining: <b>${fmtMinutes(rem)}</b></span>
-      <span>Logged: <b>${fmtMinutes(spent)}</b></span></div>
-     <div style="height:7px;border-radius:4px;background:var(--s2);overflow:hidden;display:flex">
-      <div style="width:${spentPct}%;background:var(--ta)"></div>
-      <div style="width:${remPct}%;background:var(--bd)"></div></div>`;})()}
-   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
-     <span class="m" style="color:var(--tm)">Original (h)</span>
-     <input id="fEstOrig" type="number" min="0" step="0.5" value="${i.origEst!=null?(i.origEst/60):""}" style="max-width:80px">
-     <span class="m" style="color:var(--tm)">Remaining (h)</span>
-     <input id="fEstRem" type="number" min="0" step="0.5" value="${i.remEst!=null?(i.remEst/60):""}" style="max-width:80px">
-     <button class="b s" data-a="issueEstSave:${d.pi}:${i.key}">Save</button></div>`:""}
-   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">
-     <input id="fWorklogHours" type="number" min="0" step="0.25" placeholder="hours" style="max-width:90px">
-     <input id="fWorklogDate" type="date" value="${now().slice(0,10)}" style="max-width:150px">
-     <input id="fWorklogComment" placeholder="what did you work on? (optional)" style="flex:1;min-width:160px">
-     <button class="b s" data-a="worklogAdd:${d.pi}:${i.key}">Log work</button></div>`:""}
-   <div class="lbl" style="margin-top:14px">Activity${(comments&&history&&worklogs)?" ("+(comments.length+history.length+worklogs.length)+")":""}</div>
-   ${(comments===null||history===null||worklogs===null)?`<p class="m" style="color:var(--tm)">Loading…</p>`:(()=>{
-     // Yorum/geçmiş/harcanan-zaman kayitlarini TEK bir kronolojik akista
-     // (en eski ustte, konusma gibi okunur sirada) birlestirir. Her tur
-     // kendi mini-render'ını (yorum: edit/delete, worklog: delete,
-     // history: salt okunur) korur.
-     const events=[
-      ...history.map(h=>({kind:"history",at:h.created_at,data:h})),
-      ...comments.map(c=>({kind:"comment",at:c.created_at,data:c})),
-      ...worklogs.map(w=>({kind:"worklog",at:w.created_at,data:w})),
-     ].sort((a,b)=>String(a.at).localeCompare(String(b.at)));
-     if(!events.length)return `<p class="m" style="color:var(--tm)">No activity yet.</p>`;
-     return events.map(ev=>{
-      if(ev.kind==="history"){const h=ev.data;
-       return `<div style="padding:6px 2px;border-left:2px solid var(--bd);padding-left:10px;margin-bottom:6px">
-        <span class="m" style="color:var(--tm)">${String(h.created_at).replace("T"," ").slice(0,16)} · ${esc(h.user_name||"")}</span>
-        <p style="font-size:12px;margin:2px 0 0;color:var(--t2)">${esc(h.message)}</p></div>`;}
-      if(ev.kind==="worklog"){const w=ev.data;const isOwner=w.author_username===S.me.u;const canDelete=isOwner||canModerateComments();
-       return `<div class="card" style="padding:7px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
-        <span class="m" style="color:var(--ok-fg)">⏱</span>
-        <span style="font-size:12px;font-weight:600">${fmtMinutes(w.time_spent_minutes)}</span>
-        <span class="m" style="color:var(--tm)">${esc(w.author_name||w.author_username)} · ${String(w.work_date).slice(0,10)}</span>
-        ${w.comment?`<span class="m" style="color:var(--t2)">— ${esc(w.comment)}</span>`:""}
-        <span style="flex:1"></span>
-        ${canDelete?`<span style="cursor:pointer;color:var(--tm)" data-a="worklogDelete:${d.pi}:${i.key}:${w.id}">✕</span>`:""}</div>`;}
-      const c=ev.data;const isOwner=c.author_username===S.me.u;const canDelete=isOwner||canModerateComments();
-      const when=String(c.created_at).replace("T"," ").slice(0,16)+(c.updated_at?" (edited)":"");
-      if(String(S.f.editingComment)===String(c.id))return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
-        <textarea id="fCommentEdit" style="min-height:60px">${esc(c.body)}</textarea>
-        <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">
-         <button class="b s" data-a="commentEditCancel">Cancel</button>
-         <button class="b s p" data-a="commentEditSave:${d.pi}:${i.key}:${c.id}">Save</button></div></div>`;
-      return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
-        <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
-         <span style="font-size:12.5px;font-weight:600">${esc(c.author_name||c.author_username)}</span>
-         <span class="m" style="color:var(--tm)">${when}</span><span style="flex:1"></span>
-         ${isOwner?`<button class="b s" data-a="commentEditStart:${c.id}">Edit</button>`:""}
-         ${canDelete?`<button class="b s d" data-a="commentDelete:${d.pi}:${i.key}:${c.id}">Delete</button>`:""}</div>
-        <p style="font-size:12.5px;margin:6px 0 0;white-space:pre-wrap">${esc(c.body)}</p></div>`;
-     }).join("");})()}
-   <textarea id="fCommentNew" placeholder="Add a comment…" style="min-height:60px;margin-top:6px"></textarea>
-   <div style="display:flex;justify-content:flex-end;margin-top:6px">
-    <button class="b s p" data-a="commentAdd:${d.pi}:${i.key}">Comment</button></div>
-   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
-    <button class="b" data-a="openProj:${d.pi}">Board\'a git</button><button class="b p" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="versionsComponents"){
   const pr=PROJ[d.pi];
   const versions=versionsOf(pr.k),components=componentsOf(pr.k);
@@ -4733,8 +4777,8 @@ function render(){
    <span class="m" style="color:var(--tm)">${esc(S.me.n)}</span>
    <span style="width:28px;height:28px;border-radius:9px;background:${S.me.c};color:#fff;font-size:11px;
     display:flex;align-items:center;justify-content:center;cursor:pointer" data-a="profile" title="Kullanıcı bilgileri">${avatars[S.me.u]||initials(S.me.n)}</span></div>
-  <div class="body" ${S.mod==="delivery"?'lang="en"':""}>${screenView()}</div></div></div>
- ${S.pop!==null?popupView():""}<div ${S.mod==="delivery"?'lang="en"':""}>${dialogView()}</div>${toastView()}`;
+  <div class="body" ${S.mod==="delivery"?'lang="en"':""}>${(S.dlg&&S.dlg.type==="issue")?issueFullView(S.dlg):screenView()}</div></div></div>
+ ${S.pop!==null?popupView():""}<div ${S.mod==="delivery"?'lang="en"':""}>${(S.dlg&&S.dlg.type==="issue")?"":dialogView()}</div>${toastView()}`;
  afterRender();}
 const toastView=()=>S.toast?`<div class="toast ${S.toast.bad?"er":"ok"}">${esc(S.toast.msg)}</div>`:"";
 
@@ -4831,6 +4875,18 @@ function afterRender(){
  if(mtNewItemAssignee)mtNewItemAssignee.onchange=e=>{S.f.newItemAssignee=e.target.value||"";};
  const mtNewItemDue=document.getElementById("fMtNewItemDue");
  if(mtNewItemDue)mtNewItemDue.onchange=e=>{S.f.newItemDue=e.target.value||"";};
+ /* Yorum kutusunda @mention: cursor'dan geriye doğru en yakın "@" ve ondan
+    sonraki (boşluksuz) metni sorgu olarak alır; render() öneri kutusunu
+    S.f.mentionQuery'e göre gösterir. Metin STATE'te (S.f.commentBody)
+    tutulur ki render() tetiklendiğinde textarea içeriği kaybolmasın. */
+ const cmtNew=document.getElementById("fCommentNew");
+ if(cmtNew){cmtNew.oninput=e=>{S.f.commentBody=e.target.value;
+   const pos=e.target.selectionStart;
+   const before=e.target.value.slice(0,pos);
+   const m=before.match(/@([a-zA-Z0-9_.çğıöşüÇĞİÖŞÜ]*)$/);
+   if(m){S.f.mentionQuery=m[1];S.f.mentionStart=pos-m[0].length;}
+   else{S.f.mentionQuery=null;S.f.mentionStart=null;}
+   render();};}
  const fp=document.getElementById("fPdf");
  if(fp)fp.onchange=e=>{const file=e.target.files&&e.target.files[0];if(!file)return;
   if(file.type!=="application/pdf"&&!/\.pdf$/i.test(file.name)){
@@ -5070,6 +5126,17 @@ app.addEventListener("click",async ev=>{
   if(nx==="none")delete ACC[r][key];else ACC[r][key]=nx;
   audit("Proje modülü ekran yetkisi değişti: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"yetki yok":nx));
   toast("Permission updated.");render();return;}
+ if(k==="projAvailCycle"){const key=p[1],val=p[2];
+  if(key==="d.projadmin"&&val!=="acik"){toast("Project Admin ekranı kapatılamaz (kilitlenme riski).",1);return;}
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/module-availability",{screenKey:key,status:val});
+    await loadProjectModuleAvailLive();toast("Screen status updated.");}
+   catch(e){toast(e.message,1);}
+   return;}
+  if(val==="acik")delete AVAIL[key];else AVAIL[key]=val;
+  audit("Proje modülü ekran durumu değişti: "+key+" → "+AV_LABEL[val]);
+  if((S.mod===key||S.scr===key)&&val!=="acik"){S.view="home";}
+  toast("Screen status updated.");render();return;}
  if(k==="avail"){const key=p[1],val=p[2];
   if(["admin","m.avail","m.access","approvals","p.in","p.my","p.done"].includes(key)){
    toast("Admin Panel, Ekran yönetimi/yetkileri ve Onay kutusu kapatılamaz (kilitlenme riski).",1);return;}
@@ -6004,19 +6071,32 @@ app.addEventListener("click",async ev=>{
   pushDemoHistory(pk,key,S.me.n+" bir ilişkiyi kaldırdı.");
   toast("İlişki kaldırıldı.");render();return;}
  if(k==="commentAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
-  const ta=document.getElementById("fCommentNew");
-  const body=(ta&&ta.value||"").trim();
+  const body=(S.f.commentBody||"").trim();
   if(!body){toast("Yorum boş olamaz.",1);return;}
   if(LIVE_BACKEND){
    try{
     await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/comments",{body});
+    S.f.commentBody="";S.f.mentionQuery=null;S.f.mentionStart=null;
     await loadIssueCommentsLive(pk,key);toast("Yorum eklendi.");
    }catch(e){toast(e.message,1);}
    return;}
   ISSUE_COMMENTS_DEMO.push({id:nextIssueComment++,pk,issue_key:key,author_username:S.me.u,author_name:S.me.n,
    body,created_at:now(),updated_at:null});
   notifyDemoComment(pi,pk,key,body,S.me.u);
+  S.f.commentBody="";S.f.mentionQuery=null;S.f.mentionStart=null;
   toast("Yorum eklendi.");render();return;}
+ if(k==="mentionPick"){const username=dec(p[1]);
+  const body=S.f.commentBody||"";
+  const start=S.f.mentionStart!=null?S.f.mentionStart:body.length;
+  const queryLen=1+(S.f.mentionQuery||"").length; // "@" + o ana kadar yazılan sorgu
+  const before=body.slice(0,start);
+  const after=body.slice(start+queryLen);
+  const inserted="@"+username+" ";
+  S.f.commentBody=before+inserted+after;
+  S.f.mentionQuery=null;S.f.mentionStart=null;render();
+  setTimeout(()=>{const ta=document.getElementById("fCommentNew");
+   if(ta){ta.focus();const pos=(before+inserted).length;ta.setSelectionRange(pos,pos);}},0);
+  return;}
  if(k==="commentEditStart"){S.f.editingComment=p[1];render();return;}
  if(k==="commentEditCancel"){S.f.editingComment=null;render();return;}
  if(k==="commentEditSave"){const pi=+p[1],key=p[2],commentId=p[3],pk=PROJ[pi].k;
