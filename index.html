@@ -1780,6 +1780,26 @@ function toast(msg,bad){S.toast={msg,bad};render();clearTimeout(toastTimer);
 const head=(t,s,extra)=>`<div class="hd"><div style="flex:1"><h2>${t}</h2>${s?`<p>${s}</p>`:""}</div>${extra||""}</div>`;
 const table=(cols,rows)=>`<div style="border:1px solid var(--bd);border-radius:12px;overflow:auto">
  <table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
+/* CSV dışa aktarma — Backlog/All Issues ekranlarındaki "Export CSV"
+   butonları için. Backend'e ihtiyaç yok: veri zaten frontend'de (p.items),
+   Blob + geçici <a> ile tarayıcı üzerinden indirme tetiklenir. */
+function csvEscape(v){
+ const s=String(v==null?"":v);
+ return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function issuesToCSV(items,p){
+ const header=["Type","Epic","Key","Title","Status","Assignee","Priority","Story Points","Due Date"];
+ const rows=items.map(i=>{const par=i.parent?itemByKey(p,i.parent):null;
+  return [i.ty,par?par.t:"",i.key,i.t,FLOW[i.st]||i.st,i.as||"Unassigned",i.pri,i.pts||0,i.due||""]
+   .map(csvEscape).join(",");});
+ return [header.join(",")].concat(rows).join("\n");}
+function downloadCSV(filename,content){
+ try{
+  const blob=new Blob([content],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
+ }catch(e){toast("Export failed: "+e.message,1);}}
 /* Yetki durumu kullanıcıya yazıyla bildirilmez; yapamayacağı işlemin düğmesi hiç gösterilmez. */
 const readOnly=()=>"";
 
@@ -2161,6 +2181,7 @@ function screenView(){
   const selected=(S.bulkSelected||[]).filter(k=>backlogItems.some(i=>i.key===k));
   return head("Backlog",p.n+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
+    <button class="b s" data-a="exportCSV:backlog:${S.proj}">Export CSV</button>
     ${cw("d.backlog")?`<button class="b s" data-a="manageVC:${S.proj}">Versions & Components</button>
     <button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
    (canRank&&selected.length?`<div class="card" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -2196,7 +2217,8 @@ function screenView(){
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("All Issues",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
   const allItems=[...p.items].sort((a,b)=>a.key.localeCompare(b.key,undefined,{numeric:true}));
   return head("All Issues",p.k+" — "+p.n+" · "+allItems.length+" issues"+(LIVE_BACKEND?" · live backend":""),
-   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
+   `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
+    <button class="b s" data-a="exportCSV:allissues:${S.proj}">Export CSV</button></div>`)+
   table(["Type","Epic","Key","Title","Status","Assignee","SP"],allItems.map(i=>{const par=i.parent?itemByKey(p,i.parent):null;
    return `<tr>
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
@@ -5439,6 +5461,12 @@ app.addEventListener("click",async ev=>{
  if(k==="onlyMine"){S.onlyMine=!S.onlyMine;render();return;}
  if(k==="openProj"){S.proj=+p[1];S.projAll=false;S.mod="delivery";S.scr="d.board";S.dlg=null;render();return;}
  if(k==="viewAllIssues"){S.proj=+p[1];S.projAll=false;S.mod="delivery";S.scr="d.allissues";S.dlg=null;render();return;}
+ if(k==="exportCSV"){const kind=p[1],pi=+p[2],pr=PROJ[pi];
+  const items=kind==="backlog"?pr.items.filter(i=>i.st==="backlog"):[...pr.items].sort((a,b)=>a.key.localeCompare(b.key,undefined,{numeric:true}));
+  if(!items.length){toast("Nothing to export.",1);return;}
+  const csv=issuesToCSV(items,pr);
+  downloadCSV(pr.k+"-"+kind+"-"+now().slice(0,10)+".csv",csv);
+  toast(items.length+" issue(s) exported.");return;}
  if(k==="searchJump"){const kind=p[1],projK=dec(p[2]),issueKey=dec(p[3]);
   const pi=PROJ.findIndex(x=>x.k===projK);
   if(pi<0){toast("Project not found.",1);return;}
