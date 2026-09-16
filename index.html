@@ -5177,6 +5177,31 @@ app.addEventListener("drop",e=>{
 /* Dinamik sayıdaki toplantı gündem maddesi satırlarının assignee/due date
    alanları için event delegation (her satır ayrı id yerine data-item-assign /
    data-item-due üzerinden yakalanır — satır sayısı ekleme/silme ile değişir). */
+/* Klavye kısayolları: mevcut action (data-a) sistemine dokunmadan, ilgili
+   elementi DOM'da bulup sentetik bir click event'i gönderir — ayrı bir
+   action mantığı yazmak yerine, buton zaten sayfadaysa (yetkiye/duruma
+   göre) onu "tıklamış" gibi davranır. Bir INPUT/TEXTAREA/SELECT içinde
+   yazı yazılırken (Escape hariç) devre dışıdır — aksi halde "c" harfini
+   bir açıklama kutusuna yazmak yeni konu diyaloğu açardı. */
+const SHORTCUTS_HELP=[["/","Search (canlı backend)"],["c","New issue"],["g b","Go to Board"],["g k","Go to Backlog"],["Esc","Close dialog"],["?","Show this help"]];
+document.addEventListener("keydown",e=>{
+ const tag=(e.target.tagName||"").toUpperCase();
+ const typing=tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"||e.target.isContentEditable;
+ if(e.key==="Escape"){
+  if(S.dlg){S.dlg=null;render();}
+  return;}
+ if(typing||e.metaKey||e.ctrlKey||e.altKey)return;
+ const clickIf=sel=>{const el=app.querySelector(sel);if(el){el.dispatchEvent(new MouseEvent("click",{bubbles:true}));return true;}return false;};
+ if(e.key==="/"){ if(clickIf('[data-a="searchOpen"]'))e.preventDefault(); return;}
+ if(e.key==="c"){ if(clickIf('[data-a="issueNew"]'))e.preventDefault(); return;}
+ if(e.key==="?"){ toast(SHORTCUTS_HELP.map(([k,d])=>k+" — "+d).join("  ·  ")); return;}
+ if(e.key==="g"){
+  S._gPending=true;setTimeout(()=>{S._gPending=false;},900);return;}
+ if(S._gPending){
+  S._gPending=false;
+  if(e.key==="b")clickIf('[data-a="scr:d.board"]');
+  else if(e.key==="k")clickIf('[data-a="scr:d.backlog"]');
+  return;}});
 app.addEventListener("change",e=>{
  const ia=e.target.closest("[data-item-assign]");
  if(ia){const id=ia.dataset.itemAssign,it=(S.f.items||[]).find(x=>x.id===id);
