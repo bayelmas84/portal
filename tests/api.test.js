@@ -757,6 +757,46 @@ test("Backlog toplu güncelleme (bulk-update): priority + label birden fazla kon
   assert.equal(emptyKeys.status, 400);
 });
 
+test("Checklist: ekleme, sıra korunur, tamamlandı işaretleme, silme", async () => {
+  const pm = await login("tolga.firat");
+  const issue = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Checklist Test ${Date.now()}` });
+  const issueKey = issue.body.item.issue_key;
+
+  const item1 = await request(app).post(`/api/projects/TRADE/issues/${issueKey}/checklist`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ text: "Testler yazıldı" });
+  assert.equal(item1.status, 201);
+  assert.equal(item1.body.item.done, false);
+  assert.equal(item1.body.item.position, 0);
+
+  const item2 = await request(app).post(`/api/projects/TRADE/issues/${issueKey}/checklist`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ text: "Code review yapıldı" });
+  assert.equal(item2.body.item.position, 1);
+
+  const list = await request(app).get(`/api/projects/TRADE/issues/${issueKey}/checklist`).set("Cookie", pm.cookie);
+  assert.equal(list.body.items.length, 2);
+  assert.equal(list.body.items[0].text, "Testler yazıldı");
+
+  const toggled = await request(app)
+    .put(`/api/projects/TRADE/issues/${issueKey}/checklist/${item1.body.item.id}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ done: true });
+  assert.equal(toggled.status, 200);
+  assert.equal(toggled.body.item.done, true);
+
+  const emptyText = await request(app)
+    .post(`/api/projects/TRADE/issues/${issueKey}/checklist`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ text: "  " });
+  assert.equal(emptyText.status, 400);
+
+  const deleted = await request(app)
+    .delete(`/api/projects/TRADE/issues/${issueKey}/checklist/${item2.body.item.id}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(deleted.status, 200);
+
+  const listAfter = await request(app).get(`/api/projects/TRADE/issues/${issueKey}/checklist`).set("Cookie", pm.cookie);
+  assert.equal(listAfter.body.items.length, 1);
+});
+
 test.after(async () => {
   await pool.end();
 });

@@ -1017,6 +1017,76 @@ router.delete("/:k/issues/:issueKey/worklogs/:id", requireWrite("d.board"), asyn
   } catch (e) { next(e); }
 });
 
+// ------------------------------- Kontrol listesi (checklist) -------------------------------
+// Issue içinde hafif bir "Definition of Done" listesi — Story Point/Estimate'ten
+// bağımsız, hızlı bir "bitmiş mi" göstergesi. Herkes (d.board yazma yetkisi
+// olan) ekleyebilir/işaretleyebilir/silebilir — Comments/Worklog'daki
+// "yalnızca sahibi silebilir" kısıtlaması burada YOK, çünkü bir checklist
+// ekip ortak çalışması içindir (kimin eklediği değil, işin bitip bitmediği
+// önemlidir).
+router.get("/:k/issues/:issueKey/checklist", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "SELECT * FROM project_issue_checklist_items WHERE project_k=$1 AND issue_key=$2 ORDER BY position, id",
+      [req.params.k, req.params.issueKey]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/issues/:issueKey/checklist", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const text = ((req.body && req.body.text) || "").trim().slice(0, 200);
+    if (!text) return res.status(400).json({ error: "Madde metni boş olamaz." });
+    const issue = await query("SELECT 1 FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
+    if (!issue.rowCount) return res.status(404).json({ error: "Konu bulunamadı." });
+    const maxPos = await query(
+      "SELECT COALESCE(MAX(position),-1)+1 AS p FROM project_issue_checklist_items WHERE project_k=$1 AND issue_key=$2",
+      [req.params.k, req.params.issueKey]
+    );
+    const { rows } = await query(
+      `INSERT INTO project_issue_checklist_items (project_k, issue_key, text, position, created_by)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [req.params.k, req.params.issueKey, text, maxPos.rows[0].p, req.user.username]
+    );
+    res.status(201).json({ item: rows[0] });
+  } catch (e) { next(e); }
+});
+
+router.put("/:k/issues/:issueKey/checklist/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const existing = await query(
+      "SELECT * FROM project_issue_checklist_items WHERE id=$1 AND project_k=$2 AND issue_key=$3",
+      [req.params.id, req.params.k, req.params.issueKey]
+    );
+    if (!existing.rowCount) return res.status(404).json({ error: "Madde bulunamadı." });
+    const b = req.body || {};
+    const fields = [], values = [];
+    let i = 1;
+    if (b.done !== undefined) { fields.push(`done=$${i++}`); values.push(!!b.done); }
+    if (b.text !== undefined) {
+      const text = String(b.text).trim().slice(0, 200);
+      if (!text) return res.status(400).json({ error: "Madde metni boş olamaz." });
+      fields.push(`text=$${i++}`); values.push(text);
+    }
+    if (!fields.length) return res.status(400).json({ error: "Güncellenecek alan yok." });
+    values.push(req.params.id);
+    const { rows } = await query(`UPDATE project_issue_checklist_items SET ${fields.join(", ")} WHERE id=$${i} RETURNING *`, values);
+    res.json({ item: rows[0] });
+  } catch (e) { next(e); }
+});
+
+router.delete("/:k/issues/:issueKey/checklist/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "DELETE FROM project_issue_checklist_items WHERE id=$1 AND project_k=$2 AND issue_key=$3 RETURNING id",
+      [req.params.id, req.params.k, req.params.issueKey]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Madde bulunamadı." });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 // ----------------------------- Konu ilişkilendirmeleri (links) -----------------------------
 // Ters yön etiketleri: blocks<->is blocked by, clones<->is cloned by,
 // duplicates<->is duplicated by, relates simetriktir.

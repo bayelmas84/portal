@@ -1002,6 +1002,19 @@ function issueInboxOf(){
   if(ISSUE_INBOX_LIVE===null&&!ISSUE_INBOX_LIVE_LOADING)loadIssueInboxLive();
   return ISSUE_INBOX_LIVE||[];}
  return ISSUE_INBOX_DEMO.filter(n=>n.recipient_username===S.me.u);}
+/* Kontrol listesi (checklist) — issue içinde hafif bir "Definition of
+   Done" listesi. Herkes (d.board yazma yetkisi olan) ekleyebilir/
+   işaretleyebilir/silebilir — yorumların aksine "yalnızca sahibi"
+   kısıtlaması yok, çünkü bir checklist ekip ortak çalışmasıdır. */
+let ISSUE_CHECKLIST_LIVE={};
+async function loadIssueChecklistLive(pk,key){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/checklist");
+  ISSUE_CHECKLIST_LIVE[pk+"::"+key]=data.items;render();
+ }catch(e){/* sessiz geç */}}
+let ISSUE_CHECKLIST_DEMO=[],nextChecklistItem=1;
+function demoChecklistFor(pk,key){
+ return ISSUE_CHECKLIST_DEMO.filter(c=>c.pk===pk&&c.issue_key===key);}
 /* Mail bildirim tercihleri (yalnızca dışarı giden e-postayı etkiler, zil
    bildirimlerini değil). Demo modda basit bir kullanıcı-bazlı obje. */
 let NOTIF_PREFS_LIVE=null;
@@ -4198,6 +4211,7 @@ function dialogView(){
   const links=LIVE_BACKEND?(ISSUE_LINKS_LIVE[attKey]||null):demoLinksFor(p.k,i.key);
   const comments=LIVE_BACKEND?(ISSUE_COMMENTS_LIVE[attKey]||null):demoCommentsFor(p.k,i.key);
   const worklogs=LIVE_BACKEND?(ISSUE_WORKLOGS_LIVE[attKey]||null):demoWorklogsFor(p.k,i.key);
+  const checklist=LIVE_BACKEND?(ISSUE_CHECKLIST_LIVE[attKey]||null):demoChecklistFor(p.k,i.key);
   const linkProjectK=S.f.linkProject||p.k;
   const linkProject=PROJ.find(x=>x.k===linkProjectK)||p;
   const linkCandidates=(linkProject.items||[])
@@ -4291,6 +4305,19 @@ function dialogView(){
      <button class="b s" data-a="issueLinkAdd:${d.pi}:${i.key}">Link</button></div>`:""}
    ${cw("d.board")?`<div class="lbl" style="margin-top:12px">Durum değiştir</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">${effectiveNext(p,i.st).map(s=>`<button class="b s p" data-a="move:${d.pi}:${i.key}:${s}">${FLOW[s]}</button>`).join("")}</div>`:""}
+   <div class="lbl" style="margin-top:12px">Checklist${checklist?" ("+checklist.filter(c=>c.done).length+"/"+checklist.length+")":""}</div>
+   ${checklist===null?`<p class="m" style="color:var(--tm)">Loading…</p>`:(()=>{
+     const total=checklist.length,done=checklist.filter(c=>c.done).length;
+     return (total?`<div style="height:5px;border-radius:3px;background:var(--s2);overflow:hidden;margin-bottom:8px">
+       <div style="height:100%;width:${Math.round(done/total*100)}%;background:var(--ok-fg)"></div></div>`:"")+
+     checklist.map(c=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+       <input type="checkbox" ${c.done?"checked":""} ${cw("d.board")?`data-a="checklistToggle:${d.pi}:${i.key}:${c.id}:${c.done?0:1}"`:"disabled"}>
+       <span style="flex:1;font-size:12.5px;${c.done?"text-decoration:line-through;color:var(--tm)":""}">${esc(c.text)}</span>
+       ${cw("d.board")?`<span style="cursor:pointer;color:var(--tm)" data-a="checklistDelete:${d.pi}:${i.key}:${c.id}">✕</span>`:""}</div>`).join("")
+     ||`<p class="m" style="color:var(--tm)">No checklist items yet.</p>`;})()}
+   ${cw("d.board")?`<div style="display:flex;gap:6px;margin-top:6px">
+    <input id="fChecklistNew" placeholder="Add a checklist item…" style="flex:1;font-size:12px;padding:6px 9px">
+    <button class="b s" data-a="checklistAdd:${d.pi}:${i.key}">Add</button></div>`:""}
    <div class="lbl" style="margin-top:12px">Time Tracking</div>
    ${(()=>{const spent=(worklogs||[]).reduce((s,w)=>s+w.time_spent_minutes,0);
      const orig=i.origEst,rem=i.remEst;
@@ -5134,7 +5161,8 @@ app.addEventListener("click",async ev=>{
     delete ISSUE_LINKS_LIVE[pk+"::"+issueKey];loadIssueLinksLive(pk,issueKey);
     delete ISSUE_HISTORY_LIVE[pk+"::"+issueKey];loadIssueHistoryLive(pk,issueKey);
     delete ISSUE_COMMENTS_LIVE[pk+"::"+issueKey];loadIssueCommentsLive(pk,issueKey);
-    delete ISSUE_WORKLOGS_LIVE[pk+"::"+issueKey];loadIssueWorklogsLive(pk,issueKey);}
+    delete ISSUE_WORKLOGS_LIVE[pk+"::"+issueKey];loadIssueWorklogsLive(pk,issueKey);
+    delete ISSUE_CHECKLIST_LIVE[pk+"::"+issueKey];loadIssueChecklistLive(pk,issueKey);}
   }else{
    S.scr="d.board";S.dlg=null;
   }
@@ -5151,6 +5179,7 @@ app.addEventListener("click",async ev=>{
    delete ISSUE_HISTORY_LIVE[pk+"::"+issueKey];loadIssueHistoryLive(pk,issueKey);
    delete ISSUE_COMMENTS_LIVE[pk+"::"+issueKey];loadIssueCommentsLive(pk,issueKey);
    delete ISSUE_WORKLOGS_LIVE[pk+"::"+issueKey];loadIssueWorklogsLive(pk,issueKey);
+   delete ISSUE_CHECKLIST_LIVE[pk+"::"+issueKey];loadIssueChecklistLive(pk,issueKey);
    api("POST","/api/notifications/inbox/"+notifId+"/read").then(()=>{ISSUE_INBOX_LIVE=(ISSUE_INBOX_LIVE||[]).filter(n=>String(n.id)!==String(notifId));render();}).catch(()=>{});
   }else{
    ISSUE_INBOX_DEMO=ISSUE_INBOX_DEMO.filter(n=>String(n.id)!==String(notifId));
@@ -5689,7 +5718,8 @@ app.addEventListener("click",async ev=>{
    delete ISSUE_LINKS_LIVE[pk+"::"+key];loadIssueLinksLive(pk,key);
    delete ISSUE_HISTORY_LIVE[pk+"::"+key];loadIssueHistoryLive(pk,key);
    delete ISSUE_COMMENTS_LIVE[pk+"::"+key];loadIssueCommentsLive(pk,key);
-   delete ISSUE_WORKLOGS_LIVE[pk+"::"+key];loadIssueWorklogsLive(pk,key);}
+   delete ISSUE_WORKLOGS_LIVE[pk+"::"+key];loadIssueWorklogsLive(pk,key);
+   delete ISSUE_CHECKLIST_LIVE[pk+"::"+key];loadIssueChecklistLive(pk,key);}
   return;}
  if(k==="issueAttAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailDoc");const file=inp&&inp.files&&inp.files[0];
@@ -5904,6 +5934,35 @@ app.addEventListener("click",async ev=>{
    return;}
   ISSUE_WORKLOGS_DEMO=ISSUE_WORKLOGS_DEMO.filter(x=>!(String(x.id)===String(wid)&&x.pk===pk&&x.issue_key===key));
   toast("Worklog removed.");render();return;}
+ if(k==="checklistAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const inp=document.getElementById("fChecklistNew");
+  const text=(inp&&inp.value||"").trim();
+  if(!text){toast("Item text can't be empty.",1);return;}
+  if(LIVE_BACKEND){
+   try{await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/checklist",{text});
+    await loadIssueChecklistLive(pk,key);}
+   catch(e){toast(e.message,1);}
+   return;}
+  ISSUE_CHECKLIST_DEMO.push({id:nextChecklistItem++,pk,issue_key:key,text,done:false,
+   position:demoChecklistFor(pk,key).length,created_by:S.me.u,created_at:now()});
+  render();return;}
+ if(k==="checklistToggle"){const pi=+p[1],key=p[2],cid=p[3],doneVal=p[4]==="1",pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/checklist/"+cid,{done:doneVal});
+    await loadIssueChecklistLive(pk,key);}
+   catch(e){toast(e.message,1);}
+   return;}
+  const item=ISSUE_CHECKLIST_DEMO.find(x=>String(x.id)===String(cid)&&x.pk===pk&&x.issue_key===key);
+  if(item)item.done=doneVal;
+  render();return;}
+ if(k==="checklistDelete"){const pi=+p[1],key=p[2],cid=p[3],pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/checklist/"+cid);
+    await loadIssueChecklistLive(pk,key);}
+   catch(e){toast(e.message,1);}
+   return;}
+  ISSUE_CHECKLIST_DEMO=ISSUE_CHECKLIST_DEMO.filter(x=>!(String(x.id)===String(cid)&&x.pk===pk&&x.issue_key===key));
+  render();return;}
  if(k==="move"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]),from=it.st,to=p[3];
   if(to==="done"){const reason=issueCloseBlockReason(pr,it);
