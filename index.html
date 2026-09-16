@@ -514,10 +514,10 @@ let TITLES=[{k:"GMY",n:"Genel Müdür Yardımcısı",on:1},{k:"GDIR",n:"Grup Dir
  {k:"PYD",n:"Proje Yönetim Direktörü",on:1},{k:"DIR",n:"Direktör",on:1},
  {k:"MDR",n:"Müdür",on:1},{k:"UZM",n:"Uzman",on:1},{k:"STJ",n:"Stajyer",on:0}];
 let SHORTS=[{n:"İK Portalı",url:"https://ik.tera.local",icon:"ti-users-group",c:"#0F6E56",on:1},
- {n:"Makas",url:"https://makas.tera.local",icon:"ti-scissors",c:"#A32D2D",on:1},
- {n:"eBA",url:"https://eba.tera.local",icon:"ti-file-symlink",c:"#4B3B8F",on:1},
- {n:"TRA Portal",url:"https://tra.tera.local",icon:"ti-chart-candle",c:"#0B1F48",on:1},
- {n:"Connect",url:"https://connect.tera.local",icon:"ti-messages",c:"#0178BA",on:1},
+ {n:"Makas",url:"https://makas.teragrup.com/",icon:"ti-scissors",c:"#A32D2D",on:1},
+ {n:"eBA",url:"https://zeta.terayatirim.com/eba.net/Desktop/Login.aspx",icon:"ti-file-symlink",c:"#4B3B8F",on:1},
+ {n:"TRA Portal",url:"https://support.trabilisim.com/home",icon:"ti-chart-candle",c:"#0B1F48",on:1},
+ {n:"Connect",url:"https://connect.borsaistanbul.com/",icon:"ti-messages",c:"#0178BA",on:1},
  {n:"CRM",url:"https://crm.tera.local",icon:"ti-address-book",c:"#B8894A",on:0}];
 
 const P1="1. GENEL İLKELER\n\nTüm çalışanlar görevlerini dürüstlük, tarafsızlık, gizlilik ve mesleki özen ilkeleri çerçevesinde yerine getirir. Şirket kaynakları yalnızca görevin gerektirdiği amaçlarla kullanılır. Müşteri çıkarı her durumda çalışanın kişisel çıkarının önündedir.\n\n2. ÇIKAR ÇATIŞMASI\n\nÇalışanın kişisel çıkarı ile şirketin veya müşterinin çıkarının çakıştığı her durum, öğrenildiği anda Uyum Birimine yazılı olarak bildirilir.";
@@ -2722,14 +2722,16 @@ function screenView(){
      ${it.due?`<span class="m" style="color:var(--tm);white-space:nowrap;flex-shrink:0">${esc(it.due)}</span>`:""}
      <span style="cursor:pointer;color:var(--tm);flex-shrink:0" data-a="mtRemItem:${i}">✕</span></div>`;}).join("")
     :`<p class="m" style="color:var(--tm);padding:10px">No items added yet.</p>`;
+  const notesInvalid=attempted&&(f.notes||"").trim().length<20;
   const meetingNotesPanel=`
    <div class="card" style="display:flex;flex-direction:column;min-height:75vh">
      ${subjectBlock}
-     <div class="lbl" style="margin-top:14px">Meeting Notes <span class="m" style="color:var(--tm);text-transform:none;letter-spacing:normal">(required, min. 20 characters)</span></div>
-     <textarea id="fMtNotes" placeholder="Free-form notes about the meeting (at least 20 characters)" style="flex:1;min-height:140px;max-height:360px;${errS(attempted&&(f.notes||"").trim().length<20)}">${esc(f.notes||"")}</textarea>
-     <div class="lbl" style="margin-top:10px">Agenda items <span class="m" style="color:var(--tm);text-transform:none;letter-spacing:normal">(up to 10 shown, scrolls if more)</span></div>
-     <div id="mtItemsScroll" style="min-height:100px;max-height:150px;overflow-y:auto;border:1px solid var(--bd);border-radius:8px;margin-top:4px">
-      ${itemRowsCompact}</div>
+     <div class="lbl" style="margin-top:14px">Meeting Notes</div>
+     <div style="flex:1;display:flex;flex-direction:column;min-height:0;border:1px solid ${notesInvalid?"var(--er-fg)":"var(--bd)"};border-radius:8px;overflow:hidden">
+      <textarea id="fMtNotes" placeholder="Free-form notes about the meeting" style="flex:1;min-height:110px;border:none;border-radius:0;margin:0;resize:none">${esc(f.notes||"")}</textarea>
+      <div class="lbl" style="margin:0;padding:8px 10px 4px;border-top:1px solid var(--bd)">Agenda items <span class="m" style="color:var(--tm);text-transform:none;letter-spacing:normal">(up to 5 shown, scrolls if more)</span></div>
+      <div id="mtItemsScroll" style="max-height:175px;overflow-y:auto;flex-shrink:0">
+       ${itemRowsCompact}</div></div>
      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="New agenda item..." style="flex:2;min-width:140px">
       <select id="fMtNewItemAssignee" style="flex:1;min-width:130px;${errS(S.f.mtNewItemAttempted&&!f.newItemAssignee)}">
