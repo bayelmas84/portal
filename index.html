@@ -1624,6 +1624,20 @@ const DEFAULT_WORKFLOW=[["backlog","todo"],["todo","prog"],["prog","review"],["p
 const WORKFLOW_ROLES_CLIENT=["pmdir","pm","dev"];
 const WORKFLOW_ROLE_LABEL={pmdir:"PM Director",pm:"Project Manager",dev:"Developer"};
 let PROJECT_WORKFLOW_LIVE={},PROJECT_WORKFLOW_DEMO={};
+/* Sprint kapasite planlama: her ekip üyesinin bu sprint'e ne kadar
+   story point sığdırabileceği (izin/tatil gibi durumlarda düşürülebilir).
+   Canlı backend'de proje bazında saklanır; demo modda bellek-içi. */
+let CAPACITY_LIVE={};
+async function loadCapacityLive(pk){
+ try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/capacity");CAPACITY_LIVE[pk]=data.items;render();}
+ catch(e){CAPACITY_LIVE[pk]=[];render();}}
+let CAPACITY_DEMO={};
+function capacityDemoFor(pr){
+ if(!CAPACITY_DEMO[pr.k])CAPACITY_DEMO[pr.k]={};
+ const caps=CAPACITY_DEMO[pr.k];
+ return teamOf(pr.k).map(m=>{const uname=m.username||nameToUsername(m.n);
+  const assignedPoints=pr.items.filter(i=>i.as===m.n&&i.inSprint&&i.st!=="done").reduce((a,i)=>a+(i.pts||0),0);
+  return {username:uname,name:m.n,capacity:caps[uname]!==undefined?caps[uname]:10,assignedPoints};});}
 async function loadWorkflowLive(pk){
  try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/workflow");
   PROJECT_WORKFLOW_LIVE[pk]=data.items;render();}catch(e){PROJECT_WORKFLOW_LIVE[pk]=[];render();}}
@@ -2414,7 +2428,21 @@ function screenView(){
      <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td>
      <td style="text-align:right">${cw("d.board")?`<button class="b s d" data-a="sprintRemove:${p.k}:${i.key}">Remove from sprint</button>`:""}</td></tr>`).join("")||
      `<tr><td colspan="6" style="color:var(--tm)">No items in this sprint yet.</td></tr>`)}</div>
-    ${cw("d.board")?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">To add a new item, use the "Add to sprint" button from the Backlog screen — this also works while the sprint is active.</p>`:""}`;}
+    ${cw("d.board")?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">To add a new item, use the "Add to sprint" button from the Backlog screen — this also works while the sprint is active.</p>`:""}
+   ${(()=>{if(CAPACITY_LIVE[p.k]===undefined){CAPACITY_LIVE[p.k]=null;loadCapacityLive(p.k);}
+     const cap=CAPACITY_LIVE[p.k];
+     return `<div class="lbl" style="margin-top:16px">Team Capacity</div>
+      ${cap===null?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`
+       :table(["Person","Assigned SP","Capacity",""],cap.map(c=>{const over=c.assignedPoints>c.capacity;
+        const pctc=c.capacity?Math.min(100,Math.round(c.assignedPoints/c.capacity*100)):0;
+        return `<tr><td>${esc(c.name)}</td>
+         <td class="m" style="color:${over?"var(--er-fg)":"var(--t1)"}">${c.assignedPoints} SP</td>
+         <td style="min-width:110px">${bar(pctc,over?"#A32D2D":"#0B1F48")}
+          <span class="m" style="color:var(--tm)">${c.capacity} SP</span></td>
+         <td style="text-align:right;white-space:nowrap">${cw("d.board")?`<input type="number" min="0" max="999" step="0.5" data-capacity-edit="${c.username}" value="${c.capacity}"
+           style="width:60px;font-size:12px;padding:4px 6px" title="Set capacity">`:""}</td></tr>`;}).join("")||
+        `<tr><td colspan="4" style="color:var(--tm)">No team members yet.</td></tr>`)}
+      <p style="font-size:11px;color:var(--tm);margin-top:6px">Assigned SP counts only open (not-done) sprint items. Lower a person's capacity for planned leave/vacation.</p></div>`;})()}`;}
   if(!p.sprint)return head("Sprint",p.n)+`<p style="font-size:12px;color:var(--tm)">This project does not use sprints (${p.m}).</p>`;
   const sp=p.sprint,pct=Math.round(sp.done/sp.committed*100);
   return head("Sprint",p.n,`<div style="display:flex;gap:7px">${projSelectHTML(scrumProjects,true)}</div>`)+
@@ -2427,7 +2455,19 @@ function screenView(){
    <div class="m" style="color:var(--t2);margin-top:8px">${sp.done} / ${sp.committed} story point · %${pct}</div></div>
    <div style="margin-top:14px">${table(["Key","Title","Status","SP","Assignee"],p.items.filter(i=>i.st!=="backlog").map(i=>`<tr>
     <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td><td>${pill(FLOW[i.st])}</td>
-    <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td></tr>`).join(""))}</div>`;}
+    <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td></tr>`).join(""))}</div>
+   ${(()=>{const cap=capacityDemoFor(p);
+     return `<div class="lbl" style="margin-top:16px">Team Capacity</div>
+      ${table(["Person","Assigned SP","Capacity",""],cap.map(c=>{const over=c.assignedPoints>c.capacity;
+       const pctc=c.capacity?Math.min(100,Math.round(c.assignedPoints/c.capacity*100)):0;
+       return `<tr><td>${esc(c.name)}</td>
+        <td class="m" style="color:${over?"var(--er-fg)":"var(--t1)"}">${c.assignedPoints} SP</td>
+        <td style="min-width:110px">${bar(pctc,over?"#A32D2D":"#0B1F48")}
+         <span class="m" style="color:var(--tm)">${c.capacity} SP</span></td>
+        <td style="text-align:right;white-space:nowrap">${cw("d.board")?`<input type="number" min="0" max="999" step="0.5" data-capacity-edit="${c.username}" value="${c.capacity}"
+          style="width:60px;font-size:12px;padding:4px 6px" title="Set capacity">`:""}</td></tr>`;}).join("")||
+       `<tr><td colspan="4" style="color:var(--tm)">No team members yet.</td></tr>`)}
+      <p style="font-size:11px;color:var(--tm);margin-top:6px">Assigned SP counts only open (not-done) sprint items. Lower a person's capacity for planned leave/vacation.</p></div>`;})()}`;}
 
  if(v==="k.mail")return head("Gönderilen bildirimler","Onay, ret, yayın ve hatırlatma e-postaları")+
   (MAILS.length?table(["Alıcı","Konu","Zaman"],MAILS.map(m=>`<tr><td style="color:var(--t2)">${esc(m.to)}</td>
@@ -5147,7 +5187,19 @@ app.addEventListener("change",e=>{
    render();}return;}
  const idd=e.target.closest("[data-item-due]");
  if(idd){const id=idd.dataset.itemDue,it=(S.f.items||[]).find(x=>x.id===id);
-  if(it){it.due=idd.value||"";render();}return;}});
+  if(it){it.due=idd.value||"";render();}return;}
+ const cap=e.target.closest("[data-capacity-edit]");
+ if(cap){const username=cap.dataset.capacityEdit,pk=P().k;
+  const n=Number(cap.value);
+  if(!Number.isFinite(n)||n<0){toast("Invalid capacity value.",1);return;}
+  if(LIVE_BACKEND){
+   api("PUT","/api/projects/"+encodeURIComponent(pk)+"/capacity/"+encodeURIComponent(username),{capacity:n})
+    .then(()=>{delete CAPACITY_LIVE[pk];loadCapacityLive(pk);toast("Capacity updated.");})
+    .catch(err=>toast(err.message,1));
+   return;}
+  if(!CAPACITY_DEMO[pk])CAPACITY_DEMO[pk]={};
+  CAPACITY_DEMO[pk][username]=n;
+  toast("Capacity updated.");render();return;}});
 app.addEventListener("click",async ev=>{
  const go=ev.target.closest("[data-go]");
  if(go){window.open(go.dataset.go,"_blank","noopener");toast(go.dataset.go+" yeni sekmede açılıyor.");return;}

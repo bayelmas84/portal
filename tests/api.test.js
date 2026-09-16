@@ -1006,6 +1006,43 @@ test("Denetim Kaydı: arama (q) ve işlem tipi (actionType) filtreleri doğru ç
   assert.deepEqual(noMatch.body.items, []);
 });
 
+test("Sprint kapasite planlama: güncelleme ve atanan SP hesabı doğru çalışır (idempotent)", async () => {
+  const pm = await login("tolga.firat");
+
+  const before = await request(app).get("/api/projects/TRADE/capacity").set("Cookie", pm.cookie);
+  assert.equal(before.status, 200);
+  const member = before.body.items[0];
+  assert.ok(member);
+  assert.ok(Number.isFinite(member.capacity));
+  const beforeAssigned = member.assignedPoints;
+
+  // Testler tekrar tekrar çalıştırılabildiği (kalıcı DB) için mevcut değere
+  // BAĞLI olmayan, her seferinde FARKLI bir hedef değere geçiş kontrol edilir.
+  const newCapacity = member.capacity === 4 ? 5 : 4;
+  const setRes = await request(app).put(`/api/projects/TRADE/capacity/${member.username}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ capacity: newCapacity });
+  assert.equal(setRes.status, 200);
+
+  const epic = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: "Capacity test Epic" });
+  const epicKey = epic.body.item.issue_key;
+  const story = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Story", title: "Capacity test Story", parentKey: epicKey, storyPoints: 7, assigneeUsername: member.username });
+  const storyKey = story.body.item.issue_key;
+  await request(app).put(`/api/projects/TRADE/issues/${storyKey}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ inSprint: true });
+
+  const after = await request(app).get("/api/projects/TRADE/capacity").set("Cookie", pm.cookie);
+  const updated = after.body.items.find((x) => x.username === member.username);
+  assert.equal(updated.capacity, newCapacity);
+  assert.equal(updated.assignedPoints, beforeAssigned + 7);
+
+  // Geçersiz kapasite reddedilir.
+  const bad = await request(app).put(`/api/projects/TRADE/capacity/${member.username}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ capacity: -1 });
+  assert.equal(bad.status, 400);
+});
+
 test.after(async () => {
   await pool.end();
 });

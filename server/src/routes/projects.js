@@ -1519,9 +1519,61 @@ router.get("/:k/sprint/burndown", requireRead("d.board"), async (req, res, next)
   } catch (e) { next(e); }
 });
 
-// Aktif sprint yokken (kapatılırken "yeni sprint açma" denildiyse veya daha önce hiç
-// başlatılmadıysa) yeni bir sprint başlatır. Aktif bir sprint varsa ve bitiş gününe
-// gelinmediyse reddedilir (aynı anda ikinci bir sprint açılamaz).
+// Sprint kapasite planlama: her ekip üyesinin ne kadar story point'e
+// "sığabileceği" (kapasitesi) proje bazında saklanır (sprint'ten bağımsız).
+// GET, mevcut sprint'teki (in_sprint=true, done olmayan) her üyenin
+// TOPLAM story point'ini de hesaplayıp kapasiteyle birlikte döner —
+// frontend'in "X / Y SP" ve aşım/kapasite altı gösterimini tek istekle
+// yapabilmesi için.
+router.get("/:k/capacity", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const [team, capacities, assigned] = await Promise.all([
+      query(
+        `SELECT pt.username, u.name FROM project_team pt
+           JOIN users u ON u.username=pt.username AND u.active
+          WHERE pt.project_k=$1`,
+        [req.params.k]
+      ),
+      query("SELECT username, capacity_points FROM project_member_capacity WHERE project_k=$1", [req.params.k]),
+      query(
+        `SELECT assignee_username, COALESCE(SUM(story_points),0) AS sp
+           FROM project_issues WHERE project_k=$1 AND in_sprint=true AND status<>'done' AND assignee_username IS NOT NULL
+          GROUP BY assignee_username`,
+        [req.params.k]
+      ),
+    ]);
+    const capMap = {};
+    capacities.rows.forEach((r) => { capMap[r.username] = Number(r.capacity_points); });
+    const spMap = {};
+    assigned.rows.forEach((r) => { spMap[r.assignee_username] = Number(r.sp); });
+    const items = team.rows.map((r) => ({
+      username: r.username,
+      name: r.name,
+      capacity: capMap[r.username] !== undefined ? capMap[r.username] : 10,
+      assignedPoints: spMap[r.username] || 0,
+    }));
+    res.json({ items });
+  } catch (e) { next(e); }
+});
+
+router.put("/:k/capacity/:username", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { capacity } = req.body || {};
+    const n = Number(capacity);
+    if (!Number.isFinite(n) || n < 0 || n > 999) return res.status(400).json({ error: "Geçersiz kapasite değeri." });
+    const inTeam = await query("SELECT 1 FROM project_team WHERE project_k=$1 AND username=$2", [req.params.k, req.params.username]);
+    if (!inTeam.rowCount) return res.status(400).json({ error: "Bu kişi projenin ekibinde değil." });
+    await query(
+      `INSERT INTO project_member_capacity (project_k, username, capacity_points, updated_at)
+       VALUES ($1,$2,$3,now())
+       ON CONFLICT (project_k, username) DO UPDATE SET capacity_points=$3, updated_at=now()`,
+      [req.params.k, req.params.username, n]
+    );
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+
 router.post("/:k/sprint/start", requireWrite("d.board"), async (req, res, next) => {
   try {
     const { sprintGoal, sprintEndsAt } = req.body || {};
