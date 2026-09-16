@@ -663,16 +663,19 @@ function renderBoardCols(cols,items,pi,draggable,wipLimits,fullCounts){
      <span>${FLOW[st]}${limit?`<span class="m" style="color:${over?"var(--er-fg)":"var(--tm)"};letter-spacing:normal;text-transform:none"> · limit ${limit}</span>`:""}</span>
      <span class="m" style="${over?"color:var(--er-fg);font-weight:700":""}">${list.length}</span></div>
     ${over?`<p style="font-size:10px;color:var(--er-fg);margin:0 0 6px">Over WIP limit — finish work here before starting more.</p>`:""}
-    ${list.map(i=>`<div class="ic" style="border-left-color:${TYC[i.ty]}" data-a="issue:${pi}:${i.key}"
+    ${list.map(i=>{const late=isOverdue(i);
+     return `<div class="ic" style="border-left-color:${late?"var(--er-fg)":TYC[i.ty]}" data-a="issue:${pi}:${i.key}"
      ${draggable?`draggable="true" data-key="${i.key}"`:""}>
      <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
-      <span style="color:${TYC[i.ty]};font-size:10px">${i.ty}</span><span style="flex:1"></span>
+      <span style="color:${TYC[i.ty]};font-size:10px">${i.ty}</span>
+      ${late?`<span class="m" style="color:var(--er-fg);font-weight:700">⚠ overdue</span>`:""}<span style="flex:1"></span>
       <span class="m" style="color:${PRIC[i.pri]}">${i.pri}</span></div>
      <div style="margin-bottom:6px">${esc(i.t)}</div>
      <div style="display:flex;gap:6px;align-items:center"><span class="m" style="color:var(--ta)">${i.key}</span>
-      <span class="m" style="color:var(--tm)">${i.pts} SP</span><span style="flex:1"></span>
+      <span class="m" style="color:var(--tm)">${i.pts} SP</span>
+      ${i.due?`<span class="m" style="color:${late?"var(--er-fg)":"var(--tm)"}">· due ${i.due}</span>`:""}<span style="flex:1"></span>
       ${i.as?`<span style="width:20px;height:20px;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center;
-       background:${i.as===S.me.n?"var(--gold)":"var(--ba)"};color:${i.as===S.me.n?"#231705":"var(--ta)"}">${initials(i.as)}</span>`:""}</div></div>`).join("")
+       background:${i.as===S.me.n?"var(--gold)":"var(--ba)"};color:${i.as===S.me.n?"#231705":"var(--ta)"}">${initials(i.as)}</span>`:""}</div></div>`;}).join("")
     ||`<div style="font-size:11px;color:var(--tm);padding:6px 2px">—</div>`}</div>`;}).join("")}</div>`;}
 /* Bir konunun EN ÜST Epic atasını bulur (Story/Task/Bug -> ... -> Epic).
    Konunun kendisi Epic ise kendisini döner; hiçbir üst Epic yoksa null. */
@@ -909,6 +912,11 @@ const canSeeMeeting=m=>{
 let GANTT={};
 let nextGantt=1;
 const dayDiff=(a,b)=>Math.round((new Date(b)-new Date(a))/86400000);
+/* SLA / gecikme takibi: due date'i geçmiş, hâlâ açık (done olmayan) bir
+   konu "overdue" sayılır. Board kartlarında ve My Work'te kırmızı bir
+   uyarıyla işaretlenir — WIP limit uyarısıyla aynı görsel dilde
+   (var(--er-fg)). Saf türetilmiş bir hesaplama, ek veri gerektirmez. */
+function isOverdue(i){return !!i.due&&i.st!=="done"&&i.due<now().slice(0,10);}
 const ganttRange=(tasks,pr)=>{
  const dates=[];
  tasks.forEach(t=>{if(t.start)dates.push(t.start);if(t.end)dates.push(t.end);});
@@ -1970,26 +1978,28 @@ function screenView(){
  if(v==="d.my"){
   if(LIVE_BACKEND&&PROJ.some(p=>!p.itemsLoaded)&&!S.myWorkLoading){S.myWorkLoading=true;loadAllIssuesLive().then(()=>{S.myWorkLoading=false;render();});}
   const mine=myIssues().filter(x=>x.i.st!=="done");
-  const shown=mine.filter(x=>!S.filter||(S.filter==="prog"?x.i.st==="prog":x.i.ty==="Bug"));
+  const shown=mine.filter(x=>!S.filter||(S.filter==="prog"?x.i.st==="prog":S.filter==="overdue"?isOverdue(x.i):x.i.ty==="Bug"));
   const byProj={};shown.forEach(x=>{(byProj[x.p.k]=byProj[x.p.k]||[]).push(x);});
   const kpi=[["Open items",mine.length,""],["In progress",mine.filter(x=>x.i.st==="prog").length,"prog"],
+   ["Overdue",mine.filter(x=>isOverdue(x.i)).length,"overdue"],
    ["Bugs",mine.filter(x=>x.i.ty==="Bug").length,"Bug"],["Projects",new Set(mine.map(x=>x.p.k)).size,null]];
   return head("My Work",S.me.n+" · open items across all projects",
    S.filter?`<button class="b s" data-a="filter:">Clear filter</button>`:"")+
   `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin-bottom:15px">
    ${kpi.map(k=>`<div class="card" style="cursor:${k[2]===null?"default":"pointer"}" ${k[2]===null?"":`data-a="filter:${k[2]}"`}>
-    <div class="lbl">${k[0]}</div><div class="m" style="font-size:23px">${k[1]}</div></div>`).join("")}</div>`+
+    <div class="lbl">${k[0]}</div><div class="m" style="font-size:23px;${k[0]==="Overdue"&&k[1]?"color:var(--er-fg)":""}">${k[1]}</div></div>`).join("")}</div>`+
   (Object.keys(byProj).length?Object.keys(byProj).map(k=>{const p=byProj[k][0].p,pi=byProj[k][0].pi;
    return `<div style="margin-bottom:15px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
     <span class="m" style="min-width:30px;height:22px;padding:0 7px;border-radius:6px;background:var(--navy);color:#fff;
      display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;font-size:9.5px;letter-spacing:.02em">${esc(k)}</span>
     <span style="font-size:13px;flex:1">${esc(p.n)}</span>${pill(p.m)}
     <button class="b s" data-a="openProj:${pi}">Board</button></div>
-   ${table(["Type","Key","Summary","Status","Priority","SP"],byProj[k].map(x=>`<tr>
+   ${table(["Type","Key","Summary","Status","Priority","SP","Due"],byProj[k].map(x=>`<tr>
     <td><span style="color:${TYC[x.i.ty]};font-size:11px">${x.i.ty}</span></td>
     <td>${issueKeyLink(x.pi,x.i.key)}</td><td>${esc(x.i.t)}</td>
     <td>${pill(FLOW[x.i.st])}</td><td><span class="m" style="color:${PRIC[x.i.pri]}">${x.i.pri}</span></td>
-    <td class="m">${x.i.pts}</td></tr>`).join(""))}</div>`;}).join("")
+    <td class="m">${x.i.pts}</td>
+    <td class="m" style="${isOverdue(x.i)?"color:var(--er-fg);font-weight:700":"color:var(--tm)"}">${x.i.due?(isOverdue(x.i)?"⚠ ":"")+x.i.due:"—"}</td></tr>`).join(""))}</div>`;}).join("")
   :`<div class="card"><div style="font-size:12.5px">${S.filter?"No open items match this filter.":"No open items are assigned to you."}</div>
     <p style="font-size:12px;color:var(--t2);margin:8px 0 11px;line-height:1.6">You can view all projects, boards, and stage gates from the Projects screen.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2027,15 +2037,18 @@ function screenView(){
     ${cols.map(st=>{const list=rows.filter(({i})=>i.st===st&&pass(i));
      return `<div class="col"><div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--tm);
       letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px"><span>${FLOW[st]}</span><span class="m">${list.length}</span></div>
-      ${list.map(({pr,pi,i})=>`<div class="ic" style="border-left-color:${TYC[i.ty]}" data-a="issue:${pi}:${i.key}">
+      ${list.map(({pr,pi,i})=>{const late=isOverdue(i);
+       return `<div class="ic" style="border-left-color:${late?"var(--er-fg)":TYC[i.ty]}" data-a="issue:${pi}:${i.key}">
        <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
-        <span style="color:${TYC[i.ty]};font-size:10px">${i.ty}</span><span style="flex:1"></span>
+        <span style="color:${TYC[i.ty]};font-size:10px">${i.ty}</span>
+        ${late?`<span class="m" style="color:var(--er-fg);font-weight:700">⚠ overdue</span>`:""}<span style="flex:1"></span>
         <span class="m" style="color:${PRIC[i.pri]}">${i.pri}</span></div>
        <div style="margin-bottom:6px">${esc(i.t)}</div>
        <div style="display:flex;gap:6px;align-items:center"><span class="m" style="color:var(--ta)">${esc(pr.k)} · ${i.key}</span>
-        <span class="m" style="color:var(--tm)">${i.pts} SP</span><span style="flex:1"></span>
+        <span class="m" style="color:var(--tm)">${i.pts} SP</span>
+        ${i.due?`<span class="m" style="color:${late?"var(--er-fg)":"var(--tm)"}">· due ${i.due}</span>`:""}<span style="flex:1"></span>
         ${i.as?`<span style="width:20px;height:20px;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center;
-         background:${i.as===S.me.n?"var(--gold)":"var(--ba)"};color:${i.as===S.me.n?"#231705":"var(--ta)"}">${initials(i.as)}</span>`:""}</div></div>`).join("")
+         background:${i.as===S.me.n?"var(--gold)":"var(--ba)"};color:${i.as===S.me.n?"#231705":"var(--ta)"}">${initials(i.as)}</span>`:""}</div></div>`;}).join("")
       ||`<div style="font-size:11px;color:var(--tm);padding:6px 2px">—</div>`}</div>`;}).join("")}</div></div>
     <p style="font-size:11.5px;color:var(--tm);margin-top:11px">All Projects view: click a card to open it and change its status.
      Switch to a single project from the dropdown to drag-and-drop between columns.</p>`;}
