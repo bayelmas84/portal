@@ -3915,6 +3915,21 @@ function orgChartView(){
    tam ekran bir görünüm — sol rail + alt menü SABİT kalır, yalnızca
    ana içerik alanı (body) bu görünümle değişir. render() bu fonksiyonu
    S.dlg.type==="issue" olduğunda screenView() YERİNE çağırır. */
+/* Yorum kutusunun @mention öneri kutusu — AYRI bir fonksiyon olarak
+   tanımlanmasının nedeni: cmtNew.oninput bu kutuyu render() ÇAĞIRMADAN
+   (yalnızca kendi div'inin innerHTML'ini) güncelleyebilsin diye. render()
+   çağırmak textarea'yı da yeniden oluşturur ve YAZARKEN ODAK (focus)
+   kaybolup bir sonraki tuş vuruşu hiçbir yere gitmez — tam olarak
+   kullanıcının bildirdiği "@'den sonra yazamıyorum" hatası buydu. */
+function mentionSuggestHTML(){
+ if(S.f.mentionQuery===null||S.f.mentionQuery===undefined)return"";
+ const q=S.f.mentionQuery.toLowerCase();
+ const candidates=USERS.filter(u=>u.on).filter(u=>!q||u.n.toLowerCase().includes(q)||u.u.toLowerCase().includes(q));
+ const sugg=namesAlpha(candidates,u=>u.n).slice(0,q?5:2);
+ if(!sugg.length)return"";
+ return `<div class="card" style="margin-top:4px;padding:4px">
+  ${sugg.map(u=>`<div style="padding:6px 9px;cursor:pointer;font-size:12.5px;border-radius:6px" data-a="mentionPick:${encodeURIComponent(u.u)}"
+    onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">${esc(u.n)} <span class="m" style="color:var(--tm)">· @${esc(u.u)}</span></div>`).join("")}</div>`;}
 function issueFullView(d){const f=S.f;const p=PROJ[d.pi],i=p.items.find(x=>x.key===d.key);if(!i)return "";
   const kids=i.ty==="Epic"?allDescendants(p,i.key):childrenOf(p,i.key),par=i.parent?itemByKey(p,i.parent):null;
   const attKey=p.k+"::"+i.key;
@@ -4097,14 +4112,7 @@ function issueFullView(d){const f=S.f;const p=PROJ[d.pi],i=p.items.find(x=>x.key
         <p style="font-size:12.5px;margin:6px 0 0;white-space:pre-wrap">${esc(c.body)}</p></div>`;
      }).join("");})()}
    <textarea id="fCommentNew" placeholder="Add a comment… (type @ to mention someone)" style="min-height:60px;margin-top:6px">${esc(S.f.commentBody||"")}</textarea>
-   ${(()=>{if(S.f.mentionQuery===null||S.f.mentionQuery===undefined)return"";
-     const q=S.f.mentionQuery.toLowerCase();
-     const candidates=USERS.filter(u=>u.on).filter(u=>!q||u.n.toLowerCase().includes(q)||u.u.toLowerCase().includes(q));
-     const sugg=namesAlpha(candidates,u=>u.n).slice(0,q?5:2);
-     if(!sugg.length)return"";
-     return `<div class="card" style="margin-top:4px;padding:4px">
-      ${sugg.map(u=>`<div style="padding:6px 9px;cursor:pointer;font-size:12.5px;border-radius:6px" data-a="mentionPick:${encodeURIComponent(u.u)}"
-        onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">${esc(u.n)} <span class="m" style="color:var(--tm)">· @${esc(u.u)}</span></div>`).join("")}</div>`;})()}
+   <div id="mentionSuggestBox">${mentionSuggestHTML()}</div>
    <div style="display:flex;justify-content:flex-end;margin-top:6px">
     <button class="b s p" data-a="commentAdd:${d.pi}:${i.key}">Comment</button></div>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
@@ -4917,9 +4925,12 @@ function afterRender(){
  const mtNewItemDue=document.getElementById("fMtNewItemDue");
  if(mtNewItemDue)mtNewItemDue.onchange=e=>{S.f.newItemDue=e.target.value||"";};
  /* Yorum kutusunda @mention: cursor'dan geriye doğru en yakın "@" ve ondan
-    sonraki (boşluksuz) metni sorgu olarak alır; render() öneri kutusunu
-    S.f.mentionQuery'e göre gösterir. Metin STATE'te (S.f.commentBody)
-    tutulur ki render() tetiklendiğinde textarea içeriği kaybolmasın. */
+    sonraki (boşluksuz) metni sorgu olarak alır. ÖNEMLİ: burada render()
+    ÇAĞRILMAZ — render() tüm DOM'u (textarea dahil) yeniden oluşturur ve
+    YAZARKEN ODAK (focus) kaybolup bir sonraki tuş vuruşu hiçbir yere
+    gitmez (kullanıcının bildirdiği "@'den sonra yazamıyorum" hatası
+    tam olarak buydu). Bunun yerine yalnızca mentionSuggestBox'ın kendi
+    innerHTML'i güncellenir, textarea'ya hiç dokunulmaz, odak korunur. */
  const cmtNew=document.getElementById("fCommentNew");
  if(cmtNew){cmtNew.oninput=e=>{S.f.commentBody=e.target.value;
    const pos=e.target.selectionStart;
@@ -4927,7 +4938,8 @@ function afterRender(){
    const m=before.match(/@([a-zA-Z0-9_.çğıöşüÇĞİÖŞÜ]*)$/);
    if(m){S.f.mentionQuery=m[1];S.f.mentionStart=pos-m[0].length;}
    else{S.f.mentionQuery=null;S.f.mentionStart=null;}
-   render();};}
+   const box=document.getElementById("mentionSuggestBox");
+   if(box)box.innerHTML=mentionSuggestHTML();};}
  const fp=document.getElementById("fPdf");
  if(fp)fp.onchange=e=>{const file=e.target.files&&e.target.files[0];if(!file)return;
   if(file.type!=="application/pdf"&&!/\.pdf$/i.test(file.name)){
