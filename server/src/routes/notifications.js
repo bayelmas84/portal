@@ -149,4 +149,41 @@ router.post("/daily-digest/email", requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ------------------------- Konu (issue) bildirimleri — gelen kutusu -------------------------
+// Yorum/@mention/atama bildirimleri: mail gönderiminden BAĞIMSIZ olarak
+// (SMTP kapalı olsa bile) kalıcı olarak burada tutulur, zil menüsünde
+// gösterilir ve okundu/okunmadı takibi yapılır.
+router.get("/inbox", requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT n.*, u.name AS actor_name FROM in_app_notifications n
+         LEFT JOIN users u ON u.username=n.actor_username
+        WHERE n.recipient_username=$1 AND n.read_at IS NULL
+        ORDER BY n.created_at DESC LIMIT 30`,
+      [req.user.username]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/inbox/:id/read", requireAuth, async (req, res, next) => {
+  try {
+    await query(
+      "UPDATE in_app_notifications SET read_at=now() WHERE id=$1 AND recipient_username=$2 AND read_at IS NULL",
+      [req.params.id, req.user.username]
+    );
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+router.post("/inbox/read-all", requireAuth, async (req, res, next) => {
+  try {
+    await query(
+      "UPDATE in_app_notifications SET read_at=now() WHERE recipient_username=$1 AND read_at IS NULL",
+      [req.user.username]
+    );
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 module.exports = router;

@@ -197,6 +197,17 @@ async function participantsOf(projectK, issueKey, issue) {
   return set;
 }
 
+// Uygulama içi bildirim (zil menüsü): mail gönteriminden bağımsız, kalıcı
+// ve okundu/okunmadı takibi yapılabilen bir kayıt. Mail SMTP kapalıyken
+// başarısız olsa bile bu kayıt her zaman oluşur.
+async function createInAppNotification(recipientUsername, kind, projectK, issueKey, title, actorUsername) {
+  await query(
+    `INSERT INTO in_app_notifications (recipient_username, kind, project_k, issue_key, title, actor_username)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [recipientUsername, kind, projectK, issueKey, title, actorUsername]
+  );
+}
+
 // Fix Version / Component: labels'tan farklı olarak SERBEST METİN DEĞİL —
 // yalnızca o projede tanımlı (project_versions / project_components)
 // isimler kabul edilir; listede olmayanlar sessizce elenir.
@@ -687,11 +698,13 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
           ]);
           if (assignee.rows[0]) {
             const assignerName = assigner.rows[0] ? assigner.rows[0].name : req.user.username;
+            const assignSubject = `${req.params.issueKey} size atandı`;
             await sendMail(
               assignee.rows[0].email,
-              `${req.params.issueKey} size atandı`,
+              assignSubject,
               `${req.params.issueKey} — ${title !== undefined ? title.trim() : issue.title}\n\nBu konu size atandı. Atayan: ${assignerName}`
             );
+            await createInAppNotification(assigneeUsername, "assignment", req.params.k, req.params.issueKey, assignSubject, req.user.username);
           }
         } catch (mailErr) {
           await audit(`Atama bildirimi gönderilemedi (${req.params.k}/${req.params.issueKey}): ${mailErr.message}`, "sistem", false);
@@ -822,7 +835,10 @@ router.post("/:k/issues/:issueKey/comments", requireWrite("d.board"), async (req
         );
         const commentSubject = `${req.params.issueKey} — yeni bir yorum eklendi`;
         const commentText = `${req.params.issueKey} — ${iss.title}\n\nYorumu yazan: ${authorName}\n\n"${body}"`;
-        for (const u of usersToNotify.rows) await sendMail(u.email, commentSubject, commentText);
+        for (const u of usersToNotify.rows) {
+          await sendMail(u.email, commentSubject, commentText);
+          await createInAppNotification(u.username, "comment", req.params.k, req.params.issueKey, commentSubject, req.user.username);
+        }
 
         if (mentioned.length) {
           const mentionedUsers = await query(
@@ -831,7 +847,10 @@ router.post("/:k/issues/:issueKey/comments", requireWrite("d.board"), async (req
           );
           const mentionSubject = `${req.params.issueKey} içinde sizden bahsedildi`;
           const mentionText = `${authorName}, ${req.params.issueKey} — ${iss.title} üzerindeki bir yorumda sizden bahsetti:\n\n"${body}"`;
-          for (const u of mentionedUsers.rows) await sendMail(u.email, mentionSubject, mentionText);
+          for (const u of mentionedUsers.rows) {
+            await sendMail(u.email, mentionSubject, mentionText);
+            await createInAppNotification(u.username, "mention", req.params.k, req.params.issueKey, mentionSubject, req.user.username);
+          }
         }
       } catch (mailErr) {
         await audit(`Yorum bildirimi gönderilemedi (${req.params.k}/${req.params.issueKey}): ${mailErr.message}`, "sistem", false);

@@ -973,6 +973,44 @@ function fmtMinutes(m){
  if(h&&mm)return h+"h "+mm+"m";
  if(h)return h+"h";
  return mm+"m";}
+/* Konu (issue) bildirimleri — zil menüsü: yorum/@mention/atama. Mail
+   gönteriminden bağımsız, kalıcı, okundu/okunmadı takibi olan bir
+   gelen kutusu (in_app_notifications). Demo modda basit bir bellek-içi
+   dizi ile aynı davranış taklit edilir. */
+let ISSUE_INBOX_LIVE=null,ISSUE_INBOX_LIVE_LOADING=false;
+async function loadIssueInboxLive(){
+ ISSUE_INBOX_LIVE_LOADING=true;
+ try{const data=await api("GET","/api/notifications/inbox");ISSUE_INBOX_LIVE=data.items;}
+ catch(e){ISSUE_INBOX_LIVE=[];}
+ ISSUE_INBOX_LIVE_LOADING=false;render();}
+let ISSUE_INBOX_DEMO=[],nextInboxId=1;
+function issueInboxOf(){
+ if(LIVE_BACKEND){
+  if(ISSUE_INBOX_LIVE===null&&!ISSUE_INBOX_LIVE_LOADING)loadIssueInboxLive();
+  return ISSUE_INBOX_LIVE||[];}
+ return ISSUE_INBOX_DEMO.filter(n=>n.recipient_username===S.me.u);}
+function pushDemoInboxNotification(recipientUsername,kind,pk,issueKey,title,actorUsername){
+ if(recipientUsername===actorUsername)return; // kendine bildirim gitmez
+ ISSUE_INBOX_DEMO.unshift({id:nextInboxId++,recipient_username:recipientUsername,kind,
+  project_k:pk,issue_key:issueKey,title,actor_username:actorUsername,
+  actor_name:(USERS.find(u=>u.u===actorUsername)||{}).n||actorUsername,created_at:now()});}
+const nameToUsername=n=>{const u=USERS.find(x=>x.n===n);return u?u.u:null;};
+/* Demo modda yorum eklendiğinde backend'deki participantsOf/mention
+   mantığının aynısını (reporter+assignee+önceki yorumcular, mention
+   ayrı) yerel olarak uygular — yorum ekleme dışında (ör. atama
+   değiştirme) bir UI olmadığı için demo modda yalnızca comment/mention
+   bildirimleri üretilebilir. */
+function notifyDemoComment(pi,pk,key,body,authorUsername){
+ const it=itemByKey(PROJ[pi],key);if(!it)return;
+ const mentioned=[...new Set((body.match(/@([a-zA-Z0-9_.]+)/g)||[]).map(m=>m.slice(1)))].filter(u=>USERS.some(x=>x.u===u));
+ const participants=new Set();
+ const repUser=nameToUsername(it.rep);if(repUser)participants.add(repUser);
+ if(it.assigneeUsername)participants.add(it.assigneeUsername);
+ ISSUE_COMMENTS_DEMO.filter(c=>c.pk===pk&&c.issue_key===key).forEach(c=>participants.add(c.author_username));
+ participants.delete(authorUsername);
+ mentioned.forEach(u=>participants.delete(u));
+ participants.forEach(u=>pushDemoInboxNotification(u,"comment",pk,key,key+" — yeni bir yorum eklendi",authorUsername));
+ mentioned.forEach(u=>{if(u!==authorUsername)pushDemoInboxNotification(u,"mention",pk,key,key+" içinde sizden bahsedildi",authorUsername);});}
 let ISSUE_LINKS_DEMO=[];
 let nextIssueLink=1;
 /* Backend'deki deriveSubjectPrefix/nextKeyForPrefix/formatKeyAsLabel ile
@@ -4000,11 +4038,17 @@ function dialogView(){
   const pendItems=canUse("p.in")?inbox():[];
   const annItems=canUse("a.list")?ANN.filter(a=>a.st==="yayında"&&!isAnnRead(a.id)):[];
   const trainItems=canUse("t.un")?myTrain():[];
+  const issueNotifs=issueInboxOf();
+  const kindLabel={comment:"yeni yorum",mention:"sizden bahsedildi",assignment:"size atandı"};
   const section=(title,items,renderRow)=>items.length?`<div class="lbl" style="margin-top:12px">${title} (${items.length})</div>
     ${items.slice(0,5).map(renderRow).join("")}`:"";
-  const empty=!pendItems.length&&!annItems.length&&!trainItems.length;
+  const empty=!pendItems.length&&!annItems.length&&!trainItems.length&&!issueNotifs.length;
   return wrap(`<div style="font-size:15px">Bildirimler</div>
    <div style="max-height:360px;overflow:auto">
+    ${section("Konu bildirimleri",issueNotifs,n=>`<div class="card" style="margin:6px 0;padding:9px 12px;cursor:pointer"
+      data-a="issueNotifJump:${encodeURIComponent(n.id)}:${encodeURIComponent(n.project_k)}:${encodeURIComponent(n.issue_key)}">
+      <div style="font-size:12.5px">${esc(n.actor_name||n.actor_username)} — ${esc(kindLabel[n.kind]||n.kind)}</div>
+      <div class="m" style="color:var(--tm)">${esc(n.project_k)}/${esc(n.issue_key)} · ${esc(String(n.created_at).replace("T"," ").slice(0,16))}</div></div>`)}
     ${section("Onayımda bekleyen",pendItems,r=>`<div class="card" style="margin:6px 0;padding:9px 12px;cursor:pointer" data-a="bellJump:approvals:p.in">
       <div style="font-size:12.5px">${esc(r.subj)}</div><div class="m" style="color:var(--tm)">${esc(r.by)}</div></div>`)}
     ${section("Okunmamış duyuru",annItems,a=>`<div class="card" style="margin:6px 0;padding:9px 12px;cursor:pointer" data-a="bellJump:announce:a.list">
@@ -4435,7 +4479,8 @@ function refreshDlg(){const v=validate();if(!v)return;
 function railView(){const pending=inbox().length;
  const unreadAnn=canUse("a.list")?ANN.filter(a=>a.st==="yayında"&&!isAnnRead(a.id)).length:0;
  const unreadTrain=canUse("t.un")?myTrain().length:0;
- const bellTotal=pending+unreadAnn+unreadTrain;
+ const unreadIssueNotifs=issueInboxOf().length;
+ const bellTotal=pending+unreadAnn+unreadTrain+unreadIssueNotifs;
  return `<nav class="nv" aria-label="Modüller">
   <button class="rail ${S.view==="home"?"on":""}" data-a="home" title="Ana ekran" aria-label="Ana ekran">${ic("home",18)}</button>
   <button class="rail" data-a="bellOpen" title="Bildirimler" aria-label="Bildirimler">${ic("bell-ringing",18)}${bellTotal?`<span class="badge">${bellTotal}</span>`:""}</button>
@@ -5044,6 +5089,22 @@ app.addEventListener("click",async ev=>{
   }
   render();return;}
  if(k==="execFilter"){S.execFilter=p[1]||null;S.execUnit=null;render();return;}
+ if(k==="issueNotifJump"){const notifId=p[1],projK=dec(p[2]),issueKey=dec(p[3]);
+  const pi=PROJ.findIndex(x=>x.k===projK);
+  if(pi<0){toast("Proje bulunamadı.",1);return;}
+  S.proj=pi;S.projAll=false;S.mod="delivery";S.scr="d.board";S.dlg={type:"issue",pi,key:issueKey};S.f={};
+  if(LIVE_BACKEND){const pk=PROJ[pi].k;
+   if(!PROJ[pi].itemsLoaded)loadIssuesLive(pk);
+   delete ISSUE_ATTACH_LIVE[pk+"::"+issueKey];loadIssueAttachmentsLive(pk,issueKey);
+   delete ISSUE_LINKS_LIVE[pk+"::"+issueKey];loadIssueLinksLive(pk,issueKey);
+   delete ISSUE_HISTORY_LIVE[pk+"::"+issueKey];loadIssueHistoryLive(pk,issueKey);
+   delete ISSUE_COMMENTS_LIVE[pk+"::"+issueKey];loadIssueCommentsLive(pk,issueKey);
+   delete ISSUE_WORKLOGS_LIVE[pk+"::"+issueKey];loadIssueWorklogsLive(pk,issueKey);
+   api("POST","/api/notifications/inbox/"+notifId+"/read").then(()=>{ISSUE_INBOX_LIVE=(ISSUE_INBOX_LIVE||[]).filter(n=>String(n.id)!==String(notifId));render();}).catch(()=>{});
+  }else{
+   ISSUE_INBOX_DEMO=ISSUE_INBOX_DEMO.filter(n=>String(n.id)!==String(notifId));
+  }
+  render();return;}
  if(k==="execUnit"){S.execUnit=decodeURIComponent(p[1]||"");S.execFilter=null;render();return;}
  if(k==="issueNew"){S.f={ty:"Story",pri:"Medium",pts:3,st:"backlog"};PENDING_ISSUE_FILE=null;S.dlg={type:"issue2"};render();return;}
  if(k==="iType"){S.f.ty=p[1];S.f.parent=null;render();return;}
@@ -5727,6 +5788,7 @@ app.addEventListener("click",async ev=>{
    return;}
   ISSUE_COMMENTS_DEMO.push({id:nextIssueComment++,pk,issue_key:key,author_username:S.me.u,author_name:S.me.n,
    body,created_at:now(),updated_at:null});
+  notifyDemoComment(pi,pk,key,body,S.me.u);
   toast("Yorum eklendi.");render();return;}
  if(k==="commentEditStart"){S.f.editingComment=p[1];render();return;}
  if(k==="commentEditCancel"){S.f.editingComment=null;render();return;}
@@ -6202,7 +6264,7 @@ app.addEventListener("click",async ev=>{
    toast(data.sent?"Özet e-postanıza gönderildi.":(data.message||"Gönderilecek bir şey yok."));}
   catch(e){toast(e.message,1);}
   return;}
- if(k==="bellOpen"){S.dlg={type:"bell"};render();return;}
+ if(k==="bellOpen"){if(LIVE_BACKEND){ISSUE_INBOX_LIVE=null;}S.dlg={type:"bell"};render();return;}
  if(k==="searchOpen"){S.f={q:""};S.dlg={type:"search"};S.searchResults=[];render();return;}
  if(k==="ruleEdit"){S.f={};S.dlg={type:"rule",category:decodeURIComponent(p[1])};render();return;}
  if(k==="ruleToggleActive"){const cur=(APPROVAL_RULES_LIVE||[]).find(r=>r.category===S.dlg.category)||{};S.f.active=!(S.f.active!==undefined?S.f.active:cur.active);render();return;}
