@@ -2108,13 +2108,15 @@ function screenView(){
    const rows=PROJ.flatMap((pr,pi)=>pr.items.filter(i=>i.st==="backlog").map(i=>({pr,pi,i})));
    return head("Backlog","All Projects"+(LIVE_BACKEND?" · live backend":""),
     `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
-    table(["Project","Type","Key","Title","SP",""],rows.map(({pr,pi,i})=>`<tr>
+    table(["Project","Type","Epic","Key","Title","SP",""],rows.map(({pr,pi,i})=>{const par=i.parent?itemByKey(pr,i.parent):null;
+     return `<tr>
      <td class="m" style="color:var(--ta)">${esc(pr.k)}</td>
      <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
+     <td class="m" style="color:var(--tm)">${par?esc(par.t):"—"}</td>
      <td>${issueKeyLink(pi,i.key)}</td><td>${esc(i.t)}</td><td class="m">${i.pts}</td>
      <td style="text-align:right;white-space:nowrap">
-     ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${pi}:${i.key}">${pr.m==="Kanban"?"Add to board":"Add to sprint"}</button>`:""}</td></tr>`).join("")||
-     `<tr><td colspan="6" style="color:var(--tm)">Backlog is empty across all projects.</td></tr>`);}
+     ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${pi}:${i.key}">${pr.m==="Kanban"?"Add to board":"Add to sprint"}</button>`:""}</td></tr>`;}).join("")||
+     `<tr><td colspan="7" style="color:var(--tm)">Backlog is empty across all projects.</td></tr>`);}
   const p=P();
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("Backlog",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
@@ -2134,14 +2136,16 @@ function screenView(){
      <input id="fBulkLabel" placeholder="add label…" style="max-width:130px;font-size:12px;padding:6px 9px">
      <button class="b s p" data-a="bulkApply:${S.proj}">Apply</button>
      <button class="b s" data-a="bulkClearSelection">Clear</button></div>`:"")+
-   table([canRank?"":null,"Type","Key","Title","SP",""].filter(x=>x!==null),backlogItems.map(i=>`<tr
+   table([canRank?"":null,"Type","Epic","Key","Title","SP",""].filter(x=>x!==null),backlogItems.map(i=>{const par=i.parent?itemByKey(p,i.parent):null;
+    return `<tr
     ${canRank?`draggable="true" data-key="${i.key}" data-rank-target="${i.key}" style="cursor:grab"`:""}>
     ${canRank?`<td style="width:26px"><input type="checkbox" data-a="toggleBulkSelect:${i.key}" ${selected.includes(i.key)?"checked":""}></td>`:""}
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
+    <td class="m" style="color:var(--tm)">${par?esc(par.t):"—"}</td>
     <td>${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td><td class="m">${i.pts}</td>
     <td style="text-align:right;white-space:nowrap">
-    ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${S.proj}:${i.key}">${p.m==="Kanban"?"Add to board":"Add to sprint"}</button>`:""}</td></tr>`).join("")||
-    `<tr><td colspan="${canRank?6:5}" style="color:var(--tm)">Backlog is empty.</td></tr>`)+
+    ${cw("d.backlog")?`<button class="b s p" data-a="toSprint:${S.proj}:${i.key}">${p.m==="Kanban"?"Add to board":"Add to sprint"}</button>`:""}</td></tr>`;}).join("")||
+    `<tr><td colspan="${canRank?7:6}" style="color:var(--tm)">Backlog is empty.</td></tr>`)+
    (canRank&&backlogItems.length?`<p style="font-size:11.5px;color:var(--tm);margin-top:10px">Drag a row to reorder priority — this ranking is saved and shared with the whole team.
     Check rows to bulk-edit priority, assignee, or labels.</p>`:"");}
 
@@ -4331,8 +4335,9 @@ function dialogView(){
    ${[["Project",p.k+" · "+esc(p.n)],["Assignee",esc(i.as||"Unassigned")],
      ["Reported by",esc(i.rep||"—")],["Created",esc(i.at||"—")],
      ...(i.upd?[["Updated",esc(i.upd)]]:[]),
-     ["Parent",par?`<span class="m" style="color:var(--ta)">${par.key}</span> · ${esc(par.t)}`:(PARENT_OF[i.ty]?"—":"top level")],
-     [i.ty==="Epic"?"All descendants":"Children",kids.length?kids.map(c=>`<span class="pl">${c.ty}: ${c.key} ${FLOW[c.st]}</span>`).join(" "):"—"]]
+     ["Parent",par?`<span class="m" style="color:var(--ta);cursor:pointer;text-decoration:underline" data-a="issue:${d.pi}:${par.key}">${par.key}</span> · ${esc(par.t)}`:(PARENT_OF[i.ty]?"—":"top level")],
+     [i.ty==="Epic"?"All descendants":"Children",kids.length?`<div style="display:flex;flex-direction:column;gap:4px">${kids.map(c=>`<span class="pl" style="cursor:pointer;width:fit-content" data-a="issue:${d.pi}:${c.key}"
+        title="Open ${c.key}">${c.ty}: ${c.key} — ${esc(String(c.t).slice(0,40))} (${FLOW[c.st]})</span>`).join("")}</div>`:"—"]]
     .map(x=>`<div style="display:flex;gap:11px;margin-bottom:8px">
     <span class="lbl" style="width:88px;margin:0">${x[0]}</span><span style="flex:1;font-size:12.5px">${x[1]}</span></div>`).join("")}
    <div class="lbl" style="margin-top:4px">Priority</div>
@@ -4909,7 +4914,11 @@ app.addEventListener("drop",e=>{
 app.addEventListener("change",e=>{
  const ia=e.target.closest("[data-item-assign]");
  if(ia){const id=ia.dataset.itemAssign,it=(S.f.items||[]).find(x=>x.id===id);
-  if(it){it.assignee=ia.value||null;render();}return;}
+  if(it){it.assignee=ia.value||null;
+   // Bir maddeye (yeni ya da eksik-atanmış bir maddeye) assignee atandığında
+   // o kişi otomatik olarak Attendees'e de eklenir.
+   if(ia.value&&!(S.f.parts||[]).includes(ia.value))S.f.parts=[...(S.f.parts||[]),ia.value];
+   render();}return;}
  const idd=e.target.closest("[data-item-due]");
  if(idd){const id=idd.dataset.itemDue,it=(S.f.items||[]).find(x=>x.id===id);
   if(it){it.due=idd.value||"";render();}return;}});
@@ -5406,6 +5415,9 @@ app.addEventListener("click",async ev=>{
   S.f.mtNewItemAttempted=false;
   S.f.items=[...(S.f.items||[]),{id:"mi"+(nextMeetingItem++),text:t,status:"open",
    assignee:S.f.newItemAssignee,due:S.f.newItemDue||""}];
+  // Gündem maddesine atanan kişi otomatik olarak Attendees'e de eklenir —
+  // toplantıya bir iş atanan kişi zaten katılımcı sayılır.
+  if(!(S.f.parts||[]).includes(S.f.newItemAssignee))S.f.parts=[...(S.f.parts||[]),S.f.newItemAssignee];
   S.f.newItem="";S.f.newItemAssignee="";S.f.newItemDue="";render();
   // Yeni madde en altta eklenir; kaydırılabilir liste otomatik en alta
   // kaysın ki kullanıcı az önce eklediği maddeyi hemen görsün.
