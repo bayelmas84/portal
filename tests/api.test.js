@@ -986,6 +986,26 @@ test("Watchers: kendini izleyici ekleyip çıkarabilir, izlenen konuda yorum yap
   assert.equal(afterDel.body.watching, false);
 });
 
+test("Denetim Kaydı: arama (q) ve işlem tipi (actionType) filtreleri doğru çalışır", async () => {
+  const inspector = await login("kerem.aslan");
+
+  const all = await request(app).get("/api/audit?limit=5").set("Cookie", inspector.cookie);
+  assert.equal(all.status, 200);
+  assert.ok(all.body.items.length > 0);
+
+  const byQ = await request(app).get("/api/audit?q=kerem&limit=5").set("Cookie", inspector.cookie);
+  assert.equal(byQ.status, 200);
+  assert.ok(byQ.body.items.every((i) => i.event.toLowerCase().includes("kerem") || (i.who_name || "").toLowerCase().includes("kerem") || i.who.toLowerCase().includes("kerem")));
+
+  const byType = await request(app).get("/api/audit?actionType=oturum&limit=5").set("Cookie", inspector.cookie);
+  assert.equal(byType.status, 200);
+  assert.ok(byType.body.items.every((i) => i.action_type === "oturum"));
+
+  const noMatch = await request(app).get("/api/audit?q=hicbirseyeeslesmeyensorgu12345&limit=5").set("Cookie", inspector.cookie);
+  assert.equal(noMatch.status, 200);
+  assert.deepEqual(noMatch.body.items, []);
+});
+
 test.after(async () => {
   await pool.end();
 });

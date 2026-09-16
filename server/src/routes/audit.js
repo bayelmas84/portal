@@ -8,6 +8,32 @@ const router = express.Router();
 router.get("/", requireRead("c.audit"), async (req, res, next) => {
   try {
     const limit = Math.min(500, parseInt(req.query.limit, 10) || 200);
+    const { q, actionType, dateFrom, dateTo } = req.query;
+    const conditions = [];
+    const params = [];
+    let i = 1;
+    if (q && q.trim()) {
+      conditions.push(`(a.event ILIKE $${i} OR u.name ILIKE $${i} OR a.who ILIKE $${i})`);
+      params.push(`%${q.trim()}%`);
+      i++;
+    }
+    if (actionType && actionType.trim()) {
+      conditions.push(`a.action_type = $${i}`);
+      params.push(actionType.trim());
+      i++;
+    }
+    if (dateFrom) {
+      conditions.push(`a.at >= $${i}`);
+      params.push(dateFrom);
+      i++;
+    }
+    if (dateTo) {
+      conditions.push(`a.at < ($${i}::date + interval '1 day')`);
+      params.push(dateTo);
+      i++;
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    params.push(limit);
     const { rows } = await query(
       `SELECT a.id, a.event, a.who, a.ok, a.action_type, a.approver1, a.approver2, a.approver3, a.at,
         u.name AS who_name, u.unit AS who_unit_code, un.name AS who_unit_name,
@@ -18,9 +44,10 @@ router.get("/", requireRead("c.audit"), async (req, res, next) => {
        LEFT JOIN users a1 ON a1.username = a.approver1
        LEFT JOIN users a2 ON a2.username = a.approver2
        LEFT JOIN users a3 ON a3.username = a.approver3
+       ${whereClause}
        ORDER BY a.at DESC
-       LIMIT $1`,
-      [limit]
+       LIMIT $${i}`,
+      params
     );
     res.json({ items: rows });
   } catch (e) {

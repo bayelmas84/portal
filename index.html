@@ -1270,7 +1270,13 @@ async function loadUnitsLive(){
  UNITS_LIVE_LOADING=false;render();}
 async function loadAuditLive(){
  AUDIT_LIVE_LOADING=true;
- try{const data=await api("GET","/api/audit");AUDIT_LIVE=data.items;}
+ const f=S.auditFilter||{};
+ const qs=[];
+ if(f.q&&f.q.trim())qs.push("q="+encodeURIComponent(f.q.trim()));
+ if(f.actionType)qs.push("actionType="+encodeURIComponent(f.actionType));
+ if(f.dateFrom)qs.push("dateFrom="+encodeURIComponent(f.dateFrom));
+ if(f.dateTo)qs.push("dateTo="+encodeURIComponent(f.dateTo));
+ try{const data=await api("GET","/api/audit"+(qs.length?"?"+qs.join("&"):""));AUDIT_LIVE=data.items;}
  catch(e){toast("Denetim kaydı yüklenemedi: "+e.message,1);AUDIT_LIVE=[];}
  AUDIT_LIVE_LOADING=false;render();}
 const HEALTH_COLOR={"Monitoring":"#0B1F48","At risk":"#BA7517","Delayed":"#A32D2D","On track":"#3B6D11"};
@@ -2447,12 +2453,23 @@ function screenView(){
  if(v==="c.audit"){
   if(LIVE_BACKEND){
    if(AUDIT_LIVE===null&&!AUDIT_LIVE_LOADING)loadAuditLive();
+   const f=S.auditFilter||{};
+   const filterBar=`<div class="card" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input id="fAuditQ" placeholder="Search event, name or username…" value="${esc(f.q||"")}" style="flex:2;min-width:180px;font-size:12px;padding:7px 10px">
+    <select id="fAuditType" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     <option value="">All types</option>
+     ${["ekleme","düzenleme","silme","onay","red","oturum","diğer"].map(t=>`<option value="${t}" ${f.actionType===t?"selected":""}>${{ekleme:"Ekleme",düzenleme:"Düzenleme",silme:"Silme",onay:"Onay",red:"Ret",oturum:"Oturum",diğer:"Diğer"}[t]}</option>`).join("")}</select>
+    <input id="fAuditFrom" type="date" value="${esc(f.dateFrom||"")}" title="From date" style="font-size:12px;padding:7px 9px">
+    <input id="fAuditTo" type="date" value="${esc(f.dateTo||"")}" title="To date" style="font-size:12px;padding:7px 9px">
+    <button class="b s p" data-a="auditSearch">Search</button>
+    ${(f.q||f.actionType||f.dateFrom||f.dateTo)?`<button class="b s" data-a="auditClearFilter">Clear</button>`:""}</div>`;
    if(AUDIT_LIVE===null)return head("Denetim Kaydı","Uygulama genelindeki tüm işlemler · yalnızca Teftiş ve İç Kontrol görür · canlı backend")+
-    `<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
+    filterBar+`<div class="card"><span class="m" style="color:var(--tm)">Yükleniyor…</span></div>`;
    const TYPE_LABEL={ekleme:"Ekleme",düzenleme:"Düzenleme",silme:"Silme",onay:"Onay",red:"Ret",oturum:"Oturum",diğer:"Diğer"};
    const TYPE_TONE={ekleme:"ok",düzenleme:"wr",silme:"er",onay:"ok",red:"er",oturum:"",diğer:""};
    return head("Denetim Kaydı","Uygulama genelindeki tüm işlemler (admin dahil) · yalnızca Teftiş ve İç Kontrol görür · canlı backend",
      `<button class="b" data-a="auditExport">CSV indir</button>`)+
+   filterBar+
    table(["İşlem","Kullanıcı","Birim","1. Onaycı","2. Onaycı","3. Onaycı","İşlem Tipi","Tarih / Saat"],AUDIT_LIVE.map(a=>`<tr>
     <td style="color:${a.ok?"var(--t1)":"var(--er-fg)"}">${esc(a.event)}</td>
     <td style="color:var(--t2)">${esc(a.who_name||a.who)}</td>
@@ -2462,11 +2479,19 @@ function screenView(){
     <td style="color:var(--t2)">${a.approver3_name?esc(a.approver3_name):"—"}</td>
     <td>${pill(TYPE_LABEL[a.action_type]||a.action_type,TYPE_TONE[a.action_type]||"")}</td>
     <td class="m" style="color:var(--tm);white-space:nowrap">${(a.at||"").replace("T"," ").slice(0,16)}</td></tr>`).join("")
-    ||`<tr><td colspan="8" style="color:var(--tm)">Kayıt yok.</td></tr>`)+
+    ||`<tr><td colspan="8" style="color:var(--tm)">${(f.q||f.actionType||f.dateFrom||f.dateTo)?"No matching records.":"Kayıt yok."}</td></tr>`)+
    `<p style="font-size:11.5px;color:var(--tm);margin-top:12px">Son ${AUDIT_LIVE.length} işlem gösteriliyor. Onaycı kolonları yalnızca onay zinciri içeren işlemlerde (ör. silme/kapatma talepleri) doludur.</p>`;}
+  const fd=S.auditFilter||{};
+  const qd=(fd.q||"").trim().toLowerCase();
+  const filteredDemo=AUDIT.filter(a=>!qd||a.ev.toLowerCase().includes(qd)||a.who.toLowerCase().includes(qd));
   return head("Denetim kaydı","Hash zinciriyle korunur · yalnızca Teftiş ve İç Kontrol görür")+
-  table(["Olay","Kişi","Zaman"],AUDIT.map(a=>`<tr><td style="color:${a.ok?"var(--t1)":"var(--er-fg)"}">${esc(a.ev)}</td>
-   <td style="color:var(--t2)">${esc(a.who)}</td><td class="m" style="color:var(--tm)">${a.at}</td></tr>`).join(""));}
+  `<div class="card" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input id="fAuditQ" placeholder="Olay veya kişi ara…" value="${esc(fd.q||"")}" style="flex:2;min-width:180px;font-size:12px;padding:7px 10px">
+    <button class="b s p" data-a="auditSearch">Ara</button>
+    ${fd.q?`<button class="b s" data-a="auditClearFilter">Temizle</button>`:""}</div>`+
+  table(["Olay","Kişi","Zaman"],filteredDemo.map(a=>`<tr><td style="color:${a.ok?"var(--t1)":"var(--er-fg)"}">${esc(a.ev)}</td>
+   <td style="color:var(--t2)">${esc(a.who)}</td><td class="m" style="color:var(--tm)">${a.at}</td></tr>`).join("")
+   ||`<tr><td colspan="3" style="color:var(--tm)">Eşleşen kayıt yok.</td></tr>`);}
 
  if(v==="m.access"){
   if(LIVE_BACKEND&&ACCESS_LIVE===null&&!ACCESS_LIVE_LOADING)loadAccessLive();
@@ -6783,6 +6808,15 @@ app.addEventListener("click",async ev=>{
   catch(e){toast(e.message,1);}
   return;}
  if(k==="auditExport"){window.open(API_BASE+"/api/audit/export.csv","_blank");return;}
+ if(k==="auditSearch"){
+  const q=(document.getElementById("fAuditQ")||{}).value||"";
+  const actionType=(document.getElementById("fAuditType")||{}).value||"";
+  const dateFrom=(document.getElementById("fAuditFrom")||{}).value||"";
+  const dateTo=(document.getElementById("fAuditTo")||{}).value||"";
+  S.auditFilter={q,actionType,dateFrom,dateTo};
+  if(LIVE_BACKEND){AUDIT_LIVE=null;render();return;}
+  render();return;}
+ if(k==="auditClearFilter"){S.auditFilter={};if(LIVE_BACKEND){AUDIT_LIVE=null;}render();return;}
  if(k==="dailyDigestEmail"){
   if(!LIVE_BACKEND){toast("Bu özellik yalnızca gerçek backend'e bağlıyken kullanılabilir.",1);return;}
   try{const data=await api("POST","/api/notifications/daily-digest/email",{});
