@@ -951,6 +951,41 @@ test("Backlog toplu durum değiştirme: workflow/done kısıtları uygulanır, g
   assert.match(blockedRes.body.skipped[0].reason, /child item/);
 });
 
+test("Watchers: kendini izleyici ekleyip çıkarabilir, izlenen konuda yorum yapılınca bildirim alır", async () => {
+  const watcher = await login("mert.balkan");
+  const other = await login("tolga.firat");
+
+  const issue = await request(app).post("/api/projects/TRADE/issues").set("Cookie", other.cookie).set("X-CSRF-Token", other.csrf)
+    .send({ issueType: "Epic", title: "Watcher testi Epic" });
+  const issueKey = issue.body.item.issue_key;
+
+  const empty = await request(app).get(`/api/projects/TRADE/issues/${issueKey}/watchers`).set("Cookie", watcher.cookie);
+  assert.equal(empty.status, 200);
+  assert.deepEqual(empty.body.items, []);
+  assert.equal(empty.body.watching, false);
+
+  const addRes = await request(app).post(`/api/projects/TRADE/issues/${issueKey}/watchers`).set("Cookie", watcher.cookie).set("X-CSRF-Token", watcher.csrf);
+  assert.equal(addRes.status, 201);
+
+  const afterAdd = await request(app).get(`/api/projects/TRADE/issues/${issueKey}/watchers`).set("Cookie", watcher.cookie);
+  assert.equal(afterAdd.body.watching, true);
+  assert.equal(afterAdd.body.items.length, 1);
+  assert.equal(afterAdd.body.items[0].username, "mert.balkan");
+
+  // Başka biri yorum yapınca watcher bildirim almalı (reporter/assignee/yorumcu olmasa bile).
+  await request(app).post(`/api/projects/TRADE/issues/${issueKey}/comments`).set("Cookie", other.cookie).set("X-CSRF-Token", other.csrf)
+    .send({ body: "Watcher bildirim testi" });
+  await new Promise((r) => setTimeout(r, 150));
+  const inbox = await request(app).get("/api/notifications/inbox").set("Cookie", watcher.cookie);
+  const found = inbox.body.items.find((n) => n.issue_key === issueKey && n.kind === "comment");
+  assert.ok(found, "watcher yorum bildirimini almalı");
+
+  const delRes = await request(app).delete(`/api/projects/TRADE/issues/${issueKey}/watchers`).set("Cookie", watcher.cookie).set("X-CSRF-Token", watcher.csrf);
+  assert.equal(delRes.status, 200);
+  const afterDel = await request(app).get(`/api/projects/TRADE/issues/${issueKey}/watchers`).set("Cookie", watcher.cookie);
+  assert.equal(afterDel.body.watching, false);
+});
+
 test.after(async () => {
   await pool.end();
 });

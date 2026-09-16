@@ -1024,6 +1024,19 @@ async function loadIssueChecklistLive(pk,key){
 let ISSUE_CHECKLIST_DEMO=[],nextChecklistItem=1;
 function demoChecklistFor(pk,key){
  return ISSUE_CHECKLIST_DEMO.filter(c=>c.pk===pk&&c.issue_key===key);}
+/* Watchers (izleyiciler) — assignee/reporter/yorumcu olmadan bir konuyu
+   takip etmek isteyen kişiler. Yalnızca kendini ekleyip/çıkarabilirsin. */
+let ISSUE_WATCHERS_LIVE={};
+async function loadIssueWatchersLive(pk,key){
+ try{
+  const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/watchers");
+  ISSUE_WATCHERS_LIVE[pk+"::"+key]=data;render();
+ }catch(e){/* sessiz geç */}}
+let ISSUE_WATCHERS_DEMO=[];
+function demoWatchersFor(pk,key){
+ const items=ISSUE_WATCHERS_DEMO.filter(w=>w.pk===pk&&w.issue_key===key)
+  .map(w=>({username:w.username,name:(USERS.find(u=>u.u===w.username)||{}).n||w.username}));
+ return {items,watching:items.some(w=>w.username===S.me.u)};}
 /* Mail bildirim tercihleri (yalnızca dışarı giden e-postayı etkiler, zil
    bildirimlerini değil). Demo modda basit bir kullanıcı-bazlı obje. */
 let NOTIF_PREFS_LIVE=null;
@@ -3936,6 +3949,7 @@ function issueFullView(d){const f=S.f;const p=PROJ[d.pi],i=p.items.find(x=>x.key
   const worklogs=LIVE_BACKEND?(ISSUE_WORKLOGS_LIVE[attKey]||null):demoWorklogsFor(p.k,i.key);
   const history=LIVE_BACKEND?(ISSUE_HISTORY_LIVE[attKey]||null):demoHistoryFor(p.k,i.key);
   const checklist=LIVE_BACKEND?(ISSUE_CHECKLIST_LIVE[attKey]||null):demoChecklistFor(p.k,i.key);
+  const watchers=LIVE_BACKEND?(ISSUE_WATCHERS_LIVE[attKey]||null):demoWatchersFor(p.k,i.key);
   const linkProjectK=S.f.linkProject||p.k;
   const linkProject=PROJ.find(x=>x.k===linkProjectK)||p;
   const linkCandidates=(linkProject.items||[])
@@ -3945,6 +3959,8 @@ function issueFullView(d){const f=S.f;const p=PROJ[d.pi],i=p.items.find(x=>x.key
    <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
     <span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span>
     <span class="m" style="color:var(--ta)">${i.key}</span><span style="flex:1"></span>${pill(FLOW[i.st],"")}
+    ${watchers===null?"":`<button class="b s ${watchers.watching?"p":""}" data-a="issueWatchToggle:${d.pi}:${i.key}" title="${watchers.watching?"Stop watching":"Watch this issue for updates"}">
+      ${watchers.watching?"★ Watching":"☆ Watch"}${watchers.items.length?` (${watchers.items.length})`:""}</button>`}
     <button class="b s" data-a="dlgClose" title="Kapat" style="padding:4px 9px">✕</button></div>
    <div style="font-size:15px;margin:11px 0 13px">${esc(i.t)}</div>
    ${[["Project",p.k+" · "+esc(p.n)],["Assignee",esc(i.as||"Unassigned")],
@@ -5983,8 +5999,25 @@ app.addEventListener("click",async ev=>{
    delete ISSUE_HISTORY_LIVE[pk+"::"+key];loadIssueHistoryLive(pk,key);
    delete ISSUE_COMMENTS_LIVE[pk+"::"+key];loadIssueCommentsLive(pk,key);
    delete ISSUE_WORKLOGS_LIVE[pk+"::"+key];loadIssueWorklogsLive(pk,key);
-   delete ISSUE_CHECKLIST_LIVE[pk+"::"+key];loadIssueChecklistLive(pk,key);}
+   delete ISSUE_CHECKLIST_LIVE[pk+"::"+key];loadIssueChecklistLive(pk,key);
+   delete ISSUE_WATCHERS_LIVE[pk+"::"+key];loadIssueWatchersLive(pk,key);}
   return;}
+ if(k==="issueWatchToggle"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
+  const attKey=pk+"::"+key;
+  if(LIVE_BACKEND){
+   const cur=ISSUE_WATCHERS_LIVE[attKey];
+   const watching=cur&&cur.watching;
+   try{
+    if(watching)await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/watchers");
+    else await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/watchers");
+    await loadIssueWatchersLive(pk,key);
+    toast(watching?"Stopped watching.":"Now watching this issue.");
+   }catch(e){toast(e.message,1);}
+   return;}
+  const already=ISSUE_WATCHERS_DEMO.find(w=>w.pk===pk&&w.issue_key===key&&w.username===S.me.u);
+  if(already){ISSUE_WATCHERS_DEMO=ISSUE_WATCHERS_DEMO.filter(w=>w!==already);toast("Stopped watching.");}
+  else{ISSUE_WATCHERS_DEMO.push({pk,issue_key:key,username:S.me.u});toast("Now watching this issue.");}
+  render();return;}
  if(k==="issueAttAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailDoc");const file=inp&&inp.files&&inp.files[0];
   if(!file){toast("Please select a file first.",1);return;}

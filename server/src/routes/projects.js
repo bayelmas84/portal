@@ -250,6 +250,11 @@ async function participantsOf(projectK, issueKey, issue) {
     [projectK, issueKey]
   );
   commenters.rows.forEach((r) => set.add(r.author_username));
+  const watchers = await query(
+    "SELECT username FROM project_issue_watchers WHERE project_k=$1 AND issue_key=$2",
+    [projectK, issueKey]
+  );
+  watchers.rows.forEach((r) => set.add(r.username));
   return set;
 }
 
@@ -842,14 +847,20 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
     res.json({ ok: true });
 
     // Atama bildirimi: assignee GERÇEKTEN değiştiyse (ve yeni biri atandıysa,
-    // boşa alma değilse) yeni atanan kişiye e-posta gider. Yanıt zaten
-    // gönderildi, bu adım kullanıcıyı bekletmez.
+    // boşa alma değilse) yeni atanan kişiye VE bu konuyu izleyenlere (watcher)
+    // e-posta gider. Yanıt zaten gönderildi, bu adım kullanıcıyı bekletmez.
     if (assigneeUsername !== undefined && assigneeUsername && assigneeUsername !== issue.assignee_username) {
       (async () => {
         try {
-          const [assignee, assigner] = await Promise.all([
+          const [assignee, assigner, watchers] = await Promise.all([
             query("SELECT email FROM users WHERE username=$1", [assigneeUsername]),
             query("SELECT name FROM users WHERE username=$1", [req.user.username]),
+            query(
+              `SELECT u.username, u.email FROM project_issue_watchers w
+                 JOIN users u ON u.username=w.username AND u.active
+                WHERE w.project_k=$1 AND w.issue_key=$2 AND w.username<>$3`,
+              [req.params.k, req.params.issueKey, assigneeUsername]
+            ),
           ]);
           if (assignee.rows[0]) {
             const assignerName = assigner.rows[0] ? assigner.rows[0].name : req.user.username;
@@ -863,6 +874,14 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
               );
             }
             await createInAppNotification(assigneeUsername, "assignment", req.params.k, req.params.issueKey, assignSubject, req.user.username);
+          }
+          for (const w of watchers.rows) {
+            const watchSubject = `${req.params.issueKey} — assignee changed`;
+            const watchPrefs = await getEmailPrefs(w.username);
+            if (watchPrefs.assignment) {
+              await sendMail(w.email, watchSubject, `${req.params.issueKey} — ${title !== undefined ? title.trim() : issue.title}\n\nNew assignee: ${assigneeUsername}`);
+            }
+            await createInAppNotification(w.username, "assignment", req.params.k, req.params.issueKey, watchSubject, req.user.username);
           }
         } catch (mailErr) {
           await audit(`Atama bildirimi gönderilemedi (${req.params.k}/${req.params.issueKey}): ${mailErr.message}`, "sistem", false);
@@ -1184,6 +1203,46 @@ router.delete("/:k/issues/:issueKey/checklist/:id", requireWrite("d.board"), asy
       [req.params.id, req.params.k, req.params.issueKey]
     );
     if (!rows.length) return res.status(404).json({ error: "Madde bulunamadı." });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// ------------------------------- Watchers (izleyiciler) -------------------------------
+// Assignee/reporter/yorumcu olmadan bir konuyu takip etmek isteyen kişiler
+// için — Jira'daki "Watch" özelliği. Yalnızca KENDİNİ ekleyip/çıkarabilirsin
+// (başkasını izleyici yapamazsın); participantsOf() bildirim/mail alıcıları
+// arasına watcher'ları da dahil eder.
+router.get("/:k/issues/:issueKey/watchers", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT w.username, u.name FROM project_issue_watchers w
+         JOIN users u ON u.username=w.username
+        WHERE w.project_k=$1 AND w.issue_key=$2 ORDER BY u.name`,
+      [req.params.k, req.params.issueKey]
+    );
+    res.json({ items: rows, watching: rows.some((r) => r.username === req.user.username) });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/issues/:issueKey/watchers", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const issue = await query("SELECT 1 FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);
+    if (!issue.rowCount) return res.status(404).json({ error: "Konu bulunamadı." });
+    await query(
+      `INSERT INTO project_issue_watchers (project_k, issue_key, username) VALUES ($1,$2,$3)
+       ON CONFLICT (project_k, issue_key, username) DO NOTHING`,
+      [req.params.k, req.params.issueKey, req.user.username]
+    );
+    res.status(201).json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+router.delete("/:k/issues/:issueKey/watchers", requireRead("d.board"), async (req, res, next) => {
+  try {
+    await query(
+      "DELETE FROM project_issue_watchers WHERE project_k=$1 AND issue_key=$2 AND username=$3",
+      [req.params.k, req.params.issueKey, req.user.username]
+    );
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
