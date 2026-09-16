@@ -2734,18 +2734,13 @@ function screenView(){
     <span id="hint" class="m" style="color:var(--tm);flex:1"></span>
     <button class="b" data-a="mtNewCancel">Cancel</button>
     <button id="okBtn" class="b off" data-a="needFields">Create and notify</button></div>`;
-  if(LIVE_BACKEND){
-   return head("New meeting note","All attendees receive an email notification when you create this.",
-     `<button class="b" data-a="mtNewCancel">Cancel</button>`)+
-    `<div class="card" style="max-width:640px">
-      ${projectBlock}${subjectBlock}${dateTimeBlock}${recurrenceBlock}${attendeesBlock}${agendaItemsBlock}${notesBlock(74)}
-      ${footer}</div>`;}
-  // DEMO MODDA ÖNİZLEME (kullanıcı onayı bekleniyor): SOL = Meeting
-  // subject + birleşik "Meeting Notes" paneli (üst: serbest metin notlar,
-  // alt: gündem maddeleri tek satır olarak, en yeni en altta, kendi
-  // içinde kaydırılabilir, ekleme formu en altta) — bu panel sol
-  // sütunu tepeden tabana doldurur (min-height:75vh, viewport'a duyarlı).
-  // SAĞ = Project / Meeting date&time / Recurrence / Attendees.
+  // SOL = Meeting subject + birleşik "Meeting Notes" paneli (üst: serbest
+  // metin notlar, alt: gündem maddeleri tek satır olarak, en yeni en
+  // altta, kendi içinde kaydırılabilir, ekleme formu en altta) — bu
+  // panel sol sütunu tepeden tabana doldurur (min-height:75vh, viewport'a
+  // duyarlı). SAĞ = Project / Meeting date&time / Recurrence / Attendees.
+  // Hem canlı backend hem demo modda AYNI düzen (kullanıcı onayı sonrası
+  // prod'a taşındı — önceki tur yalnızca demoda önizlenmişti).
   const itemRowsCompact=items.length?items.map((it,i)=>{const missing=!it.assignee;
     return `<div style="display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--bd);font-size:12px">
      <span style="flex:1;min-width:0;overflow-wrap:break-word">${it.carried?`<span class="pl wr" style="margin-right:6px">carried</span>`:""}${esc(it.text)}</span>
@@ -2774,7 +2769,7 @@ function screenView(){
       <input id="fMtNewItemDue" type="date" value="${esc(f.newItemDue||"")}" title="Due date (optional)" style="width:130px">
       <button class="b s" data-a="mtAddItem">Add</button></div></div>`;
   const rightPanel=`<div class="card">${projectBlock}${dateTimeBlock}${recurrenceBlock}${attendeesBlock}</div>`;
-  return head("New meeting note","All attendees receive an email notification when you create this. (Demo preview: new layout)",
+  return head("New meeting note","All attendees receive an email notification when you create this.",
     `<button class="b" data-a="mtNewCancel">Cancel</button>`)+
    `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;align-items:stretch;max-width:1200px">
      ${meetingNotesPanel}${rightPanel}</div>
