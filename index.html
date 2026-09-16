@@ -339,7 +339,7 @@ let SPP=30,PASS=70;
 
 /* ---------------------------------- veri ---------------------------------- */
 const MODULES=[
- ["delivery","Proje Yönetimi","ti-clipboard-list","#0F6E56"],
+ ["delivery","Project Management","ti-clipboard-list","#0F6E56"],
  ["documents","Doküman Yönetimi","ti-files","#4B3B8F"],
  ["announce","Duyurular","ti-speakerphone","#0178BA"],
  ["training","Eğitimler","ti-school","#7A1F3D"],
@@ -358,7 +358,7 @@ const SCREENS={
    ["d.docview","Document",null],
    ["d.appr","Approvals Log","ti-checks"],["d.cr","Change Requests","ti-file-symlink"],
    ["d.meeting","Meeting Notes","ti-notes"],["d.meetingview","Meeting note",null],
-   ["d.meetingnew","Yeni toplantı notu",null],
+   ["d.meetingnew","New meeting note",null],
    ["d.gantt","Gantt Chart","ti-gantt"],["d.roadmap","Roadmap","ti-map"],
    ["d.projadmin","Project Admin","ti-shield-lock"]],
  documents:[["k.docs","Dokümanlar","ti-book"],["k.queue","Teftiş kuyruğu","ti-stamp"],["k.mail","Gönderilen bildirimler","ti-messages"]],
@@ -2653,7 +2653,7 @@ function screenView(){
    <div class="lbl" style="margin-top:13px">Meeting date and time</div>
    <div style="display:flex;gap:8px">
     <input id="fMtDate" type="date" value="${esc(f.date||"")}" style="width:170px;flex:none;${errS(attempted&&!f.date)}">
-    <select id="fMtTime" style="width:120px">
+    <select id="fMtTime" style="width:120px;${errS(attempted&&!f.time)}">
      <option value="" ${!f.time?"selected":""}>No time</option>
      ${TIME_SLOTS_15MIN.map(t=>`<option value="${t}" ${f.time===t?"selected":""}>${t}</option>`).join("")}</select></div>`;
   const recurrenceBlock=`
@@ -2694,7 +2694,7 @@ function screenView(){
     <button class="b s" data-a="mtAddItem">Add</button></div>`;
   const notesBlock=(minH)=>`
    <div class="lbl" style="margin-top:13px">Notes</div>
-   <textarea id="fMtNotes" placeholder="Free-form notes about the meeting" style="min-height:${minH}px">${esc(f.notes||"")}</textarea>`;
+   <textarea id="fMtNotes" placeholder="Free-form notes about the meeting (at least 20 characters)" style="min-height:${minH}px;${errS(attempted&&(f.notes||"").trim().length<20)}">${esc(f.notes||"")}</textarea>`;
   const footer=`
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px;align-items:center">
     <span id="hint" class="m" style="color:var(--tm);flex:1"></span>
@@ -2725,10 +2725,10 @@ function screenView(){
   const meetingNotesPanel=`
    <div class="card" style="display:flex;flex-direction:column;min-height:75vh">
      ${subjectBlock}
-     <div class="lbl" style="margin-top:14px">Meeting Notes</div>
-     <textarea id="fMtNotes" placeholder="Free-form notes about the meeting" style="min-height:100px;max-height:150px;flex:none">${esc(f.notes||"")}</textarea>
+     <div class="lbl" style="margin-top:14px">Meeting Notes <span class="m" style="color:var(--tm);text-transform:none;letter-spacing:normal">(required, min. 20 characters)</span></div>
+     <textarea id="fMtNotes" placeholder="Free-form notes about the meeting (at least 20 characters)" style="flex:1;min-height:140px;max-height:360px;${errS(attempted&&(f.notes||"").trim().length<20)}">${esc(f.notes||"")}</textarea>
      <div class="lbl" style="margin-top:10px">Agenda items <span class="m" style="color:var(--tm);text-transform:none;letter-spacing:normal">(up to 10 shown, scrolls if more)</span></div>
-     <div id="mtItemsScroll" style="flex:1;min-height:140px;max-height:360px;overflow-y:auto;border:1px solid var(--bd);border-radius:8px;margin-top:4px">
+     <div id="mtItemsScroll" style="min-height:100px;max-height:150px;overflow-y:auto;border:1px solid var(--bd);border-radius:8px;margin-top:4px">
       ${itemRowsCompact}</div>
      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="New agenda item..." style="flex:2;min-width:140px">
@@ -2828,7 +2828,7 @@ function screenView(){
  if(v==="d.projadmin"){
   const p=P();
   const roles=Object.keys(ROLE);
-  const pmKeys=[["delivery","(modül)"]].concat(SCREENS.delivery||[]);
+  const pmKeys=[["delivery","(module)"]].concat(SCREENS.delivery||[]);
   let permRows="";
   if(LIVE_BACKEND){
    if(PROJECT_MODULE_ACCESS_LIVE===null&&!PROJECT_MODULE_ACCESS_LOADING)loadProjectModuleAccessLive();
@@ -2840,7 +2840,7 @@ function screenView(){
       roles.map(r=>{const val=(PROJECT_MODULE_ACCESS_LIVE[r]||{})[key]||"none";
        const cls=val===W?"ok":val===R?"":"",txt=val===W?"W":val===R?"R":"—";
        const own=r===S.me.r;
-       return `<td style="text-align:center"><span class="pl ${cls}" title="${own?"kendi rolünüz — kilitli":""}"
+       return `<td style="text-align:center"><span class="pl ${cls}" title="${own?"your own role — locked":""}"
         style="cursor:${!own?"pointer":"not-allowed"};${own?"outline:1px dashed var(--bds)":""}"
         ${!own?`data-a="projAccessCycle:${r}:${key}"`:""}>${txt}</span></td>`;}).join("")+`</tr>`;});}
   }else{
@@ -2849,7 +2849,7 @@ function screenView(){
      roles.map(r=>{const val=(ACC[r]||{})[key]||"none";
       const cls=val===W?"ok":val===R?"":"",txt=val===W?"W":val===R?"R":"—";
       const own=r===S.me.r;
-      return `<td style="text-align:center"><span class="pl ${cls}" title="${own?"kendi rolünüz — kilitli":""}"
+      return `<td style="text-align:center"><span class="pl ${cls}" title="${own?"your own role — locked":""}"
        style="cursor:${!own?"pointer":"not-allowed"};${own?"outline:1px dashed var(--bds)":""}"
        ${!own?`data-a="projAccessCycle:${r}:${key}"`:""}>${txt}</span></td>`;}).join("")+`</tr>`;});}
   return head("Project Admin",p.k+" — "+p.n,
@@ -4589,7 +4589,9 @@ function validate(){
   if(!f.projKey)miss.push("proje");
   if(!(f.otherSubject||"").trim())miss.push("toplantı konusu");
   if(!f.date)miss.push("tarih");
+  if(!f.time)miss.push("saat");
   if(!(f.parts&&f.parts.length))miss.push("katılımcı");
+  if((f.notes||"").trim().length<20)miss.push("en az 20 karakterlik toplantı notu");
   if((f.items||[]).some(it=>!it.assignee))miss.push("her gündem maddesi için sorumlu (assignee)");
   return [miss.length===0,"mtSave",miss.length?"Eksik: "+miss.join(", "):""];}
  const d=S.dlg,f=S.f;if(!d)return null;
@@ -4724,8 +4726,8 @@ function render(){
    <span class="m" style="color:var(--tm)">${esc(S.me.n)}</span>
    <span style="width:28px;height:28px;border-radius:9px;background:${S.me.c};color:#fff;font-size:11px;
     display:flex;align-items:center;justify-content:center;cursor:pointer" data-a="profile" title="Kullanıcı bilgileri">${avatars[S.me.u]||initials(S.me.n)}</span></div>
-  <div class="body">${screenView()}</div></div></div>
- ${S.pop!==null?popupView():""}${dialogView()}${toastView()}`;
+  <div class="body" ${S.mod==="delivery"?'lang="en"':""}>${screenView()}</div></div></div>
+ ${S.pop!==null?popupView():""}<div ${S.mod==="delivery"?'lang="en"':""}>${dialogView()}</div>${toastView()}`;
  afterRender();}
 const toastView=()=>S.toast?`<div class="toast ${S.toast.bad?"er":"ok"}">${esc(S.toast.msg)}</div>`:"";
 
@@ -4770,7 +4772,7 @@ function afterRender(){
   if(el)el.oninput=e=>{S.dirF=S.dirF||{};S.dirF[key]=e.target.value;};});
  [["fTitle","title"],["fBody","body"],["fUntil","until"],["fReason","reason"],["fNo","no"],
   ["fA","a"],["fB","b"],["fC","c"],["fR","r"],["frej","rej"],
-  ["fMtDate","date"],["fMtTime","time"],["fMtRecurrence","recurrence"],["fMtTitle","title"],["fMtNewItem","newItem"],["fMtNotes","notes"],
+  ["fMtDate","date"],["fMtTime","time"],["fMtRecurrence","recurrence"],["fMtNewItem","newItem"],["fMtNotes","notes"],
   ["fMtOtherSubject","otherSubject"],
   ["fGName","name"],["fGStart","start"],["fGEnd","end"],
   ["fTplKey","key"],["fTplName","name"],["fTplSubject","subject"],["fTplBody","body"],
