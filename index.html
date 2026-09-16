@@ -5145,7 +5145,7 @@ app.addEventListener("click",async ev=>{
   clearInterval(S.timer);S.view="app";S.mod=p[1];S.scr=p[2];
   Object.assign(S,{ann:null,req:null,dec:null,read:null,docView:null,quiz:null,result:null,dlg:null});render();return;}
  if(k==="cycle"){const r=p[1],key=p[2];
-  if(r===S.me.r){toast("Kendi rolünüzün yetkilerini değiştiremezsiniz — görevler ayrılığı gereği başka bir yönetici yapmalı.",1);return;}
+  if(r===S.me.r){toast("You cannot change your own role's permissions — for separation of duties, another admin must do this.",1);return;}
   if(isProjectModuleKey(key)){toast("Bu ekranın yetkisi sabittir, buradan değiştirilemez.",1);return;}
   if(LIVE_BACKEND){
    const cur=(ACCESS_LIVE[r]||{})[key]||"none";
@@ -5160,7 +5160,7 @@ app.addEventListener("click",async ev=>{
   if(nx==="none")delete ACC[r][key];else ACC[r][key]=nx;
   audit("Ekran yetkisi değişti: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"yetki yok":nx));render();return;}
  if(k==="projAccessCycle"){const r=p[1],key=p[2];
-  if(r===S.me.r){toast("Kendi rolünüzün yetkilerini değiştiremezsiniz — görevler ayrılığı gereği başka bir yönetici yapmalı.",1);return;}
+  if(r===S.me.r){toast("You cannot change your own role's permissions — for separation of duties, another admin must do this.",1);return;}
   if(LIVE_BACKEND){
    const cur=(PROJECT_MODULE_ACCESS_LIVE[r]||{})[key]||"none";
    const nxLevel=cur==="none"?"read":cur==="read"?"write":"none";
@@ -5172,17 +5172,17 @@ app.addEventListener("click",async ev=>{
   const cur=(ACC[r]||{})[key]||"none";
   const nx=cur==="none"?R:cur===R?W:"none";ACC[r]=ACC[r]||{};
   if(nx==="none")delete ACC[r][key];else ACC[r][key]=nx;
-  audit("Proje modülü ekran yetkisi değişti: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"yetki yok":nx));
+  audit("Project module screen permission changed: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"no access":nx));
   toast("Permission updated.");render();return;}
  if(k==="projAvailCycle"){const key=p[1],val=p[2];
-  if(key==="d.projadmin"&&val!=="acik"){toast("Project Admin ekranı kapatılamaz (kilitlenme riski).",1);return;}
+  if(key==="d.projadmin"&&val!=="acik"){toast("The Project Admin screen cannot be closed (lockout risk).",1);return;}
   if(LIVE_BACKEND){
    try{await api("PUT","/api/projects/module-availability",{screenKey:key,status:val});
     await loadProjectModuleAvailLive();toast("Screen status updated.");}
    catch(e){toast(e.message,1);}
    return;}
   if(val==="acik")delete AVAIL[key];else AVAIL[key]=val;
-  audit("Proje modülü ekran durumu değişti: "+key+" → "+AV_LABEL[val]);
+  audit("Project module screen status changed: "+key+" → "+AV_LABEL[val]);
   if((S.mod===key||S.scr===key)&&val!=="acik"){S.view="home";}
   toast("Screen status updated.");render();return;}
  if(k==="avail"){const key=p[1],val=p[2];
@@ -5331,13 +5331,13 @@ app.addEventListener("click",async ev=>{
    try{
     await api("POST","/api/projects",{k:code,name:f.b.trim(),method:f.method,unitName:f.unit||null});
     S.dlg=null;S.f={};S.scr="d.team";
-    toast(code+" oluşturuldu. Ekibi Proje Ekibi ekranından tamamlayın (BO/PO atayın).");
+    toast(code+" created. Complete the team from the Project Team screen (assign BO/PO).");
     await loadProjectsLive();
     S.proj=PROJ.findIndex(x=>x.k===code);if(S.proj<0)S.proj=0;
     render();
    }catch(e){toast(e.message,1);}
    return;}
-  if(PROJ.some(x=>x.k===code)){toast("Bu proje kodu zaten kullanılıyor.",1);return;}
+  if(PROJ.some(x=>x.k===code)){toast("This project code is already in use.",1);return;}
   PROJ.push({k:code,n:f.b.trim(),m:f.method,lead:S.me.n,health:"On track",hc:"#3B6D11",
    unitName:f.unit,timePct:0,burndown:null,velocityHist:[],
    sprint:f.method==="Scrum"?{n:"Sprint 1",left:14,committed:0,done:0,goal:"Tanımlanacak"}:null,
@@ -5350,8 +5350,8 @@ app.addEventListener("click",async ev=>{
    {n:f.po,r:"Product Owner"}]);
   PDOC[code]=[];CR[code]=[];
   S.proj=PROJ.length-1;S.dlg=null;S.f={};S.scr="d.team";
-  audit("Proje oluşturuldu: "+code+" · birim "+f.unit+" · BO "+f.bo+" · PO "+f.po);
-  toast(code+" oluşturuldu. Ekip: proje yöneticisi, iş birimi sahibi, ürün sahibi.");return;}
+  audit("Project created: "+code+" · unit "+f.unit+" · BO "+f.bo+" · PO "+f.po);
+  toast(code+" created. Team: project manager, business owner, product owner.");return;}
  if(k==="docDetail"){S.docView=+p[1];S.page=0;S.read=null;S.quiz=null;S.ann=null;S.req=null;
   clearInterval(S.timer);render();return;}
  if(k==="docDetailClose"){S.docView=null;S.page=0;render();return;}
@@ -5409,7 +5409,7 @@ app.addEventListener("click",async ev=>{
  if(k==="viewAllIssues"){S.proj=+p[1];S.projAll=false;S.mod="delivery";S.scr="d.allissues";S.dlg=null;render();return;}
  if(k==="searchJump"){const kind=p[1],projK=dec(p[2]),issueKey=dec(p[3]);
   const pi=PROJ.findIndex(x=>x.k===projK);
-  if(pi<0){toast("Proje bulunamadı.",1);return;}
+  if(pi<0){toast("Project not found.",1);return;}
   S.proj=pi;S.projAll=false;S.mod="delivery";
   if(kind==="issue"){
    S.scr="d.board";S.dlg={type:"issue",pi,key:issueKey};S.f={};
@@ -5428,7 +5428,7 @@ app.addEventListener("click",async ev=>{
  if(k==="execFilter"){S.execFilter=p[1]||null;S.execUnit=null;render();return;}
  if(k==="issueNotifJump"){const notifId=p[1],projK=dec(p[2]),issueKey=dec(p[3]);
   const pi=PROJ.findIndex(x=>x.k===projK);
-  if(pi<0){toast("Proje bulunamadı.",1);return;}
+  if(pi<0){toast("Project not found.",1);return;}
   S.proj=pi;S.projAll=false;S.mod="delivery";S.scr="d.board";S.dlg={type:"issue",pi,key:issueKey};S.f={};
   if(LIVE_BACKEND){const pk=PROJ[pi].k;
    if(!PROJ[pi].itemsLoaded)loadIssuesLive(pk);
@@ -5453,7 +5453,7 @@ app.addEventListener("click",async ev=>{
  if(k==="iSt"){S.f.st=p[1];render();return;}
  if(k==="iLabelAdd"){const inp=document.getElementById("fIssueLabel");
   const v=(inp?inp.value:"").trim().slice(0,30);
-  if(!v){toast("Etiket boş olamaz.",1);return;}
+  if(!v){toast("Label cannot be empty.",1);return;}
   const cur=S.f.labels||[];
   if(cur.includes(v)){toast("Bu etiket zaten eklendi.",1);return;}
   if(cur.length>=10){toast("En fazla 10 etiket eklenebilir.",1);return;}
@@ -5472,9 +5472,9 @@ app.addEventListener("click",async ev=>{
     if(PENDING_ISSUE_FILE&&created&&created.item){
      const fd=new FormData();fd.append("file",PENDING_ISSUE_FILE);
      try{await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(created.item.issue_key)+"/attachments",fd,true);}
-     catch(e){toast("Konu oluşturuldu ama doküman eklenemedi: "+e.message,1);}
+     catch(e){toast("Issue created but the document could not be attached: "+e.message,1);}
     }
-    PENDING_ISSUE_FILE=null;S.dlg=null;S.f={};toast("Konu oluşturuldu.");
+    PENDING_ISSUE_FILE=null;S.dlg=null;S.f={};toast("Issue created.");
     await loadIssuesLive(pr.k);render();
    }catch(e){toast(e.message,1);}
    return;}
@@ -5484,7 +5484,7 @@ app.addEventListener("click",async ev=>{
   pr.items.push({key,ty:S.f.ty||"Story",t:S.f.a.trim(),st:S.f.st||"backlog",
    pri:S.f.pri||"Medium",pts:S.f.pts||3,as:S.f.as||null,parent:S.f.parent||null,
    desc:(S.f.desc||"").trim(),doc:S.f.docFile||null,rep:S.me.n,at:now(),labels:S.f.labels||[],due:S.f.due||null});
-  audit("İş kalemi oluşturuldu: "+key);PENDING_ISSUE_FILE=null;S.dlg=null;S.f={};
+  audit("Issue created: "+key);PENDING_ISSUE_FILE=null;S.dlg=null;S.f={};
   toast(key+" created in "+(S.f&&S.f.st==="todo"?"To Do":"Backlog")+".");return;}
 
  if(k==="teamAdd"){S.f={};S.dlg={type:"team"};render();return;}
@@ -5506,19 +5506,19 @@ app.addEventListener("click",async ev=>{
   if(LIVE_BACKEND){
    const uname=decodeURIComponent(p[1]);
    const m=(S.teamLive||[]).find(x=>x.username===uname);
-   if(m&&m.mandatory){toast(m.r+" her projede zorunlu üyedir; çıkarılamaz.",1);return;}
+   if(m&&m.mandatory){toast(m.r+" is a mandatory member in every project; cannot be removed.",1);return;}
    S.dlg={type:"cf",title:"Remove team member",text:(m?m.n:uname)+" will be removed from "+P().k+".",act:"teamDelOk:"+p[1]};render();return;}
   const t=teamOf(P().k);const m=t[+p[1]];
   if(MANDATORY_ROLES.includes(m.r)){
-   toast(m.r+" her projede zorunlu üyedir; çıkarılamaz.",1);return;}
+   toast(m.r+" is a mandatory member in every project; cannot be removed.",1);return;}
   S.dlg={type:"cf",title:"Remove team member",text:m.n+" will be removed from "+P().k+".",act:"teamDelOk:"+p[1]};render();return;}
  if(k==="teamDelOk"&&LIVE_BACKEND){
   try{await api("DELETE","/api/projects/"+encodeURIComponent(P().k)+"/team/"+p[1]);
    S.teamLive=null;S.dlg=null;toast("Team member removed.");render();}
-  catch(e){toast("Çıkarılamadı: "+e.message,1);}
+  catch(e){toast("Could not be removed: "+e.message,1);}
   return;}
  if(k==="teamDelOk"){const t=teamOf(P().k);const m=t.splice(+p[1],1)[0];
-  audit("Proje ekibinden çıkarıldı: "+m.n);S.dlg=null;toast(m.n+" removed.");return;}
+  audit("Removed from project team: "+m.n);S.dlg=null;toast(m.n+" removed.");return;}
 
  /* ------------------------------ Meeting Notes ------------------------------ */
  if(k==="mtProjF"){S.mtProj=p[1];render();return;}
@@ -5526,8 +5526,8 @@ app.addEventListener("click",async ev=>{
  if(k==="mtNewCancel"){S.f={};S.scr="d.meeting";render();return;}
  if(k==="mtRemPart"){const n=dec(p[1]);S.f.parts=(S.f.parts||[]).filter(x=>x!==n);render();return;}
  if(k==="mtAddItem"){const t=(S.f.newItem||"").trim();
-  if(!t){toast("Madde metni boş olamaz.",1);return;}
-  if(!S.f.newItemAssignee){S.f.mtNewItemAttempted=true;toast("Sorumlu (assignee) seçmeden madde eklenemez.",1);render();return;}
+  if(!t){toast("Item text cannot be empty.",1);return;}
+  if(!S.f.newItemAssignee){S.f.mtNewItemAttempted=true;toast("An item cannot be added without selecting an assignee.",1);render();return;}
   S.f.mtNewItemAttempted=false;
   S.f.items=[...(S.f.items||[]),{id:"mi"+(nextMeetingItem++),text:t,status:"open",
    assignee:S.f.newItemAssignee,due:S.f.newItemDue||""}];
@@ -5610,7 +5610,7 @@ app.addEventListener("click",async ev=>{
   MEETINGS.unshift(m);
   const to=[...new Set((m.participants||[]).map(mailOf))];
   const sent=to.filter(addr=>mail(addr,m.title+" — "+(pr?pr.k:subject)+" toplantı notu paylaşıldı"));
-  audit("Toplantı notu oluşturuldu: "+m.title+" ("+(pr?pr.k:"Diğer")+") · bildirim: "+(sent.join(", ")||"gönderilmedi"));
+  audit("Meeting note created: "+m.title+" ("+(pr?pr.k:"Other")+") · notified: "+(sent.join(", ")||"none sent"));
   S.dlg=null;S.f={};
   toast(sent.length===to.length&&to.length
    ?"Toplantı notu oluşturuldu, "+m.participants.length+" katılımcıya e-posta gönderildi. Gündem maddeleri 'Toplantı' projesinde Task olarak backlog'a düşürüldü."
@@ -5624,7 +5624,7 @@ app.addEventListener("click",async ev=>{
    const m=(S.meetingsLive||[]).find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
    if(!it)return;const next=it.status==="done"?"open":"done";
    try{await api("POST","/api/projects/meetings/"+S.mtView+"/items/"+p[1]+"/status",{status:next});it.status=next;render();}
-   catch(e){toast("Durum güncellenemedi: "+e.message,1);}
+   catch(e){toast("Status could not be updated: "+e.message,1);}
    return;}
   const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
   if(!it)return;it.status=it.status==="done"?"open":"done";render();return;}
@@ -5633,7 +5633,7 @@ app.addEventListener("click",async ev=>{
    const m=(S.meetingsLive||[]).find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
    if(!it)return;
    try{await api("POST","/api/projects/meetings/"+S.mtView+"/items/"+p[1]+"/status",{status:"cancelled"});it.status="cancelled";render();}
-   catch(e){toast("Durum güncellenemedi: "+e.message,1);}
+   catch(e){toast("Status could not be updated: "+e.message,1);}
    return;}
   const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
   if(!it)return;it.status="cancelled";render();return;}
@@ -5642,7 +5642,7 @@ app.addEventListener("click",async ev=>{
    const m=(S.meetingsLive||[]).find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
    if(!it)return;
    try{await api("POST","/api/projects/meetings/"+S.mtView+"/items/"+p[1]+"/status",{status:"open"});it.status="open";render();}
-   catch(e){toast("Durum güncellenemedi: "+e.message,1);}
+   catch(e){toast("Status could not be updated: "+e.message,1);}
    return;}
   const m=MEETINGS.find(x=>x.id===S.mtView),it=m&&m.items.find(x=>x.id===p[1]);
   if(!it)return;
@@ -5665,7 +5665,7 @@ app.addEventListener("click",async ev=>{
    catch(e){toast(e.message,1);}
    return;}
   pr.wip=limits;S.dlg=null;toast("WIP limits saved.");render();return;}
- if(k==="manageWorkflow"){if(S.me.r!=="pmdir"){toast("Yalnızca Proje Yönetim Direktörü iş akışını değiştirebilir.",1);return;}
+ if(k==="manageWorkflow"){if(S.me.r!=="pmdir"){toast("Only the Project Management Director can change the workflow.",1);return;}
   const pi=+p[1];S.f={};S.dlg={type:"workflow",pi};render();return;}
  if(k==="wfToggleEnabled"){const idx=+p[1];S.f.workflowRows[idx].enabled=!S.f.workflowRows[idx].enabled;render();return;}
  if(k==="wfToggleRole"){const idx=+p[1],role=p[2];const row=S.f.workflowRows[idx];
@@ -5678,7 +5678,7 @@ app.addEventListener("click",async ev=>{
   if(from===to){toast("From and To must be different.",1);return;}
   if(S.f.workflowRows.some(t=>t.from_status===from&&t.to_status===to)){toast("This transition is already listed.",1);return;}
   S.f.workflowRows.push({from_status:from,to_status:to,allowed_roles:[],enabled:true});render();return;}
- if(k==="wfSave"){if(S.me.r!=="pmdir"){toast("Yalnızca Proje Yönetim Direktörü iş akışını değiştirebilir.",1);return;}
+ if(k==="wfSave"){if(S.me.r!=="pmdir"){toast("Only the Project Management Director can change the workflow.",1);return;}
   const pi=+p[1],pr=PROJ[pi],pk=pr.k;
   const transitions=S.f.workflowRows.map(t=>({from:t.from_status,to:t.to_status,allowedRoles:t.allowed_roles,enabled:t.enabled}));
   if(LIVE_BACKEND){
@@ -5691,82 +5691,82 @@ app.addEventListener("click",async ev=>{
  if(k==="versionCreate"){const pi=+p[1],pk=PROJ[pi].k;
   const inp=document.getElementById("fNewVersionName");
   const name=(inp&&inp.value||"").trim();
-  if(!name){toast("Sürüm adı boş olamaz.",1);return;}
+  if(!name){toast("Version name cannot be empty.",1);return;}
   if(LIVE_BACKEND){
    try{await api("POST","/api/projects/"+encodeURIComponent(pk)+"/versions",{name});
-    await loadVersionsLive(pk);toast("Sürüm eklendi.");}
+    await loadVersionsLive(pk);toast("Version added.");}
    catch(e){toast(e.message,1);}
    return;}
   const list=versionsOf(pk);
-  if(list.some(v=>v.name===name)){toast("Bu isimde bir sürüm zaten var.",1);return;}
+  if(list.some(v=>v.name===name)){toast("A version with this name already exists.",1);return;}
   list.push({id:nextVersionId++,project_k:pk,name,description:"",release_date:null,released:false,archived:false});
-  toast("Sürüm eklendi.");render();return;}
+  toast("Version added.");render();return;}
  if(k==="versionRelease"){const pi=+p[1],id=p[2],pk=PROJ[pi].k;
   if(LIVE_BACKEND){
    try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/versions/"+id,{released:true});
-    await loadVersionsLive(pk);toast("Sürüm yayınlandı olarak işaretlendi.");}
+    await loadVersionsLive(pk);toast("Version marked as released.");}
    catch(e){toast(e.message,1);}
    return;}
   const v=versionsOf(pk).find(x=>String(x.id)===String(id));if(v)v.released=true;
-  toast("Sürüm yayınlandı olarak işaretlendi.");render();return;}
+  toast("Version marked as released.");render();return;}
  if(k==="versionDelete"){const pi=+p[1],id=p[2],pk=PROJ[pi].k;
   if(LIVE_BACKEND){
    try{await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/versions/"+id);
     delete PROJECT_VERSIONS_LIVE[pk];await loadVersionsLive(pk);
     // Bu projenin yüklü konularındaki referansları da temizle.
     (PROJ[pi].items||[]).forEach(it=>{if(it.fixVersions)it.fixVersions=it.fixVersions.filter(Boolean);});
-    toast("Sürüm silindi.");}
+    toast("Version deleted.");}
    catch(e){toast(e.message,1);}
    return;}
   const list=versionsOf(pk),v=list.find(x=>String(x.id)===String(id));
   if(v){PROJECT_VERSIONS_DEMO[pk]=list.filter(x=>x!==v);
    (PROJ[pi].items||[]).forEach(it=>{if(it.fixVersions)it.fixVersions=it.fixVersions.filter(n=>n!==v.name);});}
-  toast("Sürüm silindi.");render();return;}
+  toast("Version deleted.");render();return;}
  if(k==="componentCreate"){const pi=+p[1],pk=PROJ[pi].k;
   const inp=document.getElementById("fNewComponentName");
   const name=(inp&&inp.value||"").trim();
-  if(!name){toast("Bileşen adı boş olamaz.",1);return;}
+  if(!name){toast("Component name cannot be empty.",1);return;}
   if(LIVE_BACKEND){
    try{await api("POST","/api/projects/"+encodeURIComponent(pk)+"/components",{name});
-    await loadComponentsLive(pk);toast("Bileşen eklendi.");}
+    await loadComponentsLive(pk);toast("Component added.");}
    catch(e){toast(e.message,1);}
    return;}
   const list=componentsOf(pk);
-  if(list.some(c=>c.name===name)){toast("Bu isimde bir bileşen zaten var.",1);return;}
+  if(list.some(c=>c.name===name)){toast("A component with this name already exists.",1);return;}
   list.push({id:nextComponentId++,project_k:pk,name,default_assignee_username:null});
-  toast("Bileşen eklendi.");render();return;}
+  toast("Component added.");render();return;}
  if(k==="componentDelete"){const pi=+p[1],id=p[2],pk=PROJ[pi].k;
   if(LIVE_BACKEND){
    try{await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/components/"+id);
     delete PROJECT_COMPONENTS_LIVE[pk];await loadComponentsLive(pk);
-    toast("Bileşen silindi.");}
+    toast("Component deleted.");}
    catch(e){toast(e.message,1);}
    return;}
   const list=componentsOf(pk),c=list.find(x=>String(x.id)===String(id));
   if(c){PROJECT_COMPONENTS_DEMO[pk]=list.filter(x=>x!==c);
    (PROJ[pi].items||[]).forEach(it=>{if(it.components)it.components=it.components.filter(n=>n!==c.name);});}
-  toast("Bileşen silindi.");render();return;}
+  toast("Component deleted.");render();return;}
  if(k==="gProg"){S.f.progress=+p[1];render();return;}
  if(k==="ganttSave"){
   if(LIVE_BACKEND){
    try{
     await api("POST","/api/projects/"+encodeURIComponent(P().k)+"/gantt",
      {name:S.f.name.trim(),startDate:S.f.start,endDate:S.f.end,progress:S.f.progress||0});
-    S.ganttLive=null;S.dlg=null;S.f={};toast("Görev eklendi.");render();
+    S.ganttLive=null;S.dlg=null;S.f={};toast("Task added.");render();
    }catch(e){toast("Eklenemedi: "+e.message,1);}
    return;}
   const tasks=GANTT[P().k]||(GANTT[P().k]=[]);
   tasks.push({id:"gt"+(nextGantt++),name:S.f.name.trim(),start:S.f.start,end:S.f.end,progress:S.f.progress||0});
-  audit("Gantt görevi eklendi: "+S.f.name.trim()+" ("+P().k+")");S.dlg=null;S.f={};toast("Görev eklendi.");return;}
+  audit("Gantt task added: "+S.f.name.trim()+" ("+P().k+")");S.dlg=null;S.f={};toast("Task added.");return;}
  if(k==="ganttDel"){
   if(LIVE_BACKEND){
    try{await api("DELETE","/api/projects/"+encodeURIComponent(P().k)+"/gantt/"+p[1]);
-    S.ganttLive=null;toast("Görev silindi.");render();}
+    S.ganttLive=null;toast("Task deleted.");render();}
    catch(e){toast("Silinemedi: "+e.message,1);}
    return;}
   const tasks=GANTT[P().k]||[];const idx=tasks.findIndex(t=>t.id===p[1]);
-  if(idx>-1){const t=tasks.splice(idx,1)[0];audit("Gantt görevi silindi: "+t.name+" ("+P().k+")");}
-  toast("Görev silindi.");return;}
+  if(idx>-1){const t=tasks.splice(idx,1)[0];audit("Gantt task deleted: "+t.name+" ("+P().k+")");}
+  toast("Task deleted.");return;}
 
  if(k==="brAccent"){
   if(LIVE_BACKEND){
@@ -5907,11 +5907,11 @@ app.addEventListener("click",async ev=>{
     await api("POST","/api/projects/"+encodeURIComponent(P().k)+"/change-requests",
      {title:S.f.a.trim(),reason:S.f.b.trim(),impact:(S.f.c||"—").trim()});
     S.crLive=null;S.dlg=null;S.f={};toast("Change request submitted for approval.");render();
-   }catch(e){toast("Gönderilemedi: "+e.message,1);}
+   }catch(e){toast("Could not be submitted: "+e.message,1);}
    return;}
   crsOf(P().k).push({no:"CR-"+String(ncr++).padStart(3,"0"),t:S.f.a.trim(),
    why:S.f.b.trim(),impact:(S.f.c||"—").trim(),by:S.me.n,at:now(),st:"onayda",appr:[]});
-  audit("Değişiklik talebi oluşturuldu: "+S.f.a.trim());S.dlg=null;S.f={};
+  audit("Change request created: "+S.f.a.trim());S.dlg=null;S.f={};
   toast("Change request submitted for approval.");return;}
  if(k==="crSend"){const c=crsOf(P().k)[+p[1]];c.st="onayda";toast(c.no+" submitted.");return;}
  if(k==="crAppr"){
@@ -5935,7 +5935,7 @@ app.addEventListener("click",async ev=>{
   /* Hem yönetici hem proje ekibi onayı tamamlanmadan talep yürürlüğe girmez. */
   const done=c.appr.some(a=>!a.team)&&c.appr.some(a=>a.team);
   c.st=done?"onaylandi":"onayda";
-  audit("Değişiklik talebi onayı: "+c.no+(cap.team?" (proje ekibi)":" (yönetici)"));
+  audit("Change request approved: "+c.no+(cap.team?" (project team)":" (manager)"));
   toast(done?c.no+" fully approved.":c.no+" — "+(cap.team?"project team":"manager")+" approval recorded; the other one is still required.");
   return;}
  if(k==="crRej"){
@@ -5945,7 +5945,7 @@ app.addEventListener("click",async ev=>{
    catch(e){toast(e.message,1);}
    return;}
   const c=crsOf(P().k)[+p[1]];c.st="reddedildi";
-  audit("Değişiklik talebi reddedildi: "+c.no,0);toast(c.no+" rejected.",1);return;}
+  audit("Change request rejected: "+c.no,0);toast(c.no+" rejected.",1);return;}
  if(k==="drill"){S.drill={kind:p[1]};render();return;}
  if(k==="drillState"){S.drill={kind:"state",value:p[1]};render();return;}
  if(k==="drillType"){S.drill={kind:"type",value:p[1]};render();return;}
@@ -5985,18 +5985,18 @@ app.addEventListener("click",async ev=>{
   return;}
  if(k==="issueAttAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailDoc");const file=inp&&inp.files&&inp.files[0];
-  if(!file){toast("Önce bir dosya seçin.",1);return;}
-  if(!ISSUE_ATTACH_EXT_OK.test(file.name)){toast("Desteklenmeyen dosya türü.",1);return;}
+  if(!file){toast("Please select a file first.",1);return;}
+  if(!ISSUE_ATTACH_EXT_OK.test(file.name)){toast("Unsupported file type.",1);return;}
   const fd=new FormData();fd.append("file",file);
   try{
    await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/attachments",fd,true);
-   toast("Doküman eklendi.");await loadIssueAttachmentsLive(pk,key);
+   toast("Document attached.");await loadIssueAttachmentsLive(pk,key);
   }catch(e){toast(e.message,1);}
   return;}
  if(k==="issueAttDel"){const pi=+p[1],key=p[2],attId=p[3],pk=PROJ[pi].k;
   try{
    await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/attachments/"+attId);
-   toast("Doküman kaldırıldı.");await loadIssueAttachmentsLive(pk,key);
+   toast("Document removed.");await loadIssueAttachmentsLive(pk,key);
   }catch(e){toast(e.message,1);}
   return;}
  if(k==="issueSetPri"){const pi=+p[1],key=p[2],val=p[3],pk=PROJ[pi].k;
@@ -6006,7 +6006,7 @@ app.addEventListener("click",async ev=>{
    try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{priority:val});}
    catch(e){it.pri=old;toast(e.message,1);render();}
    return;}
-  audit("Öncelik değişti: "+key+" -> "+val);return;}
+  audit("Priority changed: "+key+" -> "+val);return;}
  if(k==="issueSetPts"){const pi=+p[1],key=p[2],val=+p[3],pk=PROJ[pi].k;
   const it=itemByKey(PROJ[pi],key);if(!it)return;
   const old=it.pts;it.pts=val;render();
@@ -6014,7 +6014,7 @@ app.addEventListener("click",async ev=>{
    try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{storyPoints:val});}
    catch(e){it.pts=old;toast(e.message,1);render();}
    return;}
-  audit("Story point değişti: "+key+" -> "+val);return;}
+  audit("Story points changed: "+key+" -> "+val);return;}
  if(k==="issueSetDue"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailDue");
   const val=inp?(inp.value||null):null;
@@ -6022,14 +6022,14 @@ app.addEventListener("click",async ev=>{
   const old=it.due;it.due=val;render();
   if(LIVE_BACKEND){
    try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{dueDate:val});
-    toast("Bitiş tarihi güncellendi.");}
+    toast("Due date updated.");}
    catch(e){it.due=old;toast(e.message,1);render();}
    return;}
-  audit("Bitiş tarihi değişti: "+key+" -> "+(val||"kaldırıldı"));toast("Bitiş tarihi güncellendi.");return;}
+  audit("Due date changed: "+key+" -> "+(val||"removed"));toast("Due date updated.");return;}
  if(k==="issueLabelAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const inp=document.getElementById("fIssueDetailLabel");
   const v=(inp?inp.value:"").trim().slice(0,30);
-  if(!v){toast("Etiket boş olamaz.",1);return;}
+  if(!v){toast("Label cannot be empty.",1);return;}
   const it=itemByKey(PROJ[pi],key);if(!it)return;
   const cur=it.labels||[];
   if(cur.includes(v)){toast("Bu etiket zaten eklendi.",1);return;}
@@ -6049,7 +6049,7 @@ app.addEventListener("click",async ev=>{
     it.labels=newLabels;render();}
    catch(e){toast(e.message,1);}
    return;}
-  it.labels=newLabels;audit("Etiket kaldırıldı: "+key+" -> "+lb);render();return;}
+  it.labels=newLabels;audit("Label removed: "+key+" -> "+lb);render();return;}
  if(k==="issueVersionAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const sel=document.getElementById("fIssueDetailVersion");
   const v=sel&&sel.value;if(!v)return;
@@ -6070,7 +6070,7 @@ app.addEventListener("click",async ev=>{
     it.fixVersions=next;render();}
    catch(e){toast(e.message,1);}
    return;}
-  it.fixVersions=next;audit("Fix version kaldırıldı: "+key+" -> "+v);render();return;}
+  it.fixVersions=next;audit("Fix version removed: "+key+" -> "+v);render();return;}
  if(k==="issueComponentAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const sel=document.getElementById("fIssueDetailComponent");
   const v=sel&&sel.value;if(!v)return;
@@ -6082,7 +6082,7 @@ app.addEventListener("click",async ev=>{
     it.components=next;render();}
    catch(e){toast(e.message,1);}
    return;}
-  it.components=next;audit("Bileşen eklendi: "+key+" -> "+v);render();return;}
+  it.components=next;audit("Component added: "+key+" -> "+v);render();return;}
  if(k==="issueComponentDel"){const pi=+p[1],key=p[2],v=decodeURIComponent(p[3]),pk=PROJ[pi].k;
   const it=itemByKey(PROJ[pi],key);if(!it)return;
   const next=(it.components||[]).filter(x=>x!==v);
@@ -6091,37 +6091,37 @@ app.addEventListener("click",async ev=>{
     it.components=next;render();}
    catch(e){toast(e.message,1);}
    return;}
-  it.components=next;audit("Bileşen kaldırıldı: "+key+" -> "+v);render();return;}
+  it.components=next;audit("Component removed: "+key+" -> "+v);render();return;}
  if(k==="issueLinkAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const linkType=S.f.linkType||"",targetKey=S.f.linkTarget||"";
-  if(!linkType||!targetKey){toast("Hem ilişki türü hem konu seçilmelidir.",1);return;}
+  if(!linkType||!targetKey){toast("Both a relationship type and an issue must be selected.",1);return;}
   if(LIVE_BACKEND){
    try{
     await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/links",
      {linkType,targetKey});
     S.f.linkType=null;S.f.linkTarget=null;
-    toast("İlişki eklendi.");await loadIssueLinksLive(pk,key);await loadIssueHistoryLive(pk,key);
+    toast("Link added.");await loadIssueLinksLive(pk,key);await loadIssueHistoryLive(pk,key);
    }catch(e){toast(e.message,1);}
    return;}
   ISSUE_LINKS_DEMO.push({id:nextIssueLink++,pk,type:linkType,source:key,target:targetKey});
-  audit("Konu ilişkisi eklendi: "+key+" "+linkType+" "+targetKey);
+  audit("Issue link added: "+key+" "+linkType+" "+targetKey);
   pushDemoHistory(pk,key,S.me.n+" bir ilişki ekledi: "+LINK_FORWARD_LABEL[linkType]+" "+targetKey);
   S.f.linkType=null;S.f.linkTarget=null;
-  toast("İlişki eklendi.");render();return;}
+  toast("Link added.");render();return;}
  if(k==="issueLinkDel"){const pi=+p[1],key=p[2],linkId=p[3],pk=PROJ[pi].k;
   if(LIVE_BACKEND){
    try{
     await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/links/"+linkId);
-    toast("İlişki kaldırıldı.");await loadIssueLinksLive(pk,key);await loadIssueHistoryLive(pk,key);
+    toast("Link removed.");await loadIssueLinksLive(pk,key);await loadIssueHistoryLive(pk,key);
    }catch(e){toast(e.message,1);}
    return;}
   ISSUE_LINKS_DEMO=ISSUE_LINKS_DEMO.filter(l=>!(l.id===+linkId&&l.pk===pk));
-  audit("Konu ilişkisi kaldırıldı: "+key+" (#"+linkId+")");
+  audit("Issue link removed: "+key+" (#"+linkId+")");
   pushDemoHistory(pk,key,S.me.n+" bir ilişkiyi kaldırdı.");
-  toast("İlişki kaldırıldı.");render();return;}
+  toast("Link removed.");render();return;}
  if(k==="commentAdd"){const pi=+p[1],key=p[2],pk=PROJ[pi].k;
   const body=(S.f.commentBody||"").trim();
-  if(!body){toast("Yorum boş olamaz.",1);return;}
+  if(!body){toast("Comment cannot be empty.",1);return;}
   if(LIVE_BACKEND){
    try{
     await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/comments",{body});
@@ -6151,16 +6151,16 @@ app.addEventListener("click",async ev=>{
  if(k==="commentEditSave"){const pi=+p[1],key=p[2],commentId=p[3],pk=PROJ[pi].k;
   const ta=document.getElementById("fCommentEdit");
   const body=(ta&&ta.value||"").trim();
-  if(!body){toast("Yorum boş olamaz.",1);return;}
+  if(!body){toast("Comment cannot be empty.",1);return;}
   if(LIVE_BACKEND){
    try{
     await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/comments/"+commentId,{body});
-    S.f.editingComment=null;await loadIssueCommentsLive(pk,key);toast("Yorum güncellendi.");
+    S.f.editingComment=null;await loadIssueCommentsLive(pk,key);toast("Comment updated.");
    }catch(e){toast(e.message,1);}
    return;}
   const c=ISSUE_COMMENTS_DEMO.find(x=>String(x.id)===String(commentId)&&x.pk===pk&&x.issue_key===key);
   if(c){c.body=body;c.updated_at=now();}
-  S.f.editingComment=null;toast("Yorum güncellendi.");render();return;}
+  S.f.editingComment=null;toast("Comment updated.");render();return;}
  if(k==="commentDelete"){const pi=+p[1],key=p[2],commentId=p[3],pk=PROJ[pi].k;
   if(LIVE_BACKEND){
    try{
@@ -6290,7 +6290,7 @@ app.addEventListener("click",async ev=>{
   it.inSprint=false;if(it.st!=="done")it.st="backlog";render();
   try{
    await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/sprint/items",{issueKey:p[2],inSprint:false});
-   toast(p[2]+" sprintten çıkarıldı"+(prevSt!=="done"?", backlog'a alındı.":"."));
+   toast(p[2]+" removed from sprint"+(prevSt!=="done"?", moved to backlog.":"."));
   }catch(e){it.inSprint=prevInSprint;it.st=prevSt;toast(e.message,1);render();}
   return;}
  if(k==="crit"){
@@ -6317,16 +6317,16 @@ app.addEventListener("click",async ev=>{
   const critText=(document.getElementById("fGateCrit")||{}).value||"";
   const need=(document.getElementById("fGateNeed")||{}).value||"1";
   const criteria=critText.split("\n").map(x=>x.trim()).filter(Boolean);
-  if(!name.trim()||!criteria.length){toast("Gate adı ve en az bir kriter girmelisiniz.",1);return;}
+  if(!name.trim()||!criteria.length){toast("Gate name and at least one criterion are required.",1);return;}
   try{
    await api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/gate",{gateName:name.trim(),criteria,required:+need||1});
-   toast("Gate tanımlandı.");await loadProjectsLive();render();
+   toast("Gate defined.");await loadProjectsLive();render();
   }catch(e){toast(e.message,1);}
   return;}
  if(k==="gateBlocked"){toast("The gate cannot be approved while entry criteria are open.",1);return;}
  if(k==="gateOverride"){const gp=PROJ.filter(x=>x.gate);const tp=gp.includes(P())?P():gp[0];const g=tp.gate;
-  if(!canOverrideGate()){toast("Tek imzayla ilerletme yetkisi Proje Yönetim Direktörü ünvanındadır.",1);return;}
-  if(g.crit.filter(c=>!c[1]).length){toast("Açık giriş kriteri varken kapı ilerletilemez.",1);return;}
+  if(!canOverrideGate()){toast("Only the Project Management Director title has authority to advance with a single signature.",1);return;}
+  if(g.crit.filter(c=>!c[1]).length){toast("The gate cannot be advanced while entry criteria are open.",1);return;}
   S.f={};S.dlg={type:"override"};render();return;}
  if(k==="overrideOk"){const gp=PROJ.filter(x=>x.gate);const tp=gp.includes(P())?P():gp[0];const g=tp.gate;
   g.sign.push({n:S.me.n,r:ROLE_OF(S.me),authority:true});
@@ -6339,7 +6339,7 @@ app.addEventListener("click",async ev=>{
    const pr=P();
    try{
     await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/gate/sign",{});
-    toast("Gate imzalandı.");await loadProjectsLive();render();
+    toast("Gate signed.");await loadProjectsLive();render();
    }catch(e){toast(e.message,1);}
    return;}
   const gp=PROJ.filter(x=>x.gate);const tp=gp.includes(P())?P():gp[0];const g=tp.gate;
@@ -6354,11 +6354,11 @@ app.addEventListener("click",async ev=>{
    if(g.sign.some(s=>s.r===ROLE[S.me.r])){toast("The two signatures must come from two different roles.",1);return;}}
   g.sign.push({n:S.me.n,r:ROLE[S.me.r],authority:authority});
   if(authority){g.passed=true;g.rule="authority";
-   audit("Faz kapısı tek yetkili onayıyla geçildi: "+tp.k+" · "+S.me.title,1);
+   audit("Phase gate passed with single-authority approval: "+tp.k+" · "+S.me.title,1);
    toast("Gate approved by authority — "+S.me.title);}
   else if(g.sign.length>=g.need){g.passed=true;g.rule="two-signature";
-   audit("Faz kapısı iki imzayla geçildi: "+tp.k);toast("Gate passed — two signatures collected.");}
-  else{audit("Faz kapısı imzalandı: "+tp.k);toast("Gate signed — "+g.sign.length+"/"+g.need);}
+   audit("Phase gate passed with two signatures: "+tp.k);toast("Gate passed — two signatures collected.");}
+  else{audit("Phase gate signed: "+tp.k);toast("Gate signed — "+g.sign.length+"/"+g.need);}
   return;}
 
  /* okuyucu */
@@ -6463,13 +6463,13 @@ app.addEventListener("click",async ev=>{
   const ends=(document.getElementById("fSpEnds")||{}).value||"";
   try{
    await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/sprint/start",{sprintGoal:goal.trim()||null,sprintEndsAt:ends||null});
-   toast("Sprint başlatıldı.");await loadProjectsLive();render();
+   toast("Sprint started.");await loadProjectsLive();render();
   }catch(e){toast(e.message,1);}
   return;}
- if(k==="sprintNotYet"){toast("Sprint yalnızca bitiş gününde kapatılabilir.",1);return;}
+ if(k==="sprintNotYet"){toast("A sprint can only be closed on its end date.",1);return;}
  if(k==="sprintCloseAsk"){
   const pr=P();
-  if(!pr.itemsLoaded){toast("Konular henüz yüklenmedi, birazdan tekrar deneyin.",1);return;}
+  if(!pr.itemsLoaded){toast("Issues haven't loaded yet, please try again shortly.",1);return;}
   const openItems=(pr.items||[]).filter(i=>i.inSprint&&i.st!=="done")
    .map(i=>({key:i.key,t:i.t,pts:i.pts}));
   S.f={keepKeys:new Set(openItems.map(i=>i.key))};S.dlg={type:"sprintClose",openItems};render();return;}
@@ -6486,7 +6486,7 @@ app.addEventListener("click",async ev=>{
    await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/sprint/close",{
     keepInSprintKeys:Array.from(f.keepKeys||[]),openNew:!!f.openNew,
     newSprintGoal:newGoal.trim()||null,newSprintEndsAt:newEnds||null});
-   S.dlg=null;S.f={};toast(f.openNew?"Sprint kapatıldı, yeni sprint açıldı.":"Sprint kapatıldı.");
+   S.dlg=null;S.f={};toast(f.openNew?"Sprint closed, new sprint opened.":"Sprint closed.");
    await loadProjectsLive();await loadIssuesLive(pr.k);render();
   }catch(e){toast(e.message,1);}
   return;}
@@ -6524,7 +6524,7 @@ app.addEventListener("click",async ev=>{
      category:S.f.cat,criticality:S.f.crit,validUntil:S.f.until||null,popup:!!S.f.pop});
     S.dlg=null;S.f={};S.annLive=null;S.reqsMineLive=null;
     toast("Duyuru onaya gönderildi; onaylanana kadar yayına çıkmaz.");render();
-   }catch(e){toast("Gönderilemedi: "+e.message,1);}
+   }catch(e){toast("Could not be submitted: "+e.message,1);}
    return;}
   const id=nextAnn++,ap=approverFor(S.f.cat);
   ANN.unshift({id,t:S.f.title.trim(),body:S.f.body.trim(),by:S.me.n,cat:S.f.cat,crit:S.f.crit,
