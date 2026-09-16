@@ -2637,75 +2637,86 @@ function screenView(){
  if(v==="d.meetingnew"){
   const f=S.f,parts=f.parts||[],items=f.items||[];
   const freeUsers=USERS.filter(u=>u.on&&!parts.includes(u.n));
-  return head("New meeting note","All attendees receive an email notification when you create this.",
+  const attempted=S.f.mtSubmitAttempted;
+  const errS=(bad)=>bad?"border-color:var(--er-fg)":"";
+  const projectBlock=`
+   <div class="lbl">Project</div>
+   <select id="fMtProjSel" style="${errS(attempted&&!f.projKey)}">
+    <option value="" ${!f.projKey?"selected":""}>Please select</option>
+    ${projsAlpha().map(p=>`<option value="${p.k}" ${f.projKey===p.k?"selected":""}>${p.k} \u2014 ${esc(p.n)}</option>`).join("")}
+    <option value="OTHER" ${f.projKey==="OTHER"?"selected":""}>Other</option></select>`;
+  const subjectBlock=`
+   <div class="lbl" style="margin-top:13px">Meeting subject</div>
+   <input id="fMtOtherSubject" value="${esc(f.otherSubject||"")}" placeholder="Enter the subject of the meeting"
+    style="${errS(attempted&&!(f.otherSubject||"").trim())}">`;
+  const dateTimeBlock=`
+   <div class="lbl" style="margin-top:13px">Meeting date and time</div>
+   <div style="display:flex;gap:8px">
+    <input id="fMtDate" type="date" value="${esc(f.date||"")}" style="width:170px;flex:none;${errS(attempted&&!f.date)}">
+    <select id="fMtTime" style="width:120px">
+     <option value="" ${!f.time?"selected":""}>No time</option>
+     ${TIME_SLOTS_15MIN.map(t=>`<option value="${t}" ${f.time===t?"selected":""}>${t}</option>`).join("")}</select></div>`;
+  const recurrenceBlock=`
+   <div class="lbl" style="margin-top:13px">Recurrence</div>
+   <select id="fMtRecurrence">
+    <option value="" ${!f.recurrence?"selected":""}>One-time</option>
+    <option value="weekly" ${f.recurrence==="weekly"?"selected":""}>Weekly</option>
+    <option value="monthly" ${f.recurrence==="monthly"?"selected":""}>Monthly</option>
+    <option value="quarterly" ${f.recurrence==="quarterly"?"selected":""}>Quarterly</option></select>`;
+  const attendeesBlock=`
+   <div class="lbl" style="margin-top:13px">Attendees</div>
+   ${parts.length?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
+    ${parts.map(n=>`<span class="pl ok" style="cursor:pointer" data-a="mtRemPart:${encodeURIComponent(n)}">${esc(n)} \u2715</span>`).join("")}</div>`:""}
+   <select id="fMtPartSel" style="${errS(attempted&&!parts.length)}">
+    <option value="" selected>Please select</option>
+    ${namesAlpha(freeUsers,u=>u.n).map(u=>`<option value="${esc(u.n)}">${esc(u.n)} \u00b7 ${esc(u.unit)}</option>`).join("")}</select>`;
+  const agendaItemsBlock=`
+   <div class="lbl" style="margin-top:14px">Agenda items</div>
+   ${items.length?items.map((it,i)=>{const showErr=S.f.mtSubmitAttempted&&!it.assignee;
+    return `<div class="card" style="padding:9px 10px;margin-bottom:6px">
+    <div style="display:flex;gap:8px;align-items:center">
+     <span style="flex:1;font-size:12.5px">${it.carried?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}</span>
+     <button class="b s d" data-a="mtRemItem:${i}">Delete</button></div>
+    <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
+     <select data-item-assign="${it.id}" style="flex:1;min-width:150px;font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid ${showErr?"var(--er-fg)":"var(--bd)"};background:var(--s2);color:var(--t1)">
+      <option value="" ${!it.assignee?"selected":""}>Select assignee\u2026</option>
+      ${namesAlpha(USERS.filter(u=>u.on),u=>u.n).map(u=>`<option value="${esc(u.n)}" ${it.assignee===u.n?"selected":""}>${esc(u.n)} \u00b7 ${esc(u.unit)}</option>`).join("")}</select>
+     <input type="date" data-item-due="${it.id}" value="${esc(it.due||"")}" title="Due date (optional)"
+      style="font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)"></div>
+    ${showErr?`<p class="m" style="color:var(--er-fg);margin:5px 0 0">Assignee required for this item.</p>`:""}</div>`;}).join("")
+    :`<p class="m" style="color:var(--tm);margin:4px 0">No items added yet.</p>`}
+   <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="New agenda item..." style="flex:2;min-width:160px">
+    <select id="fMtNewItemAssignee" style="flex:1;min-width:150px;${errS(S.f.mtNewItemAttempted&&!f.newItemAssignee)}">
+     <option value="" ${!f.newItemAssignee?"selected":""}>Select assignee\u2026</option>
+     ${namesAlpha(USERS.filter(u=>u.on),u=>u.n).map(u=>`<option value="${esc(u.n)}" ${f.newItemAssignee===u.n?"selected":""}>${esc(u.n)} \u00b7 ${esc(u.unit)}</option>`).join("")}</select>
+    <input id="fMtNewItemDue" type="date" value="${esc(f.newItemDue||"")}" title="Due date (optional)" style="width:150px">
+    <button class="b s" data-a="mtAddItem">Add</button></div>`;
+  const notesBlock=(minH)=>`
+   <div class="lbl" style="margin-top:13px">Notes</div>
+   <textarea id="fMtNotes" placeholder="Free-form notes about the meeting" style="min-height:${minH}px">${esc(f.notes||"")}</textarea>`;
+  const footer=`
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px;align-items:center">
+    <span id="hint" class="m" style="color:var(--tm);flex:1"></span>
+    <button class="b" data-a="mtNewCancel">Cancel</button>
+    <button id="okBtn" class="b off" data-a="needFields">Create and notify</button></div>`;
+  if(LIVE_BACKEND){
+   return head("New meeting note","All attendees receive an email notification when you create this.",
+     `<button class="b" data-a="mtNewCancel">Cancel</button>`)+
+    `<div class="card" style="max-width:640px">
+      ${projectBlock}${subjectBlock}${dateTimeBlock}${recurrenceBlock}${attendeesBlock}${agendaItemsBlock}${notesBlock(74)}
+      ${footer}</div>`;}
+  // Demo modda önizleme: ekran ikiye bölünür — solda seçim alanları
+  // (Project/Subject/Date/Recurrence/Attendees), sağda Agenda items +
+  // Notes (eşit genişlikte, Notes daha ferah okunur). auto-fit/minmax
+  // sayesinde dar ekranlarda otomatik tek sütuna düşer (responsive).
+  return head("New meeting note","All attendees receive an email notification when you create this. (Demo preview: two-column layout)",
     `<button class="b" data-a="mtNewCancel">Cancel</button>`)+
-  `<div class="card" style="max-width:640px">
-    <div class="lbl">Project</div>
-    <select id="fMtProjSel">
-     <option value="" ${!f.projKey?"selected":""}>Please select</option>
-     ${projsAlpha().map(p=>`<option value="${p.k}" ${f.projKey===p.k?"selected":""}>${p.k} — ${esc(p.n)}</option>`).join("")}
-     <option value="OTHER" ${f.projKey==="OTHER"?"selected":""}>Other</option></select>
-    ${f.projKey==="OTHER"?`<div class="lbl" style="margin-top:13px">Meeting subject</div>
-     <input id="fMtOtherSubject" value="${esc(f.otherSubject||"")}" placeholder="Enter the subject of the meeting">`:""}
+   `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;align-items:start;max-width:1100px">
+     <div class="card">${projectBlock}${subjectBlock}${dateTimeBlock}${recurrenceBlock}${attendeesBlock}</div>
+     <div class="card">${agendaItemsBlock}${notesBlock(220)}</div></div>
+    <div style="max-width:1100px">${footer}</div>`;}
 
-    <div class="lbl" style="margin-top:13px">Meeting date and time</div>
-    <div style="display:flex;gap:8px">
-     <input id="fMtDate" type="date" value="${esc(f.date||"")}" style="width:170px;flex:none">
-     <select id="fMtTime" style="width:120px">
-      <option value="" ${!f.time?"selected":""}>No time</option>
-      ${TIME_SLOTS_15MIN.map(t=>`<option value="${t}" ${f.time===t?"selected":""}>${t}</option>`).join("")}</select></div>
-    <p class="m" style="color:var(--tm);margin:5px 0 0">Time: 08:00–20:00, 15-minute steps only.</p>
-
-    <div class="lbl" style="margin-top:13px">Recurrence</div>
-    <select id="fMtRecurrence">
-     <option value="" ${!f.recurrence?"selected":""}>One-time (no carry-over)</option>
-     <option value="weekly" ${f.recurrence==="weekly"?"selected":""}>Weekly</option>
-     <option value="monthly" ${f.recurrence==="monthly"?"selected":""}>Monthly</option>
-     <option value="quarterly" ${f.recurrence==="quarterly"?"selected":""}>Quarterly</option></select>
-    <p class="m" style="color:var(--tm);margin:5px 0 0">Only recurring meetings allow carrying an item to the next occurrence.</p>
-
-    <div class="lbl" style="margin-top:13px">Title (optional)</div>
-    <input id="fMtTitle" value="${esc(f.title||"")}" placeholder="E.g.: Weekly status meeting">
-
-    <div class="lbl" style="margin-top:13px">Attendees</div>
-    ${parts.length?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
-     ${parts.map(n=>`<span class="pl ok" style="cursor:pointer" data-a="mtRemPart:${encodeURIComponent(n)}">${esc(n)} ✕</span>`).join("")}</div>`:""}
-    <select id="fMtPartSel">
-     <option value="" selected>Please select</option>
-     ${namesAlpha(freeUsers,u=>u.n).map(u=>`<option value="${esc(u.n)}">${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
-    <p class="m" style="color:var(--tm);margin:5px 0 0">Selecting a person adds them to the list; select again to add more. Selected: ${parts.length}</p>
-
-    <div class="lbl" style="margin-top:14px">Agenda items</div>
-    <p class="m" style="color:var(--tm);margin:2px 0 8px">Each item becomes a Task under this meeting's Epic in the "Toplantı" project, assigned directly to the selected person's backlog. Assignee is required; due date is optional.</p>
-    ${items.length?items.map((it,i)=>{const showErr=S.f.mtSubmitAttempted&&!it.assignee;
-     return `<div class="card" style="padding:9px 10px;margin-bottom:6px">
-     <div style="display:flex;gap:8px;align-items:center">
-      <span style="flex:1;font-size:12.5px">${it.carried?`<span class="pl wr" style="margin-right:6px">carried from previous meeting</span>`:""}${esc(it.text)}</span>
-      <button class="b s d" data-a="mtRemItem:${i}">Delete</button></div>
-     <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">
-      <select data-item-assign="${it.id}" style="flex:1;min-width:150px;font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid ${showErr?"var(--er-fg)":"var(--bd)"};background:var(--s2);color:var(--t1)">
-       <option value="" ${!it.assignee?"selected":""}>Select assignee…</option>
-       ${namesAlpha(USERS.filter(u=>u.on),u=>u.n).map(u=>`<option value="${esc(u.n)}" ${it.assignee===u.n?"selected":""}>${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
-      <input type="date" data-item-due="${it.id}" value="${esc(it.due||"")}" title="Due date (optional)"
-       style="font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)"></div>
-     ${showErr?`<p class="m" style="color:var(--er-fg);margin:5px 0 0">Assignee required for this item.</p>`:""}</div>`;}).join("")
-     :`<p class="m" style="color:var(--tm);margin:4px 0">No items added yet.</p>`}
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-     <input id="fMtNewItem" value="${esc(f.newItem||"")}" placeholder="New agenda item..." style="flex:2;min-width:160px">
-     <select id="fMtNewItemAssignee" style="flex:1;min-width:150px">
-      <option value="" ${!f.newItemAssignee?"selected":""}>Select assignee…</option>
-      ${namesAlpha(USERS.filter(u=>u.on),u=>u.n).map(u=>`<option value="${esc(u.n)}" ${f.newItemAssignee===u.n?"selected":""}>${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
-     <input id="fMtNewItemDue" type="date" value="${esc(f.newItemDue||"")}" title="Due date (optional)" style="width:150px">
-     <button class="b s" data-a="mtAddItem">Add</button></div>
-    <p class="m" style="color:var(--tm);margin:6px 0 0">Each new item needs an assignee before it can be added.</p>
-
-    <div class="lbl" style="margin-top:13px">Notes</div>
-    <textarea id="fMtNotes" placeholder="Free-form notes about the meeting">${esc(f.notes||"")}</textarea>
-
-    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px;align-items:center">
-     <span id="hint" class="m" style="color:var(--tm);flex:1"></span>
-     <button class="b" data-a="mtNewCancel">Cancel</button>
-     <button id="okBtn" class="b off" data-a="needFields">Create and notify</button></div></div>`;}
 
  /* -------------------------------- Gantt Chart ------------------------------- */
  if(v==="d.gantt"){
@@ -4549,7 +4560,7 @@ function dialogView(){
 function validate(){
  if(S.scr==="d.meetingnew"){const f=S.f,miss=[];
   if(!f.projKey)miss.push("proje");
-  else if(f.projKey==="OTHER"&&!(f.otherSubject||"").trim())miss.push("toplantı konusu");
+  if(!(f.otherSubject||"").trim())miss.push("toplantı konusu");
   if(!f.date)miss.push("tarih");
   if(!(f.parts&&f.parts.length))miss.push("katılımcı");
   if((f.items||[]).some(it=>!it.assignee))miss.push("her gündem maddesi için sorumlu (assignee)");
@@ -5362,19 +5373,20 @@ app.addEventListener("click",async ev=>{
  if(k==="mtRemPart"){const n=dec(p[1]);S.f.parts=(S.f.parts||[]).filter(x=>x!==n);render();return;}
  if(k==="mtAddItem"){const t=(S.f.newItem||"").trim();
   if(!t){toast("Madde metni boş olamaz.",1);return;}
-  if(!S.f.newItemAssignee){toast("Sorumlu (assignee) seçmeden madde eklenemez.",1);return;}
+  if(!S.f.newItemAssignee){S.f.mtNewItemAttempted=true;toast("Sorumlu (assignee) seçmeden madde eklenemez.",1);render();return;}
+  S.f.mtNewItemAttempted=false;
   S.f.items=[...(S.f.items||[]),{id:"mi"+(nextMeetingItem++),text:t,status:"open",
    assignee:S.f.newItemAssignee,due:S.f.newItemDue||""}];
   S.f.newItem="";S.f.newItemAssignee="";S.f.newItemDue="";render();return;}
  if(k==="mtRemItem"){S.f.items=(S.f.items||[]).filter((_,i)=>i!==+p[1]);render();return;}
  if(k==="mtSave"){const f=S.f,pr=PROJ.find(x=>x.k===f.projKey);
-  const subject=f.projKey==="OTHER"?(f.otherSubject||"").trim():"";
+  const subject=(f.otherSubject||"").trim();
   const usernamesOf=names=>names.map(n=>{const u2=USERS.find(x=>x.n===n);return u2?u2.u:n;});
   if(LIVE_BACKEND){
    try{
     const data=await api("POST","/api/projects/meetings",{
      projectK:f.projKey==="OTHER"?null:f.projKey,otherSubject:subject,
-     title:(f.title||"").trim()||undefined,date:f.date,time:f.time||undefined,
+     title:subject||undefined,date:f.date,time:f.time||undefined,
      recurrence:f.recurrence||undefined,
      notes:(f.notes||"").trim()||undefined,participants:usernamesOf(f.parts||[]),
      items:(f.items||[]).map(it=>({text:it.text,carriedQueueId:it.carriedQueueId||undefined,
@@ -5388,20 +5400,16 @@ app.addEventListener("click",async ev=>{
     S.mtView=+data.item.id;S.mod="delivery";S.scr="d.meetingview";render();
    }catch(e){toast("Kaydedilemedi: "+e.message,1);}
    return;}
-  const m={id:nextMeeting++,projKey:f.projKey,projOther:subject,recurrence:f.recurrence||null,
+  const m={id:nextMeeting++,projKey:f.projKey,projOther:f.projKey==="OTHER"?subject:null,recurrence:f.recurrence||null,
    title:"placeholder", // aşağıda gerçek başlık (subject-türetilmiş ya da özel) atanacak
    date:f.date,time:f.time||"",participants:[...(f.parts||[])],notes:(f.notes||"").trim(),
    items:(f.items||[]).map(it=>({id:it.id,text:it.text,status:"open",carriedFrom:!!it.carried,
     assignee:it.assignee,due:it.due||null,linkedIssueKey:it.linkedIssueKey||null})),
    by:S.me.n,at:now()};
-  // Konu anahtarı öneki: özel başlık varsa ondan, yoksa gerçek projenin
-  // adından, o da yoksa "Diğer" konu metninden türetilir — backend'deki
-  // POST /meetings ile BİREBİR aynı öncelik sırası.
-  let subjectSource=(f.title||"").trim();
-  if(!subjectSource&&pr)subjectSource=pr.n;
-  if(!subjectSource)subjectSource=subject||"";
-  const subjectPrefix=deriveSubjectPrefixDemo(subjectSource);
-  const explicitTitle=(f.title||"").trim()||(f.projKey==="OTHER"?subject:"")||null;
+  // Konu anahtarı öneki: Meeting subject (artık her zaman zorunlu ve dolu)
+  // ile türetilir — backend'deki POST /meetings ile BİREBİR aynı öncelik.
+  const subjectPrefix=deriveSubjectPrefixDemo(subject);
+  const explicitTitle=subject||null;
   // Gündem maddeleri "Toplantı" projesinde bu toplantıya özel bir Epic'in
   // altına Task olarak açılır — doğrudan seçilen kişiye atanır ve backlog'a
   // düşer (board'a alınmaz). Demo modda da canlı backend ile birebir aynı
