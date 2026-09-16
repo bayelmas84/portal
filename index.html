@@ -1632,6 +1632,24 @@ async function loadVersionsLive(pk){
 async function loadComponentsLive(pk){
  try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/components");
   PROJECT_COMPONENTS_LIVE[pk]=data.items;render();}catch(e){PROJECT_COMPONENTS_LIVE[pk]=[];render();}}
+/* Release notes: bir sürümün (version) fixVersions alanında yer aldığı
+   TÜM issue'ları tipe göre gruplayıp paylaşılabilir bir Markdown metni
+   üretir. Backend değişikliği yok — veri zaten client-side (pr.items)
+   mevcut, fixVersions alanı versiyon İSMİYLE eşleşiyor (id değil). */
+function generateReleaseNotes(pr,versionName){
+ const items=pr.items.filter(i=>(i.fixVersions||[]).includes(versionName));
+ const groups={Bug:"🐛 Bug fixes",Story:"✨ New features",Task:"🔧 Improvements",Epic:"📦 Epics"};
+ let md=`# ${pr.n} — ${versionName}\n\nReleased: ${now().slice(0,10)}\n\n`;
+ let any=false;
+ Object.keys(groups).forEach(ty=>{
+  const list=items.filter(i=>i.ty===ty);
+  if(!list.length)return;
+  any=true;
+  md+=`## ${groups[ty]}\n`;
+  list.forEach(i=>{md+=`- **${i.key}**: ${i.t}\n`;});
+  md+="\n";});
+ if(!any)md+="_No issues found for this version._\n";
+ return md;}
 function versionsOf(pk){
  if(LIVE_BACKEND){if(!(pk in PROJECT_VERSIONS_LIVE)){PROJECT_VERSIONS_LIVE[pk]=[];loadVersionsLive(pk);}return PROJECT_VERSIONS_LIVE[pk];}
  return PROJECT_VERSIONS_DEMO[pk]||(PROJECT_VERSIONS_DEMO[pk]=[]);}
@@ -1653,6 +1671,17 @@ let PROJECT_WORKFLOW_LIVE={},PROJECT_WORKFLOW_DEMO={};
    story point sığdırabileceği (izin/tatil gibi durumlarda düşürülebilir).
    Canlı backend'de proje bazında saklanır; demo modda bellek-içi. */
 let CAPACITY_LIVE={};
+/* Kayıtlı filtreler: kullanıcının "All Issues" ekranında sık kullandığı
+   filtre kombinasyonlarını adlandırıp kaydetmesi. Canlı backend'de
+   /api/saved-filters üzerinden saklanır; demo modda bellek-içi. */
+let SAVED_FILTERS_LIVE=null,SAVED_FILTERS_LIVE_LOADING=false;
+async function loadSavedFiltersLive(){
+ SAVED_FILTERS_LIVE_LOADING=true;
+ try{const data=await api("GET","/api/saved-filters");SAVED_FILTERS_LIVE=data.items;}
+ catch(e){SAVED_FILTERS_LIVE=[];}
+ SAVED_FILTERS_LIVE_LOADING=false;render();}
+let SAVED_FILTERS_DEMO=[];
+let nextSavedFilterId=1;
 async function loadCapacityLive(pk){
  try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/capacity");CAPACITY_LIVE[pk]=data.items;render();}
  catch(e){CAPACITY_LIVE[pk]=[];render();}}
@@ -2291,11 +2320,41 @@ function screenView(){
   const p=P();
   if(LIVE_BACKEND&&!p.itemsLoaded)loadIssuesLive(p.k);
   if(LIVE_BACKEND&&!p.itemsLoaded)return head("All Issues",p.n,"")+`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
-  const allItems=[...p.items].sort((a,b)=>a.key.localeCompare(b.key,undefined,{numeric:true}));
-  return head("All Issues",p.k+" — "+p.n+" · "+allItems.length+" issues"+(LIVE_BACKEND?" · live backend":""),
+  if(LIVE_BACKEND&&SAVED_FILTERS_LIVE===null&&!SAVED_FILTERS_LIVE_LOADING)loadSavedFiltersLive();
+  const savedFilters=LIVE_BACKEND?(SAVED_FILTERS_LIVE||[]):SAVED_FILTERS_DEMO;
+  const f=S.allIssuesFilter||{};
+  const sortedItems=[...p.items].sort((a,b)=>a.key.localeCompare(b.key,undefined,{numeric:true}));
+  const allItems=sortedItems.filter(i=>{
+   if(f.status&&i.st!==f.status)return false;
+   if(f.type&&i.ty!==f.type)return false;
+   if(f.priority&&i.pri!==f.priority)return false;
+   if(f.assigneeUsername){const uname=teamOf(p.k).find(m=>m.n===i.as);
+    if((uname?(uname.username||nameToUsername(uname.n)):null)!==f.assigneeUsername)return false;}
+   if(f.q&&f.q.trim()){const q=f.q.trim().toLowerCase();
+    if(!i.key.toLowerCase().includes(q)&&!String(i.t).toLowerCase().includes(q))return false;}
+   return true;});
+  const hasActiveFilter=!!(f.status||f.type||f.priority||f.assigneeUsername||(f.q&&f.q.trim()));
+  const filterBar=`<div class="card" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+   <input id="fAllIssuesQ" placeholder="Search key or title…" value="${esc(f.q||"")}" style="flex:1;min-width:150px;font-size:12px;padding:7px 10px">
+   <select id="fAllIssuesStatus" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+    <option value="">All statuses</option>${Object.keys(FLOW).map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${FLOW[s]}</option>`).join("")}</select>
+   <select id="fAllIssuesType" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+    <option value="">All types</option>${["Epic","Story","Task","Bug"].map(t=>`<option value="${t}" ${f.type===t?"selected":""}>${t}</option>`).join("")}</select>
+   <select id="fAllIssuesPriority" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+    <option value="">All priorities</option>${["Highest","High","Medium","Low"].map(pr=>`<option value="${pr}" ${f.priority===pr?"selected":""}>${pr}</option>`).join("")}</select>
+   <select id="fAllIssuesAssignee" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+    <option value="">All assignees</option>${[...teamOf(p.k)].sort((a,b)=>a.n.localeCompare(b.n,"tr")).map(m=>{const uname=m.username||nameToUsername(m.n);return uname?`<option value="${uname}" ${f.assigneeUsername===uname?"selected":""}>${esc(m.n)}</option>`:"";}).join("")}</select>
+   <button class="b s p" data-a="allIssuesFilterApply">Filter</button>
+   ${hasActiveFilter?`<button class="b s" data-a="allIssuesFilterClear">Clear</button>`:""}
+   ${hasActiveFilter?`<button class="b s" data-a="savedFilterSaveOpen:${S.proj}">Save filter</button>`:""}</div>
+  ${savedFilters.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+    ${savedFilters.map(sf=>`<span class="pl" style="cursor:pointer" data-a="savedFilterApply:${sf.id}">${esc(sf.name)}
+     <span style="cursor:pointer;margin-left:4px" data-a="savedFilterDelete:${sf.id}" title="Delete">✕</span></span>`).join("")}</div>`:""}`;
+  return head("All Issues",p.k+" — "+p.n+" · "+allItems.length+"/"+sortedItems.length+" issues"+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
     <button class="b s" data-a="exportCSV:allissues:${S.proj}">Export CSV</button>
     <button class="b s" data-a="exportPDF:allissues:${S.proj}">Export PDF</button></div>`)+
+  filterBar+
   table(["Type","Epic","Key","Title","Status","Assignee","SP"],allItems.map(i=>{const par=i.parent?itemByKey(p,i.parent):null;
    return `<tr>
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
@@ -2304,7 +2363,7 @@ function screenView(){
     <td>${pill(FLOW[i.st],"")}</td>
     <td style="color:var(--t2)">${esc(i.as||"Unassigned")}</td>
     <td class="m">${i.pts||"—"}</td></tr>`;}).join("")||
-   `<tr><td colspan="7" style="color:var(--tm)">This project has no issues yet.</td></tr>`);}
+   `<tr><td colspan="7" style="color:var(--tm)">${hasActiveFilter?"No issues match this filter.":"This project has no issues yet."}</td></tr>`);}
 
  if(v==="d.gate"){
   if(LIVE_BACKEND){
@@ -4775,6 +4834,26 @@ function dialogView(){
     <span class="m" style="color:var(--tm)">${f.on?"aktif — atamalarda seçilebilir":"pasif — yeni atamalarda seçilemez"}</span></span></div>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px"><button class="b" data-a="dlgClose">Vazgeç</button>
     <button id="okBtn" class="b off" data-a="needFields">${isNew?"Ekle":"Kaydet"}</button></div>`);}
+ if(d.type==="releaseNotesView"){const pr=PROJ[d.pi];
+  return wrap(`<div style="display:flex;align-items:center;gap:9px">
+    <div style="font-size:15px;flex:1">Release Notes — ${pr.k} ${esc(d.versionName)}</div>
+    <button class="b s" data-a="dlgClose" style="padding:4px 9px">✕</button></div>
+   <p class="m" style="color:var(--tm);margin-top:6px">Auto-generated from issues with this fix version. Copy or download as Markdown, edit as needed before sharing.</p>
+   <textarea id="fReleaseNotesText" rows="14" readonly style="width:100%;font-family:monospace;font-size:11.5px;margin-top:8px">${esc(d.md)}</textarea>
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:12px">
+    <button class="b s" data-a="releaseNotesCopy">Copy</button>
+    <button class="b s" data-a="releaseNotesDownload:${d.pi}:${encodeURIComponent(d.versionName)}">Download .md</button>
+    <button class="b p" data-a="dlgClose">Close</button></div>`);}
+ if(d.type==="savedFilterSave"){const pr=PROJ[d.pi];
+  const f=S.allIssuesFilter||{};
+  const summary=[f.status&&FLOW[f.status],f.type,f.priority,f.assigneeUsername,f.q&&`"${f.q}"`].filter(Boolean).join(" · ")||"(no criteria)";
+  return wrap(`<div style="font-size:15px">Save filter</div>
+   <p class="m" style="color:var(--tm);margin-top:8px">Project: ${esc(pr.k)} — ${summary}</p>
+   <div class="lbl" style="margin-top:11px">NAME</div>
+   <input id="fSavedFilterName" placeholder="e.g. My high-priority bugs" autofocus>
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Cancel</button>
+    <button class="b p" data-a="savedFilterSave:${d.pi}">Save</button></div>`);}
  if(d.type==="versionsComponents"){
   const pr=PROJ[d.pi];
   const versions=versionsOf(pr.k),components=componentsOf(pr.k);
@@ -4784,6 +4863,7 @@ function dialogView(){
    <div class="lbl" style="margin-top:12px">Versions</div>
    ${versions.map(v=>`<div class="card" style="padding:8px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
      <span style="flex:1;font-size:12.5px">${esc(v.name)}${v.released?" "+pill("released","ok"):""}${v.description?` <span class="m" style="color:var(--tm)">— ${esc(v.description)}</span>`:""}</span>
+     <button class="b s" data-a="releaseNotesGen:${d.pi}:${encodeURIComponent(v.name)}">Release Notes</button>
      ${!v.released?`<button class="b s" data-a="versionRelease:${d.pi}:${v.id}">Mark released</button>`:""}
      <button class="b s d" data-a="versionDelete:${d.pi}:${v.id}">Delete</button></div>`).join("")||`<p class="m" style="color:var(--tm)">No versions yet.</p>`}
    <div style="display:flex;gap:6px;margin-top:6px">
@@ -5921,7 +6001,63 @@ app.addEventListener("click",async ev=>{
 
  /* -------------------------------- Gantt Chart ------------------------------- */
  if(k==="ganttAdd"){S.f={progress:0};S.dlg={type:"gantt"};render();return;}
+ if(k==="allIssuesFilterApply"){
+  S.allIssuesFilter={
+   q:(document.getElementById("fAllIssuesQ")||{}).value||"",
+   status:(document.getElementById("fAllIssuesStatus")||{}).value||"",
+   type:(document.getElementById("fAllIssuesType")||{}).value||"",
+   priority:(document.getElementById("fAllIssuesPriority")||{}).value||"",
+   assigneeUsername:(document.getElementById("fAllIssuesAssignee")||{}).value||"",
+  };render();return;}
+ if(k==="allIssuesFilterClear"){S.allIssuesFilter={};render();return;}
+ if(k==="savedFilterSaveOpen"){const pi=+p[1];S.dlg={type:"savedFilterSave",pi};S.f={};render();return;}
+ if(k==="savedFilterSave"){const pi=+p[1],pr=PROJ[pi];
+  const name=(document.getElementById("fSavedFilterName")||{}).value||"";
+  if(!name.trim()){toast("Filter name is required.",1);return;}
+  const filters=S.allIssuesFilter||{};
+  if(LIVE_BACKEND){
+   try{const res=await api("POST","/api/saved-filters",{name:name.trim(),projectK:pr.k,filters});
+    SAVED_FILTERS_LIVE=[res.item,...(SAVED_FILTERS_LIVE||[])];
+    S.dlg=null;toast("Filter saved.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  SAVED_FILTERS_DEMO=[{id:nextSavedFilterId++,name:name.trim(),project_k:pr.k,filters_json:filters},...SAVED_FILTERS_DEMO];
+  S.dlg=null;toast("Filter saved.");render();return;}
+ if(k==="savedFilterApply"){const id=p[1];
+  const list=LIVE_BACKEND?(SAVED_FILTERS_LIVE||[]):SAVED_FILTERS_DEMO;
+  const sf=list.find(x=>String(x.id)===String(id));
+  if(!sf){toast("Filter not found.",1);return;}
+  if(sf.project_k){const pi=PROJ.findIndex(x=>x.k===sf.project_k);if(pi>=0){S.proj=pi;S.projAll=false;}}
+  S.allIssuesFilter={...sf.filters_json};
+  S.mod="delivery";S.scr="d.allissues";render();return;}
+ if(k==="savedFilterDelete"){const id=p[1];
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/saved-filters/"+encodeURIComponent(id));
+    SAVED_FILTERS_LIVE=(SAVED_FILTERS_LIVE||[]).filter(x=>String(x.id)!==String(id));
+    toast("Filter deleted.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  SAVED_FILTERS_DEMO=SAVED_FILTERS_DEMO.filter(x=>String(x.id)!==String(id));
+  toast("Filter deleted.");render();return;}
  if(k==="manageVC"){const pi=+p[1];S.dlg={type:"versionsComponents",pi};render();return;}
+ if(k==="releaseNotesGen"){const pi=+p[1],versionName=dec(p[2]),pr=PROJ[pi];
+  if(LIVE_BACKEND&&!pr.itemsLoaded){toast("Issues are still loading, try again in a moment.",1);return;}
+  const md=generateReleaseNotes(pr,versionName);
+  S.dlg={type:"releaseNotesView",pi,versionName,md};render();return;}
+ if(k==="releaseNotesCopy"){
+  const ta=document.getElementById("fReleaseNotesText");
+  if(ta){ta.select();
+   try{document.execCommand("copy");toast("Copied to clipboard.");}
+   catch(e){navigator.clipboard?.writeText(ta.value).then(()=>toast("Copied to clipboard.")).catch(()=>toast("Could not copy.",1));}}
+  return;}
+ if(k==="releaseNotesDownload"){const pi=+p[1],versionName=dec(p[2]);
+  const pr=PROJ[pi];
+  const blob=new Blob([S.dlg.md||generateReleaseNotes(pr,versionName)],{type:"text/markdown;charset=utf-8;"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=pr.k+"-"+versionName+"-release-notes.md";document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
+  return;}
  if(k==="manageWip"){const pi=+p[1];S.dlg={type:"wipLimits",pi};render();return;}
  if(k==="wipLimitsSave"){const pi=+p[1],pr=PROJ[pi],pk=pr.k;
   const cols=["todo","prog","review","test"];

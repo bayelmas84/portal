@@ -1043,6 +1043,40 @@ test("Sprint kapasite planlama: güncelleme ve atanan SP hesabı doğru çalış
   assert.equal(bad.status, 400);
 });
 
+test("Kayıtlı filtreler: oluşturma, listeleme (kullanıcı-izole), silme ve yetki kontrolü doğru çalışır", async () => {
+  const pm = await login("tolga.firat");
+  const admin = await login("bayram.elmas");
+
+  const create = await request(app).post("/api/saved-filters").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ name: "Test filter", projectK: "TRADE", filters: { status: "todo", priority: "High" } });
+  assert.equal(create.status, 201);
+  assert.equal(create.body.item.name, "Test filter");
+  const filterId = create.body.item.id;
+
+  // Boş isimle oluşturma reddedilir.
+  const badCreate = await request(app).post("/api/saved-filters").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ name: "" });
+  assert.equal(badCreate.status, 400);
+
+  // Sahibi kendi filtresini listede görür.
+  const listOwner = await request(app).get("/api/saved-filters").set("Cookie", pm.cookie);
+  assert.ok(listOwner.body.items.some((x) => x.id === filterId));
+
+  // Başka bir kullanıcı bu filtreyi GÖRMEZ (kullanıcı-izole).
+  const listOther = await request(app).get("/api/saved-filters").set("Cookie", admin.cookie);
+  assert.ok(!listOther.body.items.some((x) => x.id === filterId));
+
+  // Başka bir kullanıcı bu filtreyi SİLEMEZ.
+  const badDelete = await request(app).delete(`/api/saved-filters/${filterId}`).set("Cookie", admin.cookie).set("X-CSRF-Token", admin.csrf);
+  assert.equal(badDelete.status, 404);
+
+  // Sahibi siler.
+  const okDelete = await request(app).delete(`/api/saved-filters/${filterId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(okDelete.status, 200);
+  const listAfter = await request(app).get("/api/saved-filters").set("Cookie", pm.cookie);
+  assert.ok(!listAfter.body.items.some((x) => x.id === filterId));
+});
+
 test.after(async () => {
   await pool.end();
 });

@@ -38,6 +38,7 @@ function createApp() {
   app.use("/api/projects", require("./routes/projects"));
   app.use("/api/admin", require("./routes/admin"));
   app.use("/api/audit", require("./routes/audit"));
+  app.use("/api/saved-filters", require("./routes/saved-filters"));
   app.use("/api/notifications", require("./routes/notifications"));
   app.use("/api/search", require("./routes/search"));
 
