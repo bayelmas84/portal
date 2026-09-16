@@ -14,15 +14,15 @@ const TITLES = [
   ["DIR", "Direktör"], ["MDR", "Müdür"], ["UZM", "Uzman"],
 ];
 const USERS = [
-  ["ahmet.tera", "Ahmet Tera", "ceo", "PRT", "CEO", null, "#0B1F48"],
+  ["uras.elmas", "Uras Elmas", "ceo", "PRT", "CEO", null, "#0B1F48"],
   ["melis.suri", "Melis Suri", "staff", "KNL", "MDR", "deniz.okur", "#8A5A2B"],
-  ["leyla.varol", "Leyla Varol", "control", "RSK", "GDIR", "ahmet.tera", "#5B2E8C"],
+  ["leyla.varol", "Leyla Varol", "control", "RSK", "GDIR", "uras.elmas", "#5B2E8C"],
   ["elif.yalcin", "Elif Yalçın", "admin", "BT", "DIR", "deniz.okur", "#A3121C"],
   ["kerem.aslan", "Kerem Aslan", "inspection", "TFT", "MDR", "deniz.okur", "#7A1F3D"],
   ["seda.tunc", "Seda Tunç", "inspection", "TFT", "UZM", "kerem.aslan", "#5A1F3D"],
   ["burak.temel", "Burak Temel", "infosec", "BT", "MDR", "elif.yalcin", "#0178BA"],
   ["gonul.aladag", "Gönül Aladağ", "control", "UYM", "MDR", "deniz.okur", "#8E0D4D"],
-  ["deniz.okur", "Deniz Okur", "gmy", "PRT", "GMY", "ahmet.tera", "#4B3B8F"],
+  ["deniz.okur", "Deniz Okur", "gmy", "PRT", "GMY", "uras.elmas", "#4B3B8F"],
   ["meltem.aydin", "Meltem Aydın", "opsdir", "OPR", "DIR", "deniz.okur", "#854F0B"],
   ["tolga.firat", "Tolga Fırat", "pm", "BT", "MDR", "elif.yalcin", "#0B1F48"],
   ["mert.balkan", "Mert Balkan", "dev", "BT", "UZM", "tolga.firat", "#33405C"],
@@ -85,6 +85,22 @@ async function seed() {
      VALUES ('OPS','Platform operasyonları','Kanban','tolga.firat','Operasyon ve Takas','2026-07-01','2026-10-01','tolga.firat')
      ON CONFLICT (k) DO NOTHING`
   );
+
+  const TEAM = [
+    ["TRADE", "tolga.firat", "Proje Yöneticisi", true],
+    ["TRADE", "mert.balkan", "Geliştirici", true],
+    ["CORE", "tolga.firat", "Proje Yöneticisi", true],
+    ["CORE", "mert.balkan", "Geliştirici", true],
+    ["OPS", "tolga.firat", "Proje Yöneticisi", true],
+    ["OPS", "meltem.aydin", "Operasyon Direktörü", false],
+  ];
+  for (const [projectK, username, projectRole, mandatory] of TEAM) {
+    await query(
+      `INSERT INTO project_team (project_k, username, project_role, mandatory)
+       VALUES ($1,$2,$3,$4) ON CONFLICT (project_k, username) DO NOTHING`,
+      [projectK, username, projectRole, mandatory]
+    );
+  }
 
   console.log("[seed] tamamlandı: " + USERS.length + " kullanıcı, " + Object.keys(DEFAULT_ACCESS).length + " rol için erişim matrisi.");
 }

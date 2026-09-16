@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>BYELMAS Portal — Prototip</title>
+<title>BY Portal — Prototip</title>
 <style>
 :root{
   --s1:#f5f7fa;--s2:#ffffff;--bd:#e2e6ec;--bds:#c2c9d4;
@@ -516,18 +516,18 @@ const ROLE={pmdir:"Proje Yönetim Direktörü",admin:"Admin",inspection:"Teftiş
 const isProjectModuleKey=key=>key==="delivery"||key.startsWith("d.");
 
 let USERS=[
- {u:"ahmet.tera",n:"Ahmet Tera",r:"ceo",c:"#0B1F48",unit:"Portföy Yönetimi",
+ {u:"uras.elmas",n:"Uras Elmas",r:"ceo",c:"#0B1F48",unit:"Portföy Yönetimi",
   title:"Genel Müdür",mgr:null,on:1},
  {u:"melis.suri",n:"Melis Suri",r:"staff",c:"#8A5A2B",unit:"Kanal Yönetimi",
   title:"Müdür",mgr:"Deniz Okur",on:1},
  {u:"leyla.varol",n:"Leyla Varol",r:"control",c:"#5B2E8C",unit:"Kurumsal Risk",
-  title:"Grup Direktörü",mgr:"Ahmet Tera",on:1},
+  title:"Grup Direktörü",mgr:"Uras Elmas",on:1},
  {u:"elif.yalcin",n:"Elif Yalçın",r:"admin",c:"#A3121C",unit:"Bilgi Teknolojileri",title:"Direktör",mgr:"Deniz Okur",on:1},
  {u:"kerem.aslan",n:"Kerem Aslan",r:"inspection",c:"#7A1F3D",unit:"Teftiş Kurulu",title:"Müdür",mgr:"Deniz Okur",on:1},
  {u:"seda.tunc",n:"Seda Tunç",r:"inspection",c:"#5A1F3D",unit:"Teftiş Kurulu",title:"Uzman",mgr:"Kerem Aslan",on:1},
  {u:"burak.temel",n:"Burak Temel",r:"infosec",c:"#0178BA",unit:"Bilgi Teknolojileri",title:"Müdür",mgr:"Elif Yalçın",on:1},
  {u:"gonul.aladag",n:"Gönül Aladağ",r:"control",c:"#8E0D4D",unit:"Uyum ve İç Kontrol",title:"Müdür",mgr:"Deniz Okur",on:1},
- {u:"deniz.okur",n:"Deniz Okur",r:"gmy",c:"#4B3B8F",unit:"Portföy Yönetimi",title:"Genel Müdür Yardımcısı",mgr:"Ahmet Tera",on:1},
+ {u:"deniz.okur",n:"Deniz Okur",r:"gmy",c:"#4B3B8F",unit:"Portföy Yönetimi",title:"Genel Müdür Yardımcısı",mgr:"Uras Elmas",on:1},
  {u:"meltem.aydin",n:"Meltem Aydın",r:"opsdir",c:"#854F0B",unit:"Operasyon ve Takas",title:"Direktör",mgr:"Deniz Okur",on:1},
  {u:"tolga.firat",n:"Tolga Fırat",r:"pm",c:"#0B1F48",unit:"Bilgi Teknolojileri",title:"Müdür",mgr:"Elif Yalçın",on:1},
  {u:"mert.balkan",n:"Mert Balkan",r:"dev",c:"#33405C",unit:"Bilgi Teknolojileri",title:"Uzman",mgr:"Tolga Fırat",on:1},
@@ -790,14 +790,14 @@ let annRead={},popSeen={},docRead={},avatars={};
 let BRAND={
  company:"BYELMAS AŞ",
  companyShort:"BYELMAS",
- product:"BYELMAS Portal",
+ product:"BY Portal",
  slogan:"Her şey bir arada, tek bir yerde.",
  loginTitle:"Oturum açın",
  loginHint:"Kurum hesabınızla devam edin.",
  loginUserPlaceholder:"Kullanıcı Adı",
  loginPassPlaceholder:"Parolanızı giriniz",
  homeGreetSuffix:"",
- footer:"© "+new Date().getFullYear()+" BYELMAS AŞ",
+ footer:"© "+new Date().getFullYear()+" BYELMAS",
  accent:"#B8894A",
  navy:"#0B1F48"};
 const BRAND_FIELDS=[
@@ -3637,7 +3637,7 @@ function screenView(){
   return head("Mail Şablonları",MAILTPL_LIVE.length+" tanım · giriş/değişiklik/silme yönetici + Teftiş onayına gider",
     cw("m.mailtpl")?`<button class="b p" data-a="tplNew">Şablon ekle</button>`:"")+
    `<div class="card" style="margin-bottom:14px;font-size:12px;line-height:1.65">
-     Gönderen: <b>BYELMAS Portal &lt;portal@byelmas.com&gt;</b><br>
+     Gönderen: <b>BY Portal &lt;portal@byelmas.com&gt;</b><br>
      Aşağıdaki olaylar kod tarafından gerçekten tetiklenir — bunlar dışında bir olay anahtarıyla şablon oluşturursanız,
      ileride o akış koda bağlanana kadar hiçbir zaman gönderilmez:<br>
      ${(WIRED_EVENTS_LIVE||[]).map(w=>`<span class="m" style="display:inline-block;margin:4px 8px 0 0;color:var(--t2)">
@@ -6197,10 +6197,10 @@ app.addEventListener("click",async ev=>{
   toast(changed.length?"Kaydedildi — "+changed.length+" alan güncellendi.":"Değişiklik yok.");return;}
  if(k==="brReset"){
   const defaults={company:"BYELMAS AŞ",companyShort:"BYELMAS",
-   product:"BYELMAS Portal",slogan:"Her şey bir arada, tek bir yerde.",
+   product:"BY Portal",slogan:"Her şey bir arada, tek bir yerde.",
    loginTitle:"Oturum açın",loginHint:"Kurum hesabınızla devam edin.",
    loginUserPlaceholder:"Kullanıcı Adı",loginPassPlaceholder:"Parolanızı giriniz",
-   footer:"© "+new Date().getFullYear()+" BYELMAS AŞ",accent:"#B8894A"};
+   footer:"© "+new Date().getFullYear()+" BYELMAS",accent:"#B8894A"};
   if(LIVE_BACKEND){
    try{const data=await api("PUT","/api/admin/brand",defaults);S.reqsMineLive=null;toast(data.message||"Onaya gönderildi.");render();}
    catch(e){toast(e.message,1);}
