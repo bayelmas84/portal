@@ -711,6 +711,10 @@ test("Mail bildirim tercihleri: kapatılan tür için e-posta atlanır ama zil b
     .send({ body: "ilk yorum, participant oluyorum" });
   await request(app).post(`/api/projects/TRADE/issues/${issueKey}/comments`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
     .send({ body: "ikinci yorum" });
+  // Bildirim oluşturma sunucu tarafında fire-and-forget (yanıtı geciktirmemek
+  // için) çalıştığından, kontrol etmeden önce kısa bir süre bekleriz —
+  // aksi halde ara sıra (race condition) bu test başarısız olabilir.
+  await new Promise((r) => setTimeout(r, 150));
 
   const inbox = await request(app).get("/api/notifications/inbox").set("Cookie", other.cookie);
   const found = inbox.body.items.find((n) => n.issue_key === issueKey && n.kind === "comment");
@@ -795,6 +799,33 @@ test("Checklist: ekleme, sıra korunur, tamamlandı işaretleme, silme", async (
 
   const listAfter = await request(app).get(`/api/projects/TRADE/issues/${issueKey}/checklist`).set("Cookie", pm.cookie);
   assert.equal(listAfter.body.items.length, 1);
+});
+
+test("Sprint burndown: yeni Scrum projesinde sprint otomatik başlar, done olan iş kalan SP'yi düşürür", async () => {
+  const pm = await login("tolga.firat");
+  const projK = "BRN" + Date.now().toString().slice(-6);
+  const proj = await request(app).post("/api/projects").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ k: projK, name: "Burndown Test Projesi", method: "Scrum" });
+  assert.equal(proj.status, 201);
+  assert.ok(proj.body.item.sprint_started_at, "Scrum projesi oluşturulunca sprint_started_at otomatik set edilmeli");
+
+  const issue = await request(app).post(`/api/projects/${projK}/issues`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: "Burndown Test Epic" });
+  const issueKey = issue.body.item.issue_key;
+
+  await request(app).put(`/api/projects/${projK}/issues/${issueKey}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ storyPoints: 5, inSprint: true });
+
+  const before = await request(app).get(`/api/projects/${projK}/sprint/burndown`).set("Cookie", pm.cookie);
+  assert.equal(before.status, 200);
+  assert.ok(Array.isArray(before.body.data), "committed SP varken burndown verisi dizi olmalı");
+  assert.equal(before.body.data[before.body.data.length - 1], 5, "henüz hiçbir şey done değilken kalan SP committed'e eşit olmalı");
+
+  await request(app).put(`/api/projects/${projK}/issues/${issueKey}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ status: "done" });
+
+  const after = await request(app).get(`/api/projects/${projK}/sprint/burndown`).set("Cookie", pm.cookie);
+  assert.equal(after.body.data[after.body.data.length - 1], 0, "done olduktan sonra kalan SP 0 olmalı");
 });
 
 test.after(async () => {

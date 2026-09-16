@@ -3584,11 +3584,21 @@ function drillPanel(p){
    :`<span style="font-size:12px;color:var(--tm)">No items match this selection.</span>`}</div>`;
 }
 
+/* Canlı backend'de günlük burndown verisi (Scrum, aktif sprint) —
+   project_issue_history'deki "→ Done" geçişlerinden türetilir
+   (server tarafında hesaplanır, bkz. GET /:k/sprint/burndown). */
+let PROJECT_BURNDOWN_LIVE={};
+async function loadBurndownLive(pk){
+ try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/sprint/burndown");
+  PROJECT_BURNDOWN_LIVE[pk]=data.data;render();}
+ catch(e){PROJECT_BURNDOWN_LIVE[pk]=null;render();}}
 function burndownChart(p){
- const data=p.burndown;
- if(LIVE_BACKEND&&p.m==="Scrum")return `<div class="card"><span style="font-size:12px;color:var(--tm)">
-   Günlük burndown, geçmişe dönük günlük veri toplama gerektirir; bu prototipte henüz uygulanmadı.
-   Sprint özeti için Sprint ekranını, sprint bazlı velocity için sağdaki grafiği kullanın.</span></div>`;
+ let data=p.burndown;
+ if(LIVE_BACKEND&&p.m==="Scrum"){
+  if(!(p.k in PROJECT_BURNDOWN_LIVE)){PROJECT_BURNDOWN_LIVE[p.k]=undefined;loadBurndownLive(p.k);}
+  const live=PROJECT_BURNDOWN_LIVE[p.k];
+  if(live===undefined)return `<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`;
+  data=live;}
  if(!data)return `<div class="card"><span style="font-size:12px;color:var(--tm)">No active sprint — burndown is available for Scrum projects only (${p.m}).</span></div>`;
  const W=520,H=180,pad=30,committed=data[0],days=data.length-1;
  const x=i=>pad+i*(W-pad*2)/days, y=v=>H-pad-(v/committed)*(H-pad*2);

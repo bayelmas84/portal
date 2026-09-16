@@ -134,10 +134,11 @@ router.post("/", requireWrite("d.board"), async (req, res, next) => {
 
     const result = await withTransaction(async (client) => {
       const proj = await client.query(
-        `INSERT INTO projects (k, name, method, lead_username, unit_name, start_date, target_date, created_by, sprint_name, sprint_number)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        `INSERT INTO projects (k, name, method, lead_username, unit_name, start_date, target_date, created_by, sprint_name, sprint_number, sprint_started_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
         [k, name.trim(), method, req.user.username, unitName || null, startDate || null, targetDate || null,
-         req.user.username, method === "Scrum" ? "Sprint 1" : null, method === "Scrum" ? 1 : 0]
+         req.user.username, method === "Scrum" ? "Sprint 1" : null, method === "Scrum" ? 1 : 0,
+         method === "Scrum" ? new Date() : null]
       );
       await client.query(
         `INSERT INTO project_team (project_k, username, project_role, mandatory) VALUES ($1,$2,'Product Owner',false)`,
@@ -1271,12 +1272,12 @@ router.post("/:k/sprint/close", requireWrite("d.board"), async (req, res, next) 
 
       if (openNew) {
         await client.query(
-          `UPDATE projects SET sprint_number=$1, sprint_name=$2, sprint_goal=$3, sprint_ends_at=$4 WHERE k=$5`,
+          `UPDATE projects SET sprint_number=$1, sprint_name=$2, sprint_goal=$3, sprint_ends_at=$4, sprint_started_at=now() WHERE k=$5`,
           [nextNumber, `Sprint ${nextNumber}`, newSprintGoal || null, newSprintEndsAt || null, req.params.k]
         );
       } else {
         await client.query(
-          `UPDATE projects SET sprint_name=NULL, sprint_goal=NULL, sprint_ends_at=NULL WHERE k=$1`,
+          `UPDATE projects SET sprint_name=NULL, sprint_goal=NULL, sprint_ends_at=NULL, sprint_started_at=NULL WHERE k=$1`,
           [req.params.k]
         );
       }
@@ -1300,6 +1301,65 @@ router.get("/:k/sprint-history", requireRead("d.board"), async (req, res, next) 
   } catch (e) { next(e); }
 });
 
+// Aktif sprint için GÜNLÜK burndown verisi (Scrum projeleri). project_issue_history
+// tablosundaki "Durum: ... → Done" kayıtlarının EN ERKEN tarihini kullanarak, sprint
+// başlangıcından bugüne (ya da sprint bitişine, hangisi önce ise) kadar her gün için
+// "o gün itibariyle kalan story point" hesaplanır. Basitleştirme: bir konu done'dan
+// geri alınıp tekrar done olursa yalnızca İLK "→ Done" geçişi baz alınır, ama konu
+// hâlâ done DURUMUNDA değilse (geri alınmışsa) o günden itibaren yeniden "kalan"a
+// eklenmez — grafik gerçek zamanlı duruma göre çizilir, mükemmel bir geçmiş kaydı
+// değildir (bu prototipte günlük anlık görüntü tablosu tutulmuyor).
+router.get("/:k/sprint/burndown", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const proj = await query(
+      "SELECT sprint_name, sprint_started_at, sprint_ends_at, method FROM projects WHERE k=$1",
+      [req.params.k]
+    );
+    if (!proj.rowCount || !proj.rows[0].sprint_name || proj.rows[0].method !== "Scrum") {
+      return res.json({ data: null });
+    }
+    const p = proj.rows[0];
+    if (!p.sprint_started_at) return res.json({ data: null });
+
+    const sprintIssues = await query(
+      "SELECT issue_key, story_points, status FROM project_issues WHERE project_k=$1 AND in_sprint=true",
+      [req.params.k]
+    );
+    const committed = sprintIssues.rows.reduce((s, r) => s + r.story_points, 0);
+    if (!committed) return res.json({ data: null });
+
+    const keys = sprintIssues.rows.map((r) => r.issue_key);
+    const doneTransitions = keys.length
+      ? await query(
+          `SELECT issue_key, MIN(created_at) AS done_at FROM project_issue_history
+           WHERE project_k=$1 AND message LIKE '%→ Done%' AND issue_key = ANY($2::text[])
+           GROUP BY issue_key`,
+          [req.params.k, keys]
+        )
+      : { rows: [] };
+    const doneAtMap = {};
+    doneTransitions.rows.forEach((r) => { doneAtMap[r.issue_key] = new Date(r.done_at); });
+
+    const start = new Date(p.sprint_started_at);
+    const end = p.sprint_ends_at ? new Date(p.sprint_ends_at) : new Date();
+    const today = new Date();
+    const effectiveEnd = today < end ? today : end;
+    const days = Math.max(1, Math.round((effectiveEnd - start) / 86400000));
+
+    const data = [];
+    for (let d = 0; d <= days; d++) {
+      const dayEnd = new Date(start.getTime() + d * 86400000);
+      let doneSp = 0;
+      sprintIssues.rows.forEach((r) => {
+        const doneAt = doneAtMap[r.issue_key];
+        if (doneAt && doneAt <= dayEnd && r.status === "done") doneSp += r.story_points;
+      });
+      data.push(committed - doneSp);
+    }
+    res.json({ data });
+  } catch (e) { next(e); }
+});
+
 // Aktif sprint yokken (kapatılırken "yeni sprint açma" denildiyse veya daha önce hiç
 // başlatılmadıysa) yeni bir sprint başlatır. Aktif bir sprint varsa ve bitiş gününe
 // gelinmediyse reddedilir (aynı anda ikinci bir sprint açılamaz).
@@ -1314,7 +1374,7 @@ router.post("/:k/sprint/start", requireWrite("d.board"), async (req, res, next) 
     }
     const nextNumber = (proj.rows[0].sprint_number || 0) + 1;
     await query(
-      `UPDATE projects SET sprint_number=$1, sprint_name=$2, sprint_goal=$3, sprint_ends_at=$4 WHERE k=$5`,
+      `UPDATE projects SET sprint_number=$1, sprint_name=$2, sprint_goal=$3, sprint_ends_at=$4, sprint_started_at=now() WHERE k=$5`,
       [nextNumber, `Sprint ${nextNumber}`, sprintGoal || null, sprintEndsAt || null, req.params.k]
     );
     await audit(`Sprint başlatıldı: ${req.params.k} — Sprint ${nextNumber}`, req.user.username);
