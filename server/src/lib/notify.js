@@ -70,4 +70,17 @@ async function nameOf(username) {
   return rows[0] ? rows[0].name : username;
 }
 
-module.exports = { notifyEvent, notifyApprovalCreated, notifyApprovalDecided, emailOf, nameOf };
+// Bir kullanıcının MAIL bildirim tercihlerini döner (kayıt yoksa hepsi
+// açık varsayılır). Uygulama içi (zil) bildirimleri etkilemez — yalnızca
+// projects.js'deki yorum/mention/atama mail gönderme noktalarında kullanılır.
+async function getEmailPrefs(username) {
+  const { rows } = await query("SELECT * FROM user_notification_prefs WHERE username=$1", [username]);
+  const p = rows[0] || {};
+  return {
+    comment: p.email_on_comment !== false,
+    mention: p.email_on_mention !== false,
+    assignment: p.email_on_assignment !== false,
+  };
+}
+
+module.exports = { notifyEvent, notifyApprovalCreated, notifyApprovalDecided, emailOf, nameOf, getEmailPrefs };

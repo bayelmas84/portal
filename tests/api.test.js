@@ -685,6 +685,42 @@ test("Genel arama: konu (issue) başlık/anahtarına göre bulunur ve tıklanabi
   assert.deepEqual(tooShort.body.items, [], "2 karakterden kısa sorgu boş dönmeli");
 });
 
+test("Mail bildirim tercihleri: kapatılan tür için e-posta atlanır ama zil bildirimi yine de oluşur", async () => {
+  const pm = await login("tolga.firat");
+  const other = await login("mert.balkan");
+
+  // Not: test veritabanı kalıcıdır, bu yüzden "varsayılan" değerler burada
+  // doğrulanmaz (mert.balkan'ın önceki tercihleri kalmış olabilir) —
+  // yalnızca kaydetme/okuma döngüsünün doğru çalıştığı test edilir.
+  const setPrefs = await request(app)
+    .put("/api/notifications/prefs")
+    .set("Cookie", other.cookie).set("X-CSRF-Token", other.csrf)
+    .send({ emailOnComment: false, emailOnMention: true, emailOnAssignment: true });
+  assert.equal(setPrefs.status, 200);
+
+  const afterSet = await request(app).get("/api/notifications/prefs").set("Cookie", other.cookie);
+  assert.equal(afterSet.status, 200);
+  assert.deepEqual(afterSet.body, { emailOnComment: false, emailOnMention: true, emailOnAssignment: true });
+
+  // mert.balkan önce kendisi yorum yazıp participant olsun, sonra tolga.firat
+  // yorum yazsın: mail tercihi kapalı olsa da zil bildirimi oluşmalı.
+  const issue = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: `Pref Test ${Date.now()}` });
+  const issueKey = issue.body.item.issue_key;
+  await request(app).post(`/api/projects/TRADE/issues/${issueKey}/comments`).set("Cookie", other.cookie).set("X-CSRF-Token", other.csrf)
+    .send({ body: "ilk yorum, participant oluyorum" });
+  await request(app).post(`/api/projects/TRADE/issues/${issueKey}/comments`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ body: "ikinci yorum" });
+
+  const inbox = await request(app).get("/api/notifications/inbox").set("Cookie", other.cookie);
+  const found = inbox.body.items.find((n) => n.issue_key === issueKey && n.kind === "comment");
+  assert.ok(found, "mail tercihi kapalı olsa da zil bildirimi oluşmalı");
+
+  // Tercihleri varsayılana döndür ki başka testleri etkilemesin.
+  await request(app).put("/api/notifications/prefs").set("Cookie", other.cookie).set("X-CSRF-Token", other.csrf)
+    .send({ emailOnComment: true, emailOnMention: true, emailOnAssignment: true });
+});
+
 test.after(async () => {
   await pool.end();
 });

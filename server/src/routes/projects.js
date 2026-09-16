@@ -9,6 +9,7 @@ const { requireRead, requireWrite, requireAuth } = require("../middleware/auth")
 const { canWrite, MEETING_ALWAYS_ROLES } = require("../lib/permissions");
 const { audit } = require("../lib/audit");
 const { sendMail } = require("../lib/mailer");
+const { getEmailPrefs } = require("../lib/notify");
 const { config } = require("../config");
 
 const router = express.Router();
@@ -699,11 +700,14 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
           if (assignee.rows[0]) {
             const assignerName = assigner.rows[0] ? assigner.rows[0].name : req.user.username;
             const assignSubject = `${req.params.issueKey} size atandı`;
-            await sendMail(
-              assignee.rows[0].email,
-              assignSubject,
-              `${req.params.issueKey} — ${title !== undefined ? title.trim() : issue.title}\n\nBu konu size atandı. Atayan: ${assignerName}`
-            );
+            const prefs = await getEmailPrefs(assigneeUsername);
+            if (prefs.assignment) {
+              await sendMail(
+                assignee.rows[0].email,
+                assignSubject,
+                `${req.params.issueKey} — ${title !== undefined ? title.trim() : issue.title}\n\nBu konu size atandı. Atayan: ${assignerName}`
+              );
+            }
             await createInAppNotification(assigneeUsername, "assignment", req.params.k, req.params.issueKey, assignSubject, req.user.username);
           }
         } catch (mailErr) {
@@ -836,7 +840,8 @@ router.post("/:k/issues/:issueKey/comments", requireWrite("d.board"), async (req
         const commentSubject = `${req.params.issueKey} — yeni bir yorum eklendi`;
         const commentText = `${req.params.issueKey} — ${iss.title}\n\nYorumu yazan: ${authorName}\n\n"${body}"`;
         for (const u of usersToNotify.rows) {
-          await sendMail(u.email, commentSubject, commentText);
+          const prefs = await getEmailPrefs(u.username);
+          if (prefs.comment) await sendMail(u.email, commentSubject, commentText);
           await createInAppNotification(u.username, "comment", req.params.k, req.params.issueKey, commentSubject, req.user.username);
         }
 
@@ -848,7 +853,8 @@ router.post("/:k/issues/:issueKey/comments", requireWrite("d.board"), async (req
           const mentionSubject = `${req.params.issueKey} içinde sizden bahsedildi`;
           const mentionText = `${authorName}, ${req.params.issueKey} — ${iss.title} üzerindeki bir yorumda sizden bahsetti:\n\n"${body}"`;
           for (const u of mentionedUsers.rows) {
-            await sendMail(u.email, mentionSubject, mentionText);
+            const prefs = await getEmailPrefs(u.username);
+            if (prefs.mention) await sendMail(u.email, mentionSubject, mentionText);
             await createInAppNotification(u.username, "mention", req.params.k, req.params.issueKey, mentionSubject, req.user.username);
           }
         }

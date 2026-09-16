@@ -989,6 +989,16 @@ function issueInboxOf(){
   if(ISSUE_INBOX_LIVE===null&&!ISSUE_INBOX_LIVE_LOADING)loadIssueInboxLive();
   return ISSUE_INBOX_LIVE||[];}
  return ISSUE_INBOX_DEMO.filter(n=>n.recipient_username===S.me.u);}
+/* Mail bildirim tercihleri (yalnızca dışarı giden e-postayı etkiler, zil
+   bildirimlerini değil). Demo modda basit bir kullanıcı-bazlı obje. */
+let NOTIF_PREFS_LIVE=null;
+async function loadNotifPrefsLive(){
+ try{NOTIF_PREFS_LIVE=await api("GET","/api/notifications/prefs");render();}
+ catch(e){NOTIF_PREFS_LIVE={emailOnComment:true,emailOnMention:true,emailOnAssignment:true};render();}}
+let NOTIF_PREFS_DEMO={};
+function notifPrefsOf(){
+ if(LIVE_BACKEND)return NOTIF_PREFS_LIVE||{emailOnComment:true,emailOnMention:true,emailOnAssignment:true};
+ return NOTIF_PREFS_DEMO[S.me.u]||(NOTIF_PREFS_DEMO[S.me.u]={emailOnComment:true,emailOnMention:true,emailOnAssignment:true});}
 function pushDemoInboxNotification(recipientUsername,kind,pk,issueKey,title,actorUsername){
  if(recipientUsername===actorUsername)return; // kendine bildirim gitmez
  ISSUE_INBOX_DEMO.unshift({id:nextInboxId++,recipient_username:recipientUsername,kind,
@@ -3794,6 +3804,12 @@ function dialogView(){
     <button class="b s" data-a="avatar:foto">Fotoğraf yükle</button>
     <button class="b s" data-a="avatar:kaldir">Fotoğrafı kaldır</button></div>
    <p style="font-size:11.5px;color:var(--tm);margin:10px 0 0">Rol, birim, ünvan ve yönetici bilgileri Active Directory ve Admin Panel üzerinden yönetilir; buradan değiştirilemez.</p>
+   <div class="lbl" style="margin-top:15px">E-posta bildirimleri</div>
+   <p class="m" style="color:var(--tm);margin:4px 0 8px">Kapatsanız da bu etkinlikler uygulama içi bildirim (zil) olarak size gösterilmeye devam eder — yalnızca e-posta gönderimi durur.</p>
+   ${(()=>{const prefs=notifPrefsOf();
+     return [["emailOnComment","Konularımdaki yeni yorumlar"],["emailOnMention","Bir yorumda @ ile etiketlendiğimde"],["emailOnAssignment","Bana bir konu atandığında"]]
+      .map(([key,label])=>`<div class="swrow" style="margin-top:9px"><button class="sw ${prefs[key]?"on":""}" data-a="notifPrefToggle:${key}"><i></i></button>
+       <span style="flex:1;font-size:12.5px">${label}</span></div>`).join("");})()}
    ${LIVE_BACKEND?`<div class="lbl" style="margin-top:15px">Güvenlik</div>
     <button class="b s d" data-a="logoutAllSessions">Tüm cihazlardan çıkış yap</button>
     <p class="m" style="color:var(--tm);margin:6px 0 0">Hesabınızın başka bir yerden açık kaldığından şüpheleniyorsanız kullanın; bu cihaz dahil tüm oturumlar kapanır.</p>`:""}
@@ -4825,7 +4841,16 @@ app.addEventListener("click",async ev=>{
  if(k==="orgChart"){
   if(LIVE_BACKEND&&ORG_CHART_LIVE===null&&!ORG_CHART_LIVE_LOADING)loadOrgChartLive();
   S.view="orgChart";render();return;}
- if(k==="profile"){S.dlg={type:"profile"};render();return;}
+ if(k==="profile"){if(LIVE_BACKEND)loadNotifPrefsLive();S.dlg={type:"profile"};render();return;}
+ if(k==="notifPrefToggle"){const key=p[1];
+  if(LIVE_BACKEND){
+   const cur=NOTIF_PREFS_LIVE||{emailOnComment:true,emailOnMention:true,emailOnAssignment:true};
+   const next={...cur,[key]:!cur[key]};
+   NOTIF_PREFS_LIVE=next;render();
+   try{await api("PUT","/api/notifications/prefs",next);}
+   catch(e){toast(e.message,1);NOTIF_PREFS_LIVE=cur;render();}
+   return;}
+  const prefs=notifPrefsOf();prefs[key]=!prefs[key];render();return;}
  if(k==="avatar"){if(p[1]==="foto"){avatars[S.me.u]="🙂";toast("Profil fotoğrafı güncellendi.");}
   else{delete avatars[S.me.u];toast("Profil fotoğrafı kaldırıldı.");}return;}
  if(k==="bellJump"){

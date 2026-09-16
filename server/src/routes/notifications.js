@@ -26,6 +26,40 @@ const WIRED_EVENTS = [
   ["approval.rejected", "Talebiniz reddedildi", "{ad_soyad}, {konu}, {gerekce}"],
 ];
 
+// ------------------------- Mail bildirim tercihleri -------------------------
+// Bu route'lar BİLEREK dosyanın en başında tanımlanır: aşağıdaki
+// PUT/DELETE /:id (mail şablonu) route'larından ÖNCE gelmezse Express
+// "/prefs" isteğini yanlışlıkla :id="prefs" olarak eşleştirir ve
+// m.mailtpl yetkisi ister (403 hatası) — bu route'lar herkese açık
+// olmalı (requireAuth), tanım sırası kritik.
+// Yalnızca DIŞARI GİDEN E-POSTAYI etkiler; uygulama içi (zil) bildirimler
+// her zaman oluşturulur, buradan kapatılamaz.
+router.get("/prefs", requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await query("SELECT * FROM user_notification_prefs WHERE username=$1", [req.user.username]);
+    const p = rows[0] || {};
+    res.json({
+      emailOnComment: p.email_on_comment !== false,
+      emailOnMention: p.email_on_mention !== false,
+      emailOnAssignment: p.email_on_assignment !== false,
+    });
+  } catch (e) { next(e); }
+});
+
+router.put("/prefs", requireAuth, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    await query(
+      `INSERT INTO user_notification_prefs (username, email_on_comment, email_on_mention, email_on_assignment, updated_at)
+       VALUES ($1,$2,$3,$4,now())
+       ON CONFLICT (username) DO UPDATE SET
+         email_on_comment=$2, email_on_mention=$3, email_on_assignment=$4, updated_at=now()`,
+      [req.user.username, b.emailOnComment !== false, b.emailOnMention !== false, b.emailOnAssignment !== false]
+    );
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 router.get("/wired-events", requireRead("m.mailtpl"), (req, res) => {
   res.json({ items: WIRED_EVENTS.map(([key, label, vars]) => ({ key, label, vars })) });
 });
