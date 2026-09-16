@@ -1037,6 +1037,14 @@ function demoWatchersFor(pk,key){
  const items=ISSUE_WATCHERS_DEMO.filter(w=>w.pk===pk&&w.issue_key===key)
   .map(w=>({username:w.username,name:(USERS.find(u=>u.u===w.username)||{}).n||w.username}));
  return {items,watching:items.some(w=>w.username===S.me.u)};}
+/* Son görüntülenen konular — oturum başına, tarayıcı belleğinde (sunucuya
+   kalıcı yazılmaz). "My Work" ekranında hızlı erişim listesi olarak
+   gösterilir. Aynı konu tekrar açılırsa en başa taşınır (tekrar yok). */
+let RECENT_ISSUES=[];
+function pushRecentIssue(pi,pr,it){
+ RECENT_ISSUES=RECENT_ISSUES.filter(r=>!(r.pk===pr.k&&r.key===it.key));
+ RECENT_ISSUES.unshift({pi,pk:pr.k,key:it.key,title:it.t,ty:it.ty,st:it.st});
+ if(RECENT_ISSUES.length>8)RECENT_ISSUES.length=8;}
 /* Mail bildirim tercihleri (yalnızca dışarı giden e-postayı etkiler, zil
    bildirimlerini değil). Demo modda basit bir kullanıcı-bazlı obje. */
 let NOTIF_PREFS_LIVE=null;
@@ -2037,7 +2045,12 @@ function screenView(){
     <div style="display:flex;gap:8px;flex-wrap:wrap">
      ${S.filter?`<button class="b" data-a="filter:">Clear filter</button>`:""}
      ${can("d.projects")?`<button class="b p" data-a="scr:d.projects">Go to Projects</button>`:""}
-     ${can("d.board")?`<button class="b" data-a="scr:d.board">Go to Board</button>`:""}</div></div>`);}
+     ${can("d.board")?`<button class="b" data-a="scr:d.board">Go to Board</button>`:""}</div></div>`)+
+  (RECENT_ISSUES.length?`<div class="lbl" style="margin-top:18px">Recently viewed</div>
+   ${table(["Type","Key","Summary","Status"],RECENT_ISSUES.map(r=>`<tr>
+    <td><span style="color:${TYC[r.ty]};font-size:11px">${r.ty}</span></td>
+    <td>${issueKeyLink(r.pi,r.key)}</td><td>${esc(r.title)}</td>
+    <td>${pill(FLOW[r.st])}</td></tr>`).join(""))}`:"");}
 
  if(v==="d.projects")return head("Projects",PROJ.length+" active projects",
    (cw("d.projects")?`<button class="b p" data-a="projNew">New project</button>`:"")+
@@ -5119,6 +5132,7 @@ app.addEventListener("click",async ev=>{
  if(k==="signout"){
   if(LIVE_BACKEND){try{await api("POST","/api/auth/logout");}catch(e){/* yine de yerel oturumu kapat */}CSRF_TOKEN=null;LIVE_BACKEND=false;}
   TEAM_CACHE_LIVE={};
+  RECENT_ISSUES=[];
   clearInterval(S.timer);
   Object.assign(S,{view:"login",me:null,u:"",ann:null,req:null,dec:null,pop:null,dlg:null,read:null,docView:null,quiz:null,result:null,
    meetingsLive:null,meetingsLiveLoading:null,mtView:null,annLive:null,annLiveLoading:false,
@@ -5992,7 +6006,9 @@ app.addEventListener("click",async ev=>{
  if(k==="bisave"){BIREP.push({code:"RPT-0"+(nbi++),name:S.f.a,area:S.f.b||"Genel",freq:"günlük",
    path:(S.f.c||"genel/rapor"),st:"gelistirme",owner:S.me.n,opens:0,last:null});
   audit("Yeni rapor taslağı oluşturuldu");S.dlg=null;S.f={};toast("Rapor taslağı oluşturuldu.");return;}
- if(k==="issue"){const key=dec(p[2]);S.dlg={type:"issue",pi:+p[1],key};S.f={};render();
+ if(k==="issue"){const pi=+p[1],key=dec(p[2]);S.dlg={type:"issue",pi,key};S.f={};
+  const pr=PROJ[pi],it=pr&&pr.items.find(x=>x.key===key);if(pr&&it)pushRecentIssue(pi,pr,it);
+  render();
   if(LIVE_BACKEND){const pk=PROJ[+p[1]].k;
    delete ISSUE_ATTACH_LIVE[pk+"::"+key];loadIssueAttachmentsLive(pk,key);
    delete ISSUE_LINKS_LIVE[pk+"::"+key];loadIssueLinksLive(pk,key);
