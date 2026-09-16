@@ -4234,6 +4234,7 @@ function dialogView(){
   const links=LIVE_BACKEND?(ISSUE_LINKS_LIVE[attKey]||null):demoLinksFor(p.k,i.key);
   const comments=LIVE_BACKEND?(ISSUE_COMMENTS_LIVE[attKey]||null):demoCommentsFor(p.k,i.key);
   const worklogs=LIVE_BACKEND?(ISSUE_WORKLOGS_LIVE[attKey]||null):demoWorklogsFor(p.k,i.key);
+  const history=LIVE_BACKEND?(ISSUE_HISTORY_LIVE[attKey]||null):demoHistoryFor(p.k,i.key);
   const checklist=LIVE_BACKEND?(ISSUE_CHECKLIST_LIVE[attKey]||null):demoChecklistFor(p.k,i.key);
   const linkProjectK=S.f.linkProject||p.k;
   const linkProject=PROJ.find(x=>x.k===linkProjectK)||p;
@@ -4360,44 +4361,56 @@ function dialogView(){
      <span class="m" style="color:var(--tm)">Remaining (h)</span>
      <input id="fEstRem" type="number" min="0" step="0.5" value="${i.remEst!=null?(i.remEst/60):""}" style="max-width:80px">
      <button class="b s" data-a="issueEstSave:${d.pi}:${i.key}">Save</button></div>`:""}
-   <div style="margin-top:8px">
-    ${(worklogs||[]).map(w=>{const isOwner=w.author_username===S.me.u;const canDelete=isOwner||canModerateComments();
-      return `<div class="card" style="padding:7px 10px;margin-bottom:5px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
-       <span style="font-size:12px;font-weight:600">${fmtMinutes(w.time_spent_minutes)}</span>
-       <span class="m" style="color:var(--tm)">${esc(w.author_name||w.author_username)} · ${String(w.work_date).slice(0,10)}</span>
-       ${w.comment?`<span class="m" style="color:var(--t2)">— ${esc(w.comment)}</span>`:""}
-       <span style="flex:1"></span>
-       ${canDelete?`<span style="cursor:pointer;color:var(--tm)" data-a="worklogDelete:${d.pi}:${i.key}:${w.id}">✕</span>`:""}</div>`;}).join("")
-    ||(worklogs===null?`<p class="m" style="color:var(--tm)">Loading…</p>`:`<p class="m" style="color:var(--tm)">No work logged yet.</p>`)}
-   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
+   ${cw("d.board")?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">
      <input id="fWorklogHours" type="number" min="0" step="0.25" placeholder="hours" style="max-width:90px">
      <input id="fWorklogDate" type="date" value="${now().slice(0,10)}" style="max-width:150px">
      <input id="fWorklogComment" placeholder="what did you work on? (optional)" style="flex:1;min-width:160px">
-     <button class="b s p" data-a="worklogAdd:${d.pi}:${i.key}">Log work</button></div>`:""}
-   <div class="lbl" style="margin-top:12px">Comments${comments?" ("+comments.length+")":""}</div>
-   ${comments===null?`<p class="m" style="color:var(--tm)">Loading…</p>`:
-    (comments.map(c=>{
-     const isOwner=c.author_username===S.me.u;
-     const canDelete=isOwner||canModerateComments();
-     const when=String(c.created_at).replace("T"," ").slice(0,16)+(c.updated_at?" (edited)":"");
-     if(String(S.f.editingComment)===String(c.id))return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
-       <textarea id="fCommentEdit" style="min-height:60px">${esc(c.body)}</textarea>
-       <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">
-        <button class="b s" data-a="commentEditCancel">Cancel</button>
-        <button class="b s p" data-a="commentEditSave:${d.pi}:${i.key}:${c.id}">Save</button></div></div>`;
-     return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
-       <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
-        <span style="font-size:12.5px;font-weight:600">${esc(c.author_name||c.author_username)}</span>
-        <span class="m" style="color:var(--tm)">${when}</span><span style="flex:1"></span>
-        ${isOwner?`<button class="b s" data-a="commentEditStart:${c.id}">Edit</button>`:""}
-        ${canDelete?`<button class="b s d" data-a="commentDelete:${d.pi}:${i.key}:${c.id}">Delete</button>`:""}</div>
-       <p style="font-size:12.5px;margin:6px 0 0;white-space:pre-wrap">${esc(c.body)}</p></div>`;}).join("")
-     ||`<p class="m" style="color:var(--tm)">No comments yet.</p>`)+
-    `<textarea id="fCommentNew" placeholder="Add a comment…" style="min-height:60px;margin-top:6px"></textarea>
-    <div style="display:flex;justify-content:flex-end;margin-top:6px">
-     <button class="b s p" data-a="commentAdd:${d.pi}:${i.key}">Comment</button></div>`}
+     <button class="b s" data-a="worklogAdd:${d.pi}:${i.key}">Log work</button></div>`:""}
+   <div class="lbl" style="margin-top:14px">Activity${(comments&&history&&worklogs)?" ("+(comments.length+history.length+worklogs.length)+")":""}</div>
+   ${(comments===null||history===null||worklogs===null)?`<p class="m" style="color:var(--tm)">Loading…</p>`:(()=>{
+     // Yorum/geçmiş/harcanan-zaman kayitlarini TEK bir kronolojik akista
+     // (en eski ustte, konusma gibi okunur sirada) birlestirir. Her tur
+     // kendi mini-render'ını (yorum: edit/delete, worklog: delete,
+     // history: salt okunur) korur.
+     const events=[
+      ...history.map(h=>({kind:"history",at:h.created_at,data:h})),
+      ...comments.map(c=>({kind:"comment",at:c.created_at,data:c})),
+      ...worklogs.map(w=>({kind:"worklog",at:w.created_at,data:w})),
+     ].sort((a,b)=>String(a.at).localeCompare(String(b.at)));
+     if(!events.length)return `<p class="m" style="color:var(--tm)">No activity yet.</p>`;
+     return events.map(ev=>{
+      if(ev.kind==="history"){const h=ev.data;
+       return `<div style="padding:6px 2px;border-left:2px solid var(--bd);padding-left:10px;margin-bottom:6px">
+        <span class="m" style="color:var(--tm)">${String(h.created_at).replace("T"," ").slice(0,16)} · ${esc(h.user_name||"")}</span>
+        <p style="font-size:12px;margin:2px 0 0;color:var(--t2)">${esc(h.message)}</p></div>`;}
+      if(ev.kind==="worklog"){const w=ev.data;const isOwner=w.author_username===S.me.u;const canDelete=isOwner||canModerateComments();
+       return `<div class="card" style="padding:7px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+        <span class="m" style="color:var(--ok-fg)">⏱</span>
+        <span style="font-size:12px;font-weight:600">${fmtMinutes(w.time_spent_minutes)}</span>
+        <span class="m" style="color:var(--tm)">${esc(w.author_name||w.author_username)} · ${String(w.work_date).slice(0,10)}</span>
+        ${w.comment?`<span class="m" style="color:var(--t2)">— ${esc(w.comment)}</span>`:""}
+        <span style="flex:1"></span>
+        ${canDelete?`<span style="cursor:pointer;color:var(--tm)" data-a="worklogDelete:${d.pi}:${i.key}:${w.id}">✕</span>`:""}</div>`;}
+      const c=ev.data;const isOwner=c.author_username===S.me.u;const canDelete=isOwner||canModerateComments();
+      const when=String(c.created_at).replace("T"," ").slice(0,16)+(c.updated_at?" (edited)":"");
+      if(String(S.f.editingComment)===String(c.id))return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
+        <textarea id="fCommentEdit" style="min-height:60px">${esc(c.body)}</textarea>
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">
+         <button class="b s" data-a="commentEditCancel">Cancel</button>
+         <button class="b s p" data-a="commentEditSave:${d.pi}:${i.key}:${c.id}">Save</button></div></div>`;
+      return `<div class="card" style="padding:8px 10px;margin-bottom:6px">
+        <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+         <span style="font-size:12.5px;font-weight:600">${esc(c.author_name||c.author_username)}</span>
+         <span class="m" style="color:var(--tm)">${when}</span><span style="flex:1"></span>
+         ${isOwner?`<button class="b s" data-a="commentEditStart:${c.id}">Edit</button>`:""}
+         ${canDelete?`<button class="b s d" data-a="commentDelete:${d.pi}:${i.key}:${c.id}">Delete</button>`:""}</div>
+        <p style="font-size:12.5px;margin:6px 0 0;white-space:pre-wrap">${esc(c.body)}</p></div>`;
+     }).join("");})()}
+   <textarea id="fCommentNew" placeholder="Add a comment…" style="min-height:60px;margin-top:6px"></textarea>
+   <div style="display:flex;justify-content:flex-end;margin-top:6px">
+    <button class="b s p" data-a="commentAdd:${d.pi}:${i.key}">Comment</button></div>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
-    <button class="b" data-a="openProj:${d.pi}">Board'a git</button><button class="b p" data-a="dlgClose">Kapat</button></div>`);}
+    <button class="b" data-a="openProj:${d.pi}">Board\'a git</button><button class="b p" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="versionsComponents"){
   const pr=PROJ[d.pi];
   const versions=versionsOf(pr.k),components=componentsOf(pr.k);
@@ -5995,6 +6008,7 @@ app.addEventListener("click",async ev=>{
    try{await api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(p[2]),{status:to});}
    catch(e){it.st=from;toast(e.message,1);render();}
    return;}
+  pushDemoHistory(pr.k,p[2],"Durum: "+FLOW[from]+" → "+FLOW[to]);
   syncMeetingItemFromTaskDemo(pr.k,p[2],to,from);
   return;}
  if(k==="toggleBulkSelect"){const key=p[1];
