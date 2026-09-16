@@ -2469,7 +2469,7 @@ function screenView(){
      <button class="b ${canClose?"d":"off"}" data-a="${canClose?"sprintCloseAsk":"sprintNotYet"}">Close sprint</button></div>
      ${!canClose?`<p class="m" style="color:var(--tm);margin-top:6px;text-align:right">A sprint can only be closed on its end date.</p>`:""}`:""}</div>
     <div style="margin-top:14px">${table(["Key","Title","Status","SP","Assignee",""],inSprintItems.map(i=>`<tr>
-     <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td><td>${pill(FLOW[i.st])}</td>
+     <td class="m">${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td><td>${pill(FLOW[i.st])}</td>
      <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td>
      <td style="text-align:right">${cw("d.board")?`<button class="b s d" data-a="sprintRemove:${p.k}:${i.key}">Remove from sprint</button>`:""}</td></tr>`).join("")||
      `<tr><td colspan="6" style="color:var(--tm)">No items in this sprint yet.</td></tr>`)}</div>
@@ -2499,7 +2499,7 @@ function screenView(){
     <div style="height:9px;width:${pct}%;background:var(--navy)"></div></div>
    <div class="m" style="color:var(--t2);margin-top:8px">${sp.done} / ${sp.committed} story point · %${pct}</div></div>
    <div style="margin-top:14px">${table(["Key","Title","Status","SP","Assignee"],p.items.filter(i=>i.st!=="backlog").map(i=>`<tr>
-    <td class="m" style="color:var(--ta)">${i.key}</td><td>${esc(i.t)}</td><td>${pill(FLOW[i.st])}</td>
+    <td class="m">${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td><td>${pill(FLOW[i.st])}</td>
     <td class="m">${i.pts}</td><td style="color:var(--t2)">${esc(i.as||"—")}</td></tr>`).join(""))}</div>
    ${(()=>{const cap=capacityDemoFor(p);
      return `<div class="lbl" style="margin-top:16px">Team Capacity</div>
@@ -4602,7 +4602,7 @@ function dialogView(){
      <button class="b s" data-a="spKeepNone">Tümünü kaldır</button></div>
     ${openItems.map(i=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 0;cursor:pointer">
       <input type="checkbox" data-a="spKeepToggle:${esc(i.key)}" ${keepKeys.has(i.key)?"checked":""}>
-      <span class="m" style="color:var(--ta)">${esc(i.key)}</span>
+      ${issueKeyLink(S.proj,i.key)}
       <span style="font-size:12.5px;flex:1">${esc(i.t)}</span>
       <span class="m" style="color:var(--tm)">${i.pts} SP</span></label>`).join("")}`
     :`<p class="m" style="color:var(--tm);margin-top:11px">Açık madde yok.</p>`}
