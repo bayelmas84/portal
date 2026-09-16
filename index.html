@@ -4818,9 +4818,7 @@ function afterRender(){
  const swimSel=document.getElementById("fSwimlaneBy");
  if(swimSel)swimSel.onchange=e=>{S.swimlaneBy=e.target.value;render();};
  const mtProjSel=document.getElementById("fMtProjSel");
- if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;S.f.otherSubject="";
-  S.f.items=[]; // Taşıma artık otomatik/arka planda işliyor; yeni toplantı formu her zaman boş başlar.
-  render();};
+ if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;render();};
  const mtPartSel=document.getElementById("fMtPartSel");
  if(mtPartSel)mtPartSel.onchange=e=>{const n=e.target.value;if(!n)return;
   S.f.parts=[...(S.f.parts||[]),n];render();};
