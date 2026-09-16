@@ -828,6 +828,49 @@ test("Sprint burndown: yeni Scrum projesinde sprint otomatik başlar, done olan 
   assert.equal(after.body.data[after.body.data.length - 1], 0, "done olduktan sonra kalan SP 0 olmalı");
 });
 
+test("Project Admin: proje modülü ekran/rol yetkileri yalnızca pmdir tarafından değiştirilebilir, admin'in reset'i bunu etkilemez", async () => {
+  const pmdir = await login("bayram.elmas");
+  const pm = await login("tolga.firat");
+
+  const getAccess = await request(app).get("/api/projects/module-access").set("Cookie", pmdir.cookie);
+  assert.equal(getAccess.status, 200);
+  assert.ok(getAccess.body.access.dev, "dev rolü için bir harita dönmeli");
+
+  // pmdir olmayan biri erişemez.
+  const pmTry = await request(app).get("/api/projects/module-access").set("Cookie", pm.cookie);
+  assert.equal(pmTry.status, 403);
+
+  // Geçersiz (proje modülüne ait olmayan) bir anahtar reddedilir.
+  const invalidKey = await request(app)
+    .put("/api/projects/module-access")
+    .set("Cookie", pmdir.cookie).set("X-CSRF-Token", pmdir.csrf)
+    .send({ role: "staff", screenKey: "m.users", level: "write" });
+  assert.equal(invalidKey.status, 400);
+
+  // Kendi rolünü değiştiremez.
+  const ownRole = await request(app)
+    .put("/api/projects/module-access")
+    .set("Cookie", pmdir.cookie).set("X-CSRF-Token", pmdir.csrf)
+    .send({ role: "pmdir", screenKey: "d.roadmap", level: "none" });
+  assert.equal(ownRole.status, 409);
+
+  // Geçerli bir değişiklik uygulanır ve kalıcıdır.
+  const setOk = await request(app)
+    .put("/api/projects/module-access")
+    .set("Cookie", pmdir.cookie).set("X-CSRF-Token", pmdir.csrf)
+    .send({ role: "staff", screenKey: "d.roadmap", level: "read" });
+  assert.equal(setOk.status, 200);
+
+  const afterSet = await request(app).get("/api/projects/module-access").set("Cookie", pmdir.cookie);
+  assert.equal(afterSet.body.access.staff["d.roadmap"], "read");
+
+  // Admin Panel'in genel reset mekanizması proje modülünü ETKİLEMEZ.
+  const { resetAccessToDefault } = require("../server/src/lib/permissions");
+  await resetAccessToDefault();
+  const afterReset = await request(app).get("/api/projects/module-access").set("Cookie", pmdir.cookie);
+  assert.equal(afterReset.body.access.staff["d.roadmap"], "read", "admin reset'i proje modülü özelleştirmesini silmemeli");
+});
+
 test.after(async () => {
   await pool.end();
 });

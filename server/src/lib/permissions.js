@@ -139,7 +139,26 @@ const isProjectModuleKey = (key) => key === "delivery" || key.startsWith("d.");
 
 async function setAccess(role, screenKey, level) {
   if (isProjectModuleKey(screenKey)) {
-    throw new Error("Proje yönetimi modülünün yetkileri Admin Panel üzerinden değiştirilemez; sabittir.");
+    throw new Error("Proje yönetimi modülünün yetkileri Admin Panel üzerinden değiştirilemez; yalnızca Project Admin ekranından (Proje Yönetim Direktörü) değiştirilebilir.");
+  }
+  if (level === "none") {
+    await query("DELETE FROM role_access WHERE role=$1 AND screen_key=$2", [role, screenKey]);
+  } else {
+    await query(
+      "INSERT INTO role_access (role, screen_key, level) VALUES ($1,$2,$3) ON CONFLICT (role, screen_key) DO UPDATE SET level=$3",
+      [role, screenKey, level]
+    );
+  }
+  invalidateCache();
+}
+
+// Proje yönetimi modülünün (delivery + d.*) ekran/rol yetkilerini SADECE
+// Project Admin ekranından (Proje Yönetim Direktörü) değiştirmeye yarar.
+// setAccess()'ten farklı olarak yalnızca proje modülü anahtarlarını KABUL
+// EDER (başka bir modülü kazayla değiştirmeyi engeller).
+async function setProjectModuleAccess(role, screenKey, level) {
+  if (!isProjectModuleKey(screenKey)) {
+    throw new Error("Bu anahtar proje yönetimi modülüne ait değil.");
   }
   if (level === "none") {
     await query("DELETE FROM role_access WHERE role=$1 AND screen_key=$2", [role, screenKey]);
@@ -153,9 +172,16 @@ async function setAccess(role, screenKey, level) {
 }
 
 async function resetAccessToDefault() {
-  await query("DELETE FROM role_access");
+  // Yalnızca ADMIN PANEL'in yönettiği modülleri sıfırlar — proje yönetimi
+  // modülü (delivery + d.*) BURADAN ETKİLENMEZ: aksi halde admin'in
+  // "Varsayılana döndür" butonu, pmdir'in Project Admin'den yaptığı
+  // özelleştirmeleri yanlışlıkla ezerdi.
+  await query(
+    `DELETE FROM role_access WHERE NOT (screen_key = 'delivery' OR screen_key LIKE 'd.%')`
+  );
   for (const [role, screens] of Object.entries(DEFAULT_ACCESS)) {
     for (const [screenKey, level] of Object.entries(screens)) {
+      if (isProjectModuleKey(screenKey)) continue;
       await query("INSERT INTO role_access (role, screen_key, level) VALUES ($1,$2,$3)", [role, screenKey, level]);
     }
   }
@@ -173,6 +199,21 @@ async function getAllAccess() {
     merged[role] = {};
     for (const [key, level] of Object.entries(screens)) {
       if (!isProjectModuleKey(key)) merged[role][key] = level;
+    }
+  }
+  return merged;
+}
+
+// Project Admin ekranının okuduğu harita: YALNIZCA proje yönetimi modülü
+// (delivery + d.*) anahtarlarını içerir — genel Admin Panel'in "m.access"
+// haritasının birebir tersi.
+async function getProjectModuleAccess() {
+  const access = await loadAccess();
+  const merged = {};
+  for (const [role, screens] of Object.entries(access)) {
+    merged[role] = {};
+    for (const [key, level] of Object.entries(screens)) {
+      if (isProjectModuleKey(key)) merged[role][key] = level;
     }
   }
   return merged;
@@ -213,8 +254,11 @@ module.exports = {
   canRead,
   canWrite,
   setAccess,
+  setProjectModuleAccess,
   resetAccessToDefault,
   getAllAccess,
+  getProjectModuleAccess,
+  isProjectModuleKey,
   getAvailability,
   setAvailability,
   getAllAvailability,

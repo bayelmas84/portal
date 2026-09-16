@@ -6,7 +6,7 @@ const crypto = require("crypto");
 const multer = require("multer");
 const { query, withTransaction } = require("../db");
 const { requireRead, requireWrite, requireAuth } = require("../middleware/auth");
-const { canWrite, MEETING_ALWAYS_ROLES } = require("../lib/permissions");
+const { canWrite, MEETING_ALWAYS_ROLES, DEFAULT_ACCESS, setProjectModuleAccess, getProjectModuleAccess, isProjectModuleKey } = require("../lib/permissions");
 const { audit } = require("../lib/audit");
 const { sendMail } = require("../lib/mailer");
 const { getEmailPrefs } = require("../lib/notify");
@@ -113,6 +113,37 @@ async function seedDefaultWorkflow(projectK) {
     );
   }
 }
+
+// ---------------------- Project Admin: proje modülü ekran/rol yetkileri ----------------------
+// Proje yönetimi modülünün (delivery + tüm d.* ekranları) TEK yetkilendirme
+// yeri burasıdır — Admin Panel'in genel "Ekran yetkileri" mekanizması bu
+// modüle asla dokunamaz (bkz. lib/permissions.js setAccess/getAllAccess).
+// Yalnızca Proje Yönetim Direktörü (pmdir) erişebilir; kendi rolünü
+// değiştiremez (görevler ayrılığı — m.access ekranındaki aynı kuralla
+// tutarlı). Anlık uygulanır, onay akışına girmez (pmdir zaten bu modülün
+// tek yetkilisi).
+const PROJECT_MODULE_ROLES = Object.keys(DEFAULT_ACCESS).concat(["gmy", "opsdir"]).filter((v, i, a) => a.indexOf(v) === i);
+router.get("/module-access", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user.role !== "pmdir") return res.status(403).json({ error: "Yalnızca Proje Yönetim Direktörü erişebilir." });
+    res.json({ access: await getProjectModuleAccess() });
+  } catch (e) { next(e); }
+});
+
+router.put("/module-access", requireAuth, async (req, res, next) => {
+  try {
+    if (req.user.role !== "pmdir") return res.status(403).json({ error: "Yalnızca Proje Yönetim Direktörü değiştirebilir." });
+    const { role, screenKey, level } = req.body || {};
+    if (!PROJECT_MODULE_ROLES.includes(role)) return res.status(400).json({ error: "Geçersiz rol." });
+    if (!isProjectModuleKey(screenKey)) return res.status(400).json({ error: "Bu anahtar proje yönetimi modülüne ait değil." });
+    if (!["none", "read", "write"].includes(level)) return res.status(400).json({ error: "Geçersiz seviye." });
+    if (role === req.user.role) return res.status(409).json({ error: "Kendi rolünüzün yetkisini değiştiremezsiniz." });
+    await setProjectModuleAccess(role, screenKey, level);
+    await audit(`Proje modülü ekran yetkisi değişti: ${role} · ${screenKey} → ${level}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 
 router.get("/", requireRead("d.team"), async (req, res, next) => {
   try {

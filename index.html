@@ -1309,6 +1309,15 @@ async function loadAccessLive(){
  try{const data=await api("GET","/api/admin/access");ACCESS_LIVE=data.items;}
  catch(e){toast("Yetki matrisi yüklenemedi: "+e.message,1);ACCESS_LIVE={};}
  ACCESS_LIVE_LOADING=false;render();}
+/* Project Admin'in "Screen & Role Permissions" bölümü — m.access ile AYNI
+   döngüsel-tıklama deseni, ama YALNIZCA proje modülü (delivery + d.*)
+   anahtarları için, YALNIZCA pmdir görebilir/değiştirebilir. */
+let PROJECT_MODULE_ACCESS_LIVE=null,PROJECT_MODULE_ACCESS_LOADING=false;
+async function loadProjectModuleAccessLive(){
+ PROJECT_MODULE_ACCESS_LOADING=true;
+ try{const data=await api("GET","/api/projects/module-access");PROJECT_MODULE_ACCESS_LIVE=data.access;}
+ catch(e){toast("Proje modülü yetki matrisi yüklenemedi: "+e.message,1);PROJECT_MODULE_ACCESS_LIVE={};}
+ PROJECT_MODULE_ACCESS_LOADING=false;render();}
 /* Bir ekran anahtarının insan-okunur adı: önce modül adları arasında, sonra
    modüllerin ekran listelerinde aranır. */
 function screenLabel(key){
@@ -2780,6 +2789,31 @@ function screenView(){
     altına alınmıştır (yalnızca pmdir'e "d.projadmin" tanımlıdır). */
  if(v==="d.projadmin"){
   const p=P();
+  const roles=Object.keys(ROLE);
+  const pmKeys=[["delivery","(modül)"]].concat(SCREENS.delivery||[]);
+  let permRows="";
+  if(LIVE_BACKEND){
+   if(PROJECT_MODULE_ACCESS_LIVE===null&&!PROJECT_MODULE_ACCESS_LOADING)loadProjectModuleAccessLive();
+   if(PROJECT_MODULE_ACCESS_LIVE===null){
+    permRows=null;
+   }else{
+    pmKeys.forEach(([key,label])=>{
+     permRows+=`<tr><td style="min-width:150px">${label}<div class="m" style="color:var(--tm)">${key}</div></td>`+
+      roles.map(r=>{const val=(PROJECT_MODULE_ACCESS_LIVE[r]||{})[key]||"none";
+       const cls=val===W?"ok":val===R?"":"",txt=val===W?"W":val===R?"R":"—";
+       const own=r===S.me.r;
+       return `<td style="text-align:center"><span class="pl ${cls}" title="${own?"kendi rolünüz — kilitli":""}"
+        style="cursor:${!own?"pointer":"not-allowed"};${own?"outline:1px dashed var(--bds)":""}"
+        ${!own?`data-a="projAccessCycle:${r}:${key}"`:""}>${txt}</span></td>`;}).join("")+`</tr>`;});}
+  }else{
+   pmKeys.forEach(([key,label])=>{
+    permRows+=`<tr><td style="min-width:150px">${label}<div class="m" style="color:var(--tm)">${key}</div></td>`+
+     roles.map(r=>{const val=(ACC[r]||{})[key]||"none";
+      const cls=val===W?"ok":val===R?"":"",txt=val===W?"W":val===R?"R":"—";
+      const own=r===S.me.r;
+      return `<td style="text-align:center"><span class="pl ${cls}" title="${own?"kendi rolünüz — kilitli":""}"
+       style="cursor:${!own?"pointer":"not-allowed"};${own?"outline:1px dashed var(--bds)":""}"
+       ${!own?`data-a="projAccessCycle:${r}:${key}"`:""}>${txt}</span></td>`;}).join("")+`</tr>`;});}
   return head("Project Admin",p.k+" — "+p.n,
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}</div>`)+
   `<div class="card" style="max-width:640px">
@@ -2788,6 +2822,14 @@ function screenView(){
      roles may perform each one. Only the Project Management Director can view or change this screen.</p>
     <div style="display:flex;justify-content:flex-end;margin-top:10px">
      <button class="b p" data-a="manageWorkflow:${S.proj}">Open workflow editor</button></div></div>
+   <div class="lbl" style="margin-top:18px">Screen & Role Permissions — entire project module</div>
+   <p class="m" style="color:var(--tm);margin:4px 0 10px">Click a cell to cycle — · R · W. This covers every screen in the
+    Project Management module (Board, Backlog, Sprint, Gate, Team, Documents, Roadmap, this very page, etc.) for every role.
+    General user/title administration stays in the Admin Panel — this table is the only place these permissions can be changed.</p>
+   ${permRows===null?`<div class="card"><span class="m" style="color:var(--tm)">Loading…</span></div>`:
+    `<div class="card wr" style="margin-bottom:12px;font-size:12px;line-height:1.6">
+      Your own role (<b>${ROLE[S.me.r]}</b>) is locked — no one can change their own access.</div>
+    ${table(["Screen"].concat(roles.map(r=>ROLE[r].split(" ")[0]+(r===S.me.r?" (you)":""))),permRows)}`}
    <p style="font-size:11.5px;color:var(--tm);margin-top:12px">More project-wide administration settings will appear here over time.</p>`;}
 
  /* ---- reports ---- */
@@ -4964,6 +5006,21 @@ app.addEventListener("click",async ev=>{
   const nx=cur==="none"?R:cur===R?W:"none";ACC[r]=ACC[r]||{};
   if(nx==="none")delete ACC[r][key];else ACC[r][key]=nx;
   audit("Ekran yetkisi değişti: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"yetki yok":nx));render();return;}
+ if(k==="projAccessCycle"){const r=p[1],key=p[2];
+  if(r===S.me.r){toast("Kendi rolünüzün yetkilerini değiştiremezsiniz — görevler ayrılığı gereği başka bir yönetici yapmalı.",1);return;}
+  if(LIVE_BACKEND){
+   const cur=(PROJECT_MODULE_ACCESS_LIVE[r]||{})[key]||"none";
+   const nxLevel=cur==="none"?"read":cur==="read"?"write":"none";
+   try{
+    await api("PUT","/api/projects/module-access",{role:r,screenKey:key,level:nxLevel});
+    await loadProjectModuleAccessLive();toast("Permission updated.");
+   }catch(e){toast(e.message,1);}
+   return;}
+  const cur=(ACC[r]||{})[key]||"none";
+  const nx=cur==="none"?R:cur===R?W:"none";ACC[r]=ACC[r]||{};
+  if(nx==="none")delete ACC[r][key];else ACC[r][key]=nx;
+  audit("Proje modülü ekran yetkisi değişti: "+ROLE[r]+" · "+key+" → "+(nx==="none"?"yetki yok":nx));
+  toast("Permission updated.");render();return;}
  if(k==="avail"){const key=p[1],val=p[2];
   if(["admin","m.avail","m.access","approvals","p.in","p.my","p.done"].includes(key)){
    toast("Admin Panel, Ekran yönetimi/yetkileri ve Onay kutusu kapatılamaz (kilitlenme riski).",1);return;}
