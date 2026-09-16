@@ -2139,6 +2139,8 @@ function screenView(){
     <button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
    (canRank&&selected.length?`<div class="card" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
      <span style="font-size:12.5px;font-weight:600">${selected.length} selected</span>
+     <select id="fBulkStatus" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+      <option value="">Status…</option>${Object.keys(FLOW).map(s=>`<option value="${s}">${FLOW[s]}</option>`).join("")}</select>
      <select id="fBulkPriority" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
       <option value="">Priority…</option>${["Highest","High","Medium","Low"].map(pr=>`<option value="${pr}">${pr}</option>`).join("")}</select>
      <select id="fBulkAssignee" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
@@ -6258,22 +6260,46 @@ app.addEventListener("click",async ev=>{
  if(k==="bulkApply"){const pi=+p[1],pr=PROJ[pi],pk=pr.k;
   const selected=S.bulkSelected||[];
   if(!selected.length){toast("No rows selected.",1);return;}
+  const status=document.getElementById("fBulkStatus").value||undefined;
   const priority=document.getElementById("fBulkPriority").value||undefined;
   const assigneeUsername=document.getElementById("fBulkAssignee").value||undefined;
   const addLabel=(document.getElementById("fBulkLabel").value||"").trim()||undefined;
-  if(!priority&&!assigneeUsername&&!addLabel){toast("Choose at least one change to apply.",1);return;}
+  if(!status&&!priority&&!assigneeUsername&&!addLabel){toast("Choose at least one change to apply.",1);return;}
   if(LIVE_BACKEND){
    try{
     const res=await api("POST","/api/projects/"+encodeURIComponent(pk)+"/issues/bulk-update",
-     {issueKeys:selected,priority,assigneeUsername,addLabel});
-    await loadIssuesLive(pk);S.bulkSelected=[];toast(res.updated+" issue(s) updated.");render();
+     {issueKeys:selected,status,priority,assigneeUsername,addLabel});
+    await loadIssuesLive(pk);S.bulkSelected=[];
+    const skipped=res.skipped||[];
+    toast(res.updated+" issue(s) updated."+(skipped.length?" "+skipped.length+" skipped: "+skipped.map(s=>s.issueKey+" ("+s.reason+")").join("; "):""),skipped.length?1:0);
+    render();
    }catch(e){toast(e.message,1);}
    return;}
+  // Demo modda da AYNI iki kontrol uygulanır: workflow kısıtı (tanımsız
+  // geçiş serbesttir) ve "done"a geçişte açık alt kayıt/blocker kontrolü —
+  // canlı backend'deki bulk-update ile BİREBİR aynı davranış.
+  const skippedDemo=[];
+  let updatedCount=0;
   selected.forEach(key=>{const it=itemByKey(pr,key);if(!it)return;
+   let statusOk=true,skipReason=null;
+   if(status&&status!==it.st){
+    const row=workflowOf(pk).find(t=>t.from_status===it.st&&t.to_status===status);
+    const isOverride=S.me.r==="pmdir"||S.me.r==="admin";
+    if(row){
+     if(!row.enabled&&!isOverride){statusOk=false;skipReason=`${it.st} -> ${status} transition is disabled for this project.`;}
+     else if(row.allowed_roles&&row.allowed_roles.length&&!row.allowed_roles.includes(S.me.r)&&!isOverride){statusOk=false;skipReason=`You don't have permission for ${it.st} -> ${status}.`;}
+    }
+    if(statusOk&&status==="done"){const reason=issueCloseBlockReason(pr,it);if(reason){statusOk=false;skipReason=reason;}}
+   }
+   if(status&&!statusOk){skippedDemo.push({issueKey:key,reason:skipReason});return;}
+   if(status&&statusOk)it.st=status;
    if(priority)it.pri=priority;
    if(assigneeUsername){const m=teamOf(pk).find(x=>(x.username||nameToUsername(x.n))===assigneeUsername);it.as=m?m.n:it.as;it.assigneeUsername=assigneeUsername;}
-   if(addLabel)it.labels=[...new Set([...(it.labels||[]),addLabel])];});
-  S.bulkSelected=[];toast(selected.length+" issue(s) updated.");render();return;}
+   if(addLabel)it.labels=[...new Set([...(it.labels||[]),addLabel])];
+   updatedCount++;});
+  S.bulkSelected=[];
+  toast(updatedCount+" issue(s) updated."+(skippedDemo.length?" "+skippedDemo.length+" skipped: "+skippedDemo.map(s=>s.issueKey+" ("+s.reason+")").join("; "):""),skippedDemo.length?1:0);
+  render();return;}
  if(k==="toSprint"){
   const pr=PROJ[+p[1]],it=pr.items.find(x=>x.key===p[2]);
   const msg=p[2]+(pr.m==="Kanban"?" board'a alındı.":" sprinte alındı.");

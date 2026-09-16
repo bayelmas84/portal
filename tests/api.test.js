@@ -921,6 +921,36 @@ test("Admin'in toplu ekran durumu değişikliği (bulk) proje modülü anahtarı
   await setAvailability("m.short", "acik"); // diğer testleri etkilememesi için sıfırla
 });
 
+test("Backlog toplu durum değiştirme: workflow/done kısıtları uygulanır, geçersiz olan atlanır (tüm işlem çökmez)", async () => {
+  const pm = await login("tolga.firat");
+
+  const epic = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: "Bulk status test Epic" });
+  const epicKey = epic.body.item.issue_key;
+  const child = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Story", title: "Bulk status test Story child", parentKey: epicKey });
+  const childKey = child.body.item.issue_key;
+  const simpleStory = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Story", title: "Bulk status test Story", parentKey: epicKey });
+  const storyKey = simpleStory.body.item.issue_key;
+
+  // Basit story: backlog -> todo serbestçe uygulanmalı.
+  const okRes = await request(app).post("/api/projects/TRADE/issues/bulk-update").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueKeys: [storyKey], status: "todo" });
+  assert.equal(okRes.status, 200);
+  assert.equal(okRes.body.updated, 1);
+  assert.deepEqual(okRes.body.skipped, []);
+
+  // Epic: açık alt kaydı (childKey) varken done'a taşınamaz — atlanır, işlem çökmez.
+  const blockedRes = await request(app).post("/api/projects/TRADE/issues/bulk-update").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueKeys: [epicKey], status: "done" });
+  assert.equal(blockedRes.status, 200);
+  assert.equal(blockedRes.body.updated, 0);
+  assert.equal(blockedRes.body.skipped.length, 1);
+  assert.equal(blockedRes.body.skipped[0].issueKey, epicKey);
+  assert.match(blockedRes.body.skipped[0].reason, /child item/);
+});
+
 test.after(async () => {
   await pool.end();
 });

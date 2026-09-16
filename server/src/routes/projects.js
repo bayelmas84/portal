@@ -567,7 +567,7 @@ router.get("/:k/issues", requireRead("d.board"), async (req, res, next) => {
 // yazmaz). Tek bir işlem başarısız olursa TÜMÜ geri alınır (transaction).
 router.post("/:k/issues/bulk-update", requireWrite("d.board"), async (req, res, next) => {
   try {
-    const { issueKeys, assigneeUsername, priority, addLabel, addFixVersion } = req.body || {};
+    const { issueKeys, assigneeUsername, priority, addLabel, addFixVersion, status } = req.body || {};
     if (!Array.isArray(issueKeys) || !issueKeys.length) {
       return res.status(400).json({ error: "En az bir konu seçilmeli." });
     }
@@ -579,20 +579,65 @@ router.post("/:k/issues/bulk-update", requireWrite("d.board"), async (req, res, 
     if (priority && !["Highest", "High", "Medium", "Low"].includes(priority)) {
       return res.status(400).json({ error: "Geçersiz öncelik." });
     }
+    if (status && !["backlog", "todo", "prog", "review", "test", "done"].includes(status)) {
+      return res.status(400).json({ error: "Geçersiz durum." });
+    }
     let validVersion = null;
     if (addFixVersion) {
       const versions = await sanitizeVersionRefs(req.params.k, [addFixVersion]);
       if (!versions.length) return res.status(400).json({ error: "Geçersiz sürüm." });
       validVersion = versions[0];
     }
+    const skipped = [];
     const updatedKeys = await withTransaction(async (client) => {
       const { rows: found } = await client.query(
-        "SELECT issue_key, labels, fix_versions FROM project_issues WHERE project_k=$1 AND issue_key = ANY($2::text[])",
+        "SELECT issue_key, status, labels, fix_versions FROM project_issues WHERE project_k=$1 AND issue_key = ANY($2::text[])",
         [req.params.k, issueKeys]
       );
+      const isOverride = req.user.role === "pmdir" || req.user.role === "admin";
+      const updated = [];
       for (const row of found) {
+        // Durum değişikliği isteniyorsa, TEK TEK issue endpoint'iyle (PUT
+        // /:k/issues/:issueKey) BİREBİR aynı iki kontrol uygulanır: (1) bu
+        // proje için tanımlı bir workflow kısıtlaması varsa uyulur, (2)
+        // "done"a geçişte açık alt kayıt veya bloklayan konu varsa engellenir.
+        // Toplu işlemde tek bir geçersiz konu TÜM işlemi durdurmaz — yalnızca
+        // o konu atlanır ve sebebiyle birlikte rapor edilir.
+        let statusOk = true, skipReason = null;
+        if (status && status !== row.status) {
+          const wf = await client.query(
+            "SELECT allowed_roles, enabled FROM project_workflow_transitions WHERE project_k=$1 AND from_status=$2 AND to_status=$3",
+            [req.params.k, row.status, status]
+          );
+          if (wf.rowCount) {
+            const { allowed_roles: allowedRoles, enabled } = wf.rows[0];
+            if (!enabled && !isOverride) { statusOk = false; skipReason = `${row.status} -> ${status} transition is disabled for this project.`; }
+            else if (allowedRoles && allowedRoles.length && !allowedRoles.includes(req.user.role) && !isOverride) {
+              statusOk = false; skipReason = `You don't have permission for ${row.status} -> ${status}.`;
+            }
+          }
+          if (statusOk && status === "done") {
+            const openChildren = await client.query(
+              "SELECT issue_key FROM project_issues WHERE project_k=$1 AND parent_key=$2 AND status<>'done'",
+              [req.params.k, row.issue_key]
+            );
+            if (openChildren.rowCount) { statusOk = false; skipReason = `${openChildren.rowCount} child item(s) not yet done.`; }
+            else {
+              const blockers = await client.query(
+                `SELECT l.source_key, pi.status FROM project_issue_links l
+                   JOIN project_issues pi ON pi.project_k=l.project_k AND pi.issue_key=l.source_key
+                  WHERE l.project_k=$1 AND l.link_type='blocks' AND l.target_key=$2 AND pi.status<>'done'`,
+                [req.params.k, row.issue_key]
+              );
+              if (blockers.rowCount) { statusOk = false; skipReason = `Blocked by ${blockers.rows.map((r) => r.source_key).join(", ")}.`; }
+            }
+          }
+        }
+        if (status && !statusOk) { skipped.push({ issueKey: row.issue_key, reason: skipReason }); continue; }
+
         const fields = [], values = [];
         let i = 1;
+        if (status && statusOk) { fields.push(`status=$${i++}`); values.push(status); }
         if (assigneeUsername !== undefined) { fields.push(`assignee_username=$${i++}`); values.push(assigneeUsername || null); }
         if (priority) { fields.push(`priority=$${i++}`); values.push(priority); }
         if (addLabel) {
@@ -607,11 +652,12 @@ router.post("/:k/issues/bulk-update", requireWrite("d.board"), async (req, res, 
         fields.push(`updated_at=now()`);
         values.push(req.params.k, row.issue_key);
         await client.query(`UPDATE project_issues SET ${fields.join(", ")} WHERE project_k=$${i++} AND issue_key=$${i}`, values);
+        updated.push(row.issue_key);
       }
-      return found.map((r) => r.issue_key);
+      return updated;
     });
-    await audit(`Toplu güncelleme: ${req.params.k} — ${updatedKeys.length} konu`, req.user.username);
-    res.json({ ok: true, updated: updatedKeys.length, issueKeys: updatedKeys });
+    await audit(`Bulk update: ${req.params.k} — ${updatedKeys.length} issue(s)${skipped.length ? `, ${skipped.length} skipped` : ""}`, req.user.username);
+    res.json({ ok: true, updated: updatedKeys.length, issueKeys: updatedKeys, skipped });
   } catch (e) { next(e); }
 });
 
