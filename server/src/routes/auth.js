@@ -39,11 +39,12 @@ async function getEffectiveAuthMode() {
 router.get("/mode", async (req, res, next) => {
   try {
     const mode = await getEffectiveAuthMode();
-    // Giriş ekranının marka metinleri (başlık, alt metin, kutu placeholder'ları)
-    // kimlik doğrulamadan ÖNCE gösterilmek zorunda, bu yüzden bu tek uçtan hem
-    // AD durumu hem bu birkaç marka alanı birlikte döner — hiçbiri hassas değil.
+    // Giriş ekranının marka metinleri (başlık, alt metin, kutu placeholder'ları,
+    // şirket/ürün adı, footer) kimlik doğrulamadan ÖNCE gösterilmek zorunda, bu
+    // yüzden bu tek uçtan hem AD durumu hem bu marka alanları birlikte döner —
+    // hiçbiri hassas değil (hepsi zaten login ekranında herkese açık gösterilir).
     const { rows } = await query(
-      "SELECT key, value FROM brand_settings WHERE key IN ('loginTitle','loginHint','loginUserPlaceholder','loginPassPlaceholder')"
+      "SELECT key, value FROM brand_settings WHERE key IN ('loginTitle','loginHint','loginUserPlaceholder','loginPassPlaceholder','company','companyShort','product','footer','slogan')"
     );
     const brand = {};
     rows.forEach((r) => { brand[r.key] = r.value; });
