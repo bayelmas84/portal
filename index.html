@@ -1831,37 +1831,44 @@ function todoWidgetHTML(){
    </div></div>`;
   return row;}).join("");
  return `<div class="card" style="padding:16px">
-   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <span style="font-size:14px;font-weight:500">Kişisel notlarım</span>
     <span data-a="todoArchiveOpen" style="cursor:pointer;display:flex;align-items:center;gap:5px" title="Geçmiş kayıtlar">
      ${ic("inbox",14,"color:var(--tm)")}<span class="m" style="font-size:11px;color:var(--tm)">Geçmiş kayıtlar</span></span></div>
-   <div style="border:1px solid var(--bd);border-radius:10px;padding:10px;margin-bottom:11px">
-    <div class="lbl" style="margin-bottom:6px">FİLTRELE</div>
-    <div style="display:flex;flex-direction:column;gap:6px">
-     <div>
-      <div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Durum</div>
-      <select id="todoFilterStatus" style="width:100%;padding:5px 6px;font-size:11px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
-       <option value="">Tüm durumlar</option>
-       ${Object.keys(TODO_STATUS_LABEL).map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${TODO_STATUS_LABEL[s]}</option>`).join("")}</select></div>
-     <div style="display:flex;gap:6px">
-      <div style="flex:1"><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Başlangıç</div>
-       <input type="date" id="todoFilterStart" value="${esc(f.startDate||"")}" style="width:100%;padding:5px 6px;font-size:11px"></div>
-      <div style="flex:1"><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Bitiş</div>
-       <input type="date" id="todoFilterEnd" value="${esc(f.endDate||"")}" style="width:100%;padding:5px 6px;font-size:11px"></div></div>
-     <div style="display:flex;gap:6px;margin-top:2px">
-      <button class="b p" data-a="todoFilterApply" style="flex:1;padding:6px;font-size:11px">Filtreyi uygula</button>
-      ${(f.status||f.startDate||f.endDate)?`<button class="b s" data-a="todoFilterClear" style="padding:6px 10px;font-size:11px">Temizle</button>`:""}</div>
-    </div></div>
-   <div style="margin-bottom:11px">${rows||`<p class="m" style="color:var(--tm);font-size:12px">Kayıtlı not yok.</p>`}</div>
-   <div style="border-top:0.5px solid var(--bd);padding-top:10px;display:flex;flex-direction:column;gap:6px">
-    <div style="display:flex;gap:6px">
-     <select id="todoNewCategory" style="width:76px;padding:6px;font-size:11px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
-      <option>Genel</option><option>İş</option><option>Toplantı</option><option>Kişisel</option></select>
-     <input id="todoNewDescription" placeholder="Açıklama…" style="flex:1;padding:6px 8px;font-size:11.5px">
+   <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:210px">
+     <div style="border:1px solid var(--bd);border-radius:10px;padding:10px;margin-bottom:14px">
+      <div class="lbl" style="margin-bottom:6px">FİLTRELE</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+       <div>
+        <div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Durum</div>
+        <select id="todoFilterStatus" style="width:100%;padding:5px 6px;font-size:11px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
+         <option value="">Tüm durumlar</option>
+         ${Object.keys(TODO_STATUS_LABEL).map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${TODO_STATUS_LABEL[s]}</option>`).join("")}</select></div>
+       <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Başlangıç</div>
+        <input type="date" id="todoFilterStart" value="${esc(f.startDate||"")}" style="width:100%;padding:5px 6px;font-size:11px"></div>
+       <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Bitiş</div>
+        <input type="date" id="todoFilterEnd" value="${esc(f.endDate||"")}" style="width:100%;padding:5px 6px;font-size:11px"></div>
+       <div style="display:flex;gap:6px;margin-top:2px">
+        <button class="b p" data-a="todoFilterApply" style="flex:1;padding:6px;font-size:11px">Filtreyi uygula</button>
+        ${(f.status||f.startDate||f.endDate)?`<button class="b s" data-a="todoFilterClear" style="padding:6px 10px;font-size:11px">Temizle</button>`:""}</div>
+      </div></div>
+     <div style="border:1px solid var(--bd);border-radius:10px;padding:10px">
+      <div class="lbl" style="margin-bottom:6px">YENİ NOT</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+       <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Kategori</div>
+        <select id="todoNewCategory" style="width:100%;padding:6px;font-size:11px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
+         <option>Genel</option><option>İş</option><option>Toplantı</option><option>Kişisel</option></select></div>
+       <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Açıklama</div>
+        <input id="todoNewDescription" placeholder="Açıklama…" style="width:100%;padding:6px 8px;font-size:11.5px"></div>
+       <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Bitiş tarihi</div>
+        <input type="date" id="todoNewDueDate" style="width:100%;padding:5px 6px;font-size:11px"></div>
+       <button class="b p" data-a="todoAdd" style="padding:6px;font-size:11.5px">Ekle</button>
+      </div></div>
     </div>
-    <div style="display:flex;gap:6px">
-     <input type="date" id="todoNewDueDate" style="flex:1;padding:5px 6px;font-size:11px">
-     <button class="b p" data-a="todoAdd" style="padding:0 14px;font-size:11.5px">Ekle</button></div>
+    <div style="flex:1.3;min-width:230px">
+     ${rows||`<p class="m" style="color:var(--tm);font-size:12px">Kayıtlı not yok.</p>`}
+    </div>
    </div></div>`;}
 async function loadCapacityLive(pk){
  try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/capacity");CAPACITY_LIVE[pk]=data.items;render();}
