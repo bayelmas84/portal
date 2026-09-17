@@ -1804,9 +1804,11 @@ function todoDateBadge(d){
 function todoWidgetHTML(){
  if(LIVE_BACKEND&&TODO_ITEMS_LIVE===null){loadTodoLive(false);}
  const items=LIVE_BACKEND?(TODO_ITEMS_LIVE||[]):TODO_ITEMS_DEMO;
+ const allCategories=[...new Set(["Genel","İş","Toplantı","Kişisel",...items.map(it=>it.category)])];
  const f=S.todoFilter||{};
  const filtered=items.filter(it=>{
   if(f.status&&it.status!==f.status)return false;
+  if(f.category&&it.category!==f.category)return false;
   const dd=it.due_date?String(it.due_date).slice(0,10):null;
   if(f.startDate&&(!dd||dd<f.startDate))return false;
   if(f.endDate&&(!dd||dd>f.endDate))return false;
@@ -1814,7 +1816,9 @@ function todoWidgetHTML(){
  const rows=filtered.map(it=>{
   const st=it.status,isDone=st==="done";
   const needsCompletion=isDone&&!it.completion_date;
-  let row=`<div style="padding:8px 4px;border-bottom:0.5px solid var(--bd)">
+  const dueStr=it.due_date?String(it.due_date).slice(0,10):null;
+  const isOverdueItem=!!dueStr&&st!=="done"&&st!=="cancel"&&dueStr<today();
+  let row=`<div style="padding:8px 4px;border-bottom:0.5px solid var(--bd);${isOverdueItem?"border:1px solid var(--er-fg);border-radius:8px;margin-bottom:4px":""}">
    <div style="display:flex;align-items:center;gap:8px">
     <span data-a="todoToggleDone:${it.id}:${isDone?0:1}" style="cursor:pointer;flex-shrink:0">
      ${ic(isDone?"checks":"checkbox",16,"color:"+(isDone?"#5DCAA5":"var(--tm)"))}</span>
@@ -1822,7 +1826,7 @@ function todoWidgetHTML(){
     <span style="font-size:12px;flex:1;${isDone||st==="cancel"?"color:var(--tm);text-decoration:line-through":""}">${esc(it.description)}</span>
     <span data-a="todoDelete:${it.id}" style="cursor:pointer;flex-shrink:0">${ic("scissors",13,"color:var(--tm)")}</span></div>
    <div style="margin-left:24px;display:flex;align-items:center;gap:7px;margin-top:3px;flex-wrap:wrap">
-    ${it.due_date?`<span style="font-size:9.5px">Bitiş: ${todoDateBadge(String(it.due_date).slice(0,10))}</span>`:""}
+    ${it.due_date?`<span style="font-size:9.5px">Bitiş: ${todoDateBadge(dueStr)}</span>`:""}
     <span class="m" style="font-size:9.5px;background:${TODO_STATUS_COLOR[st]}22;color:${TODO_STATUS_COLOR[st]};padding:1px 6px;border-radius:5px">${TODO_STATUS_LABEL[st]}</span>
     ${needsCompletion?`<span style="display:flex;align-items:center;gap:5px">
       <span class="m" style="font-size:9.5px;color:var(--tm)">Tamamlanma tarihi:</span>
@@ -1845,20 +1849,27 @@ function todoWidgetHTML(){
         <select id="todoFilterStatus" style="width:100%;padding:5px 6px;font-size:11px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
          <option value="">Tüm durumlar</option>
          ${Object.keys(TODO_STATUS_LABEL).map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${TODO_STATUS_LABEL[s]}</option>`).join("")}</select></div>
+       <div>
+        <div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Kategori</div>
+        <select id="todoFilterCategory" style="width:100%;padding:5px 6px;font-size:11px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
+         <option value="">Tüm kategoriler</option>
+         ${allCategories.map(c=>`<option value="${esc(c)}" ${f.category===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div>
        <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Başlangıç</div>
         <input type="date" id="todoFilterStart" value="${esc(f.startDate||"")}" style="width:100%;padding:5px 6px;font-size:11px"></div>
        <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Bitiş</div>
         <input type="date" id="todoFilterEnd" value="${esc(f.endDate||"")}" style="width:100%;padding:5px 6px;font-size:11px"></div>
        <div style="display:flex;gap:6px;margin-top:2px">
         <button class="b p" data-a="todoFilterApply" style="flex:1;padding:6px;font-size:11px">Filtreyi uygula</button>
-        ${(f.status||f.startDate||f.endDate)?`<button class="b s" data-a="todoFilterClear" style="padding:6px 10px;font-size:11px">Temizle</button>`:""}</div>
+        ${(f.status||f.category||f.startDate||f.endDate)?`<button class="b s" data-a="todoFilterClear" style="padding:6px 10px;font-size:11px">Temizle</button>`:""}</div>
       </div></div>
      <div style="border:1px solid var(--bd);border-radius:10px;padding:10px">
       <div class="lbl" style="margin-bottom:6px">YENİ NOT</div>
       <div style="display:flex;flex-direction:column;gap:6px">
        <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Kategori</div>
-        <input id="todoNewCategory" list="todoCategoryList" placeholder="Genel" value="Genel" style="width:100%;padding:6px 8px;font-size:11px">
-        <datalist id="todoCategoryList">${[...new Set(["Genel","İş","Toplantı","Kişisel",...items.map(it=>it.category)])].map(c=>`<option value="${esc(c)}">`).join("")}</datalist></div>
+        <select id="todoNewCategory" style="width:100%;padding:6px;font-size:11px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
+         <option value="__new__" ${S.todoNewCategoryMode==="new"?"selected":""}>+ Yeni kategori…</option>
+         ${allCategories.map(c=>`<option value="${esc(c)}" ${S.todoNewCategoryMode!=="new"&&(S.todoNewCategorySelected||allCategories[0])===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
+        ${S.todoNewCategoryMode==="new"?`<input id="todoNewCategoryText" placeholder="Yeni kategori adı…" style="width:100%;padding:6px 8px;font-size:11px;margin-top:5px">`:""}</div>
        <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Açıklama</div>
         <input id="todoNewDescription" placeholder="Açıklama…" style="width:100%;padding:6px 8px;font-size:11.5px"></div>
        <div><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Bitiş tarihi</div>
@@ -5613,6 +5624,10 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="k")clickIf('[data-a="scr:d.backlog"]');
   return;}});
 app.addEventListener("change",async e=>{
+ if(e.target.id==="todoNewCategory"){
+  S.todoNewCategoryMode=e.target.value==="__new__"?"new":"existing";
+  S.todoNewCategorySelected=e.target.value==="__new__"?S.todoNewCategorySelected:e.target.value;
+  render();return;}
  const todoComp=e.target.closest("[data-a^='todoSetCompletion:']");
  if(todoComp){
   const id=todoComp.dataset.a.split(":")[1],val=todoComp.value;
@@ -6343,22 +6358,29 @@ app.addEventListener("click",async ev=>{
  if(k==="todoFilterApply"){
   S.todoFilter={
    status:(document.getElementById("todoFilterStatus")||{}).value||"",
+   category:(document.getElementById("todoFilterCategory")||{}).value||"",
    startDate:(document.getElementById("todoFilterStart")||{}).value||"",
    endDate:(document.getElementById("todoFilterEnd")||{}).value||"",
   };render();return;}
  if(k==="todoFilterClear"){S.todoFilter={};render();return;}
  if(k==="todoAdd"){
-  const category=(document.getElementById("todoNewCategory")||{}).value||"Genel";
+  const catSelectVal=(document.getElementById("todoNewCategory")||{}).value||"Genel";
+  const category=catSelectVal==="__new__"?
+   ((document.getElementById("todoNewCategoryText")||{}).value||"").trim():catSelectVal;
   const description=(document.getElementById("todoNewDescription")||{}).value||"";
   const dueDate=(document.getElementById("todoNewDueDate")||{}).value||"";
   if(!description.trim()){toast("Açıklama zorunlu.",1);return;}
+  if(!category){toast("Kategori adı zorunlu.",1);return;}
   if(LIVE_BACKEND){
    try{const res=await api("POST","/api/todo",{category,description,dueDate:dueDate||null});
-    TODO_ITEMS_LIVE=[res.item,...(TODO_ITEMS_LIVE||[])];toast("Not eklendi.");render();}
+    TODO_ITEMS_LIVE=[res.item,...(TODO_ITEMS_LIVE||[])];
+    S.todoNewCategoryMode="existing";S.todoNewCategorySelected=category;
+    toast("Not eklendi.");render();}
    catch(e){toast(e.message,1);}
    return;}
   TODO_ITEMS_DEMO=[{id:nextTodoId--,category,description:description.trim(),status:"open",
    create_date:today(),due_date:dueDate||null,completion_date:null,archived:false},...TODO_ITEMS_DEMO];
+  S.todoNewCategoryMode="existing";S.todoNewCategorySelected=category;
   toast("Not eklendi.");render();return;}
  if(k==="todoToggleDone"){const id=p[1],makeDone=p[2]==="1";
   const newStatus=makeDone?"done":"open";
