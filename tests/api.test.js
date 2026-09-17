@@ -1077,6 +1077,73 @@ test("Kayıtlı filtreler: oluşturma, listeleme (kullanıcı-izole), silme ve y
   assert.ok(!listAfter.body.items.some((x) => x.id === filterId));
 });
 
+test("Otomasyon kuralları: tetikleyici-koşul-eylem doğru çalışır ve döngü koruması sonsuz döngüyü engeller", async () => {
+  const pm = await login("tolga.firat");
+
+  // Kural: Bug oluşturulunca öncelik High yapılır.
+  const createRule = await request(app).post("/api/projects/TRADE/automation-rules")
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({
+      name: "Bug -> High test", triggerType: "issue_created",
+      conditions: [{ field: "type", op: "eq", value: "Bug" }],
+      actions: [{ type: "set_priority", value: "High" }],
+    });
+  assert.equal(createRule.status, 201);
+  const ruleId = createRule.body.item.id;
+
+  // Bug'ı Low öncelikle oluştur; kural onu High'a çevirmeli.
+  const epic = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Epic", title: "Otomasyon test epic" });
+  const story = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Story", title: "Otomasyon test story", parentKey: epic.body.item.issue_key });
+  const bug = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Bug", title: "Otomasyon test bug", priority: "Low", parentKey: story.body.item.issue_key });
+  assert.equal(bug.status, 201);
+
+  await new Promise((r) => setTimeout(r, 300)); // otomasyon yanıttan sonra arka planda çalışır
+
+  const afterBug = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  const bugAfter = afterBug.body.items.find((i) => i.issue_key === bug.body.item.issue_key);
+  assert.equal(bugAfter.priority, "High");
+
+  const log = await request(app).get("/api/projects/TRADE/automation-log").set("Cookie", pm.cookie);
+  assert.ok(log.body.items.some((x) => x.rule_id === ruleId && x.issue_key === bug.body.item.issue_key));
+
+  // Kuralı devre dışı bırakınca bir daha tetiklenmemeli.
+  const disable = await request(app).put(`/api/projects/TRADE/automation-rules/${ruleId}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ enabled: false });
+  assert.equal(disable.status, 200);
+  const bug2 = await request(app).post("/api/projects/TRADE/issues").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ issueType: "Bug", title: "Otomasyon test bug 2", priority: "Low", parentKey: story.body.item.issue_key });
+  await new Promise((r) => setTimeout(r, 300));
+  const afterBug2 = await request(app).get("/api/projects/TRADE/issues").set("Cookie", pm.cookie);
+  const bug2After = afterBug2.body.items.find((i) => i.issue_key === bug2.body.item.issue_key);
+  assert.equal(bug2After.priority, "Low"); // devre dışı kural çalışmadı, öncelik değişmedi
+
+  // Döngü koruması: A (todo->prog) ve B (prog->todo) birbirini tetikler;
+  // MAX_CASCADE_DEPTH'in üstüne çıkmadan durmalı, sunucu kilitlenmemeli.
+  const ruleA = await request(app).post("/api/projects/TRADE/automation-rules").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ name: "Loop A test", triggerType: "status_changed", triggerValue: "todo", actions: [{ type: "set_status", value: "prog" }] });
+  const ruleB = await request(app).post("/api/projects/TRADE/automation-rules").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ name: "Loop B test", triggerType: "status_changed", triggerValue: "prog", actions: [{ type: "set_status", value: "todo" }] });
+  const started = Date.now();
+  const triggerLoop = await request(app).put(`/api/projects/TRADE/issues/${epic.body.item.issue_key}`)
+    .set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ status: "todo" });
+  assert.equal(triggerLoop.status, 200);
+  await new Promise((r) => setTimeout(r, 300));
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 5000, "döngü makul sürede durmalı (sonsuz döngü değil)");
+
+  const loopLog = await request(app).get("/api/projects/TRADE/automation-log").set("Cookie", pm.cookie);
+  const loopFires = loopLog.body.items.filter((x) => x.issue_key === epic.body.item.issue_key && x.rule_name.startsWith("Loop"));
+  assert.ok(loopFires.length > 0 && loopFires.length <= 5, `döngü sınırlı sayıda tetiklenmeli, ${loopFires.length} kez tetiklendi`);
+
+  // Temizlik.
+  await request(app).delete(`/api/projects/TRADE/automation-rules/${ruleId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  await request(app).delete(`/api/projects/TRADE/automation-rules/${ruleA.body.item.id}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  await request(app).delete(`/api/projects/TRADE/automation-rules/${ruleB.body.item.id}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+});
+
 test.after(async () => {
   await pool.end();
 });

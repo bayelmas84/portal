@@ -1650,6 +1650,37 @@ function generateReleaseNotes(pr,versionName){
   md+="\n";});
  if(!any)md+="_No issues found for this version._\n";
  return md;}
+/* Otomasyon kural formu: koşul/eylem satırlarının değer seçicisi, alana
+   göre değişir (sabit küme varsa dropdown, yoksa serbest metin). */
+function automationValuePicker(idPrefix,field,currentValue){
+ if(field==="type")return `<select id="${idPrefix}" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+  ${["Epic","Story","Task","Bug"].map(t=>`<option value="${t}" ${currentValue===t?"selected":""}>${t}</option>`).join("")}</select>`;
+ if(field==="priority")return `<select id="${idPrefix}" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+  ${["Highest","High","Medium","Low"].map(t=>`<option value="${t}" ${currentValue===t?"selected":""}>${t}</option>`).join("")}</select>`;
+ if(field==="status")return `<select id="${idPrefix}" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+  ${Object.keys(FLOW).map(t=>`<option value="${t}" ${currentValue===t?"selected":""}>${FLOW[t]}</option>`).join("")}</select>`;
+ return `<input id="${idPrefix}" value="${esc(currentValue||"")}" placeholder="değer" style="padding:6px 8px;font-size:12px;width:120px">`;}
+function automationActionValuePicker(idPrefix,type,currentValue,pk){
+ if(type==="set_priority")return automationValuePicker(idPrefix,"priority",currentValue);
+ if(type==="set_status")return automationValuePicker(idPrefix,"status",currentValue);
+ if(type==="set_assignee")return `<select id="${idPrefix}" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+  <option value="__unassign__">— Unassign —</option>
+  ${[...teamOf(pk)].sort((a,b)=>a.n.localeCompare(b.n,"tr")).map(m=>{const uname=m.username||nameToUsername(m.n);
+    return uname?`<option value="${uname}" ${currentValue===uname?"selected":""}>${esc(m.n)}</option>`:"";}).join("")}</select>`;
+ if(type==="notify_assignee"||type==="notify_watchers"||type==="add_comment")
+  return `<input id="${idPrefix}" value="${esc(currentValue||"")}" placeholder="Mesaj (opsiyonel)" style="padding:6px 8px;font-size:12px;flex:1">`;
+ return "";}
+function automationSyncFormFromDOM(){
+ const nameEl=document.getElementById("fAutoName");if(nameEl)S.f.autoName=nameEl.value;
+ const trigValEl=document.getElementById("fAutoTriggerValue");if(trigValEl)S.f.autoTriggerValue=trigValEl.value;
+ const conds=S.f.autoConditions||[];
+ conds.forEach((c,idx)=>{
+  const f=document.getElementById("acField"+idx),o=document.getElementById("acOp"+idx),v=document.getElementById("acVal"+idx);
+  if(f)c.field=f.value;if(o)c.op=o.value;if(v)c.value=v.value;});
+ const acts=S.f.autoActions||[];
+ acts.forEach((a,idx)=>{
+  const t=document.getElementById("aaType"+idx),v=document.getElementById("aaVal"+idx);
+  if(t)a.type=t.value;if(v)a.value=v.value;});}
 function versionsOf(pk){
  if(LIVE_BACKEND){if(!(pk in PROJECT_VERSIONS_LIVE)){PROJECT_VERSIONS_LIVE[pk]=[];loadVersionsLive(pk);}return PROJECT_VERSIONS_LIVE[pk];}
  return PROJECT_VERSIONS_DEMO[pk]||(PROJECT_VERSIONS_DEMO[pk]=[]);}
@@ -1671,6 +1702,56 @@ let PROJECT_WORKFLOW_LIVE={},PROJECT_WORKFLOW_DEMO={};
    story point sığdırabileceği (izin/tatil gibi durumlarda düşürülebilir).
    Canlı backend'de proje bazında saklanır; demo modda bellek-içi. */
 let CAPACITY_LIVE={};
+/* Otomasyon kuralları (demo mod): backend'deki runAutomation() ile aynı
+   tetikleyici/koşul/eylem mantığının client-side eşdeğeri. Alan adları
+   demo veri yapısına göre eşleştirilir (ty/pri/st/as). Aynı cascade
+   (zincirleme) koruması: MAX_CASCADE_DEPTH aşılırsa durur, sonsuz
+   döngüye izin verilmez. */
+let AUTOMATION_RULES_DEMO={},AUTOMATION_LOG_DEMO={};
+let nextAutomationRuleId=1,nextAutomationLogId=1;
+const AUTOMATION_FIELD_MAP_DEMO={type:"ty",priority:"pri",status:"st",assignee:"as"};
+function automationConditionMatchesDemo(it,cond){
+ const col=AUTOMATION_FIELD_MAP_DEMO[cond.field];if(!col)return true;
+ const val=it[col];
+ if(cond.op==="eq")return String(val||"")===String(cond.value||"");
+ if(cond.op==="empty")return !val;
+ if(cond.op==="not_empty")return !!val;
+ return true;}
+function automationLogDemo(pk,ruleId,ruleName,issueKey,summary){
+ (AUTOMATION_LOG_DEMO[pk]=AUTOMATION_LOG_DEMO[pk]||[]).unshift(
+  {id:nextAutomationLogId++,rule_id:ruleId,rule_name:ruleName,issue_key:issueKey,summary,fired_at:now()});}
+function runAutomationDemo(pi,triggerType,issueKey,context,depth){
+ depth=depth||0;if(depth>=3)return;
+ const pk=PROJ[pi].k;
+ const rules=(AUTOMATION_RULES_DEMO[pk]||[]).filter(r=>r.enabled&&r.trigger_type===triggerType&&
+  (!r.trigger_value||r.trigger_value===((context||{}).toValue)));
+ if(!rules.length)return;
+ rules.forEach(rule=>{
+  const it=itemByKey(PROJ[pi],issueKey);if(!it)return;
+  const conds=rule.conditions_json||[];
+  if(!conds.every(c=>automationConditionMatchesDemo(it,c)))return;
+  (rule.actions_json||[]).forEach(action=>{
+   let cascade=null;
+   if(action.type==="set_priority"&&["Highest","High","Medium","Low"].includes(action.value)){
+    it.pri=action.value;automationLogDemo(pk,rule.id,rule.name,issueKey,`Öncelik "${action.value}" olarak ayarlandı`);
+    cascade={t:"priority_changed",v:action.value};}
+   else if(action.type==="set_status"&&Object.keys(FLOW).includes(action.value)){
+    it.st=action.value;automationLogDemo(pk,rule.id,rule.name,issueKey,`Durum "${FLOW[action.value]}" olarak ayarlandı`);
+    cascade={t:"status_changed",v:action.value};}
+   else if(action.type==="set_assignee"){
+    const uname=action.value==="__unassign__"?null:action.value;
+    const nm=uname?((USERS.find(u=>u.u===uname)||{}).n||null):null;
+    it.as=nm;automationLogDemo(pk,rule.id,rule.name,issueKey,nm?`Atanan kişi "${nm}" olarak ayarlandı`:"Atama kaldırıldı");}
+   else if(action.type==="notify_assignee"||action.type==="notify_watchers"){
+    automationLogDemo(pk,rule.id,rule.name,issueKey,
+     (action.type==="notify_assignee"?"Atanan kişiye":"İzleyicilere")+" bildirim gönderildi (demo modda gerçek bildirim gönderilmez)");}
+   else if(action.type==="add_comment"){
+    ISSUE_COMMENTS_DEMO.push({id:nextIssueComment++,pk,issue_key:issueKey,author_username:S.me.u,author_name:S.me.n,
+     body:`[Otomasyon: ${rule.name}] ${action.message||""}`.trim(),created_at:now(),updated_at:null});
+    automationLogDemo(pk,rule.id,rule.name,issueKey,"Otomatik yorum eklendi");}
+   if(cascade)runAutomationDemo(pi,cascade.t,issueKey,{toValue:cascade.v},depth+1);
+  });
+ });}
 /* Kayıtlı filtreler: kullanıcının "All Issues" ekranında sık kullandığı
    filtre kombinasyonlarını adlandırıp kaydetmesi. Canlı backend'de
    /api/saved-filters üzerinden saklanır; demo modda bellek-içi. */
@@ -1682,6 +1763,16 @@ async function loadSavedFiltersLive(){
  SAVED_FILTERS_LIVE_LOADING=false;render();}
 let SAVED_FILTERS_DEMO=[];
 let nextSavedFilterId=1;
+/* Otomasyon kuralları (canlı backend cache): proje anahtarına göre. */
+let AUTOMATION_RULES_LIVE={},AUTOMATION_LOG_LIVE={};
+async function loadAutomationRulesLive(pk){
+ try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/automation-rules");
+  AUTOMATION_RULES_LIVE[pk]=data.items;render();}
+ catch(e){AUTOMATION_RULES_LIVE[pk]=[];}}
+async function loadAutomationLogLive(pk){
+ try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/automation-log");
+  AUTOMATION_LOG_LIVE[pk]=data.items;render();}
+ catch(e){AUTOMATION_LOG_LIVE[pk]=[];}}
 async function loadCapacityLive(pk){
  try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/capacity");CAPACITY_LIVE[pk]=data.items;render();}
  catch(e){CAPACITY_LIVE[pk]=[];render();}}
@@ -2288,6 +2379,7 @@ function screenView(){
     <button class="b s" data-a="exportCSV:backlog:${S.proj}">Export CSV</button>
     <button class="b s" data-a="exportPDF:backlog:${S.proj}">Export PDF</button>
     ${cw("d.backlog")?`<button class="b s" data-a="manageVC:${S.proj}">Versions & Components</button>
+    <button class="b s" data-a="automationRulesOpen:${S.proj}">Automation Rules</button>
     <button class="b p" data-a="issueNew">New issue</button>`:""}</div>`)+readOnly("d.backlog")+
    (canRank&&selected.length?`<div class="card" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
      <span style="font-size:12.5px;font-weight:600">${selected.length} selected</span>
@@ -4844,6 +4936,84 @@ function dialogView(){
     <button class="b s" data-a="releaseNotesCopy">Copy</button>
     <button class="b s" data-a="releaseNotesDownload:${d.pi}:${encodeURIComponent(d.versionName)}">Download .md</button>
     <button class="b p" data-a="dlgClose">Close</button></div>`);}
+ if(d.type==="automationRules"){const pr=PROJ[d.pi];
+  const rules=LIVE_BACKEND?(AUTOMATION_RULES_LIVE[pr.k]||[]):(AUTOMATION_RULES_DEMO[pr.k]||[]);
+  const logs=(LIVE_BACKEND?(AUTOMATION_LOG_LIVE[pr.k]||[]):(AUTOMATION_LOG_DEMO[pr.k]||[])).slice(0,10);
+  const TRIGGER_LABEL={issue_created:"Issue created",status_changed:"Status changes to",priority_changed:"Priority changes to"};
+  const FIELD_LABEL={type:"Type",priority:"Priority",status:"Status",assignee:"Assignee"};
+  const OP_LABEL={eq:"is",empty:"is empty",not_empty:"is not empty"};
+  const ACTION_LABEL={set_priority:"Set priority",set_status:"Set status",set_assignee:"Set assignee",
+   notify_assignee:"Notify assignee",notify_watchers:"Notify watchers",add_comment:"Add comment"};
+  const building=S.f.autoBuilding;
+  // Bir kuralın özet satırını oluşturur (tetikleyici + koşullar + eylemler).
+  const ruleSummaryLine=function(r){
+   var line=TRIGGER_LABEL[r.trigger_type];
+   if(r.trigger_value)line+=" "+(r.trigger_type==="status_changed"?FLOW[r.trigger_value]:r.trigger_value);
+   var condsArr=r.conditions_json||[];
+   if(condsArr.length){
+    var condParts=condsArr.map(function(c){return FIELD_LABEL[c.field]+" "+OP_LABEL[c.op]+(c.op==="eq"?(" "+c.value):"");});
+    line+=" · if "+condParts.join(", ");}
+   var actParts=(r.actions_json||[]).map(function(a){return ACTION_LABEL[a.type]+(a.value?(" "+a.value):"");});
+   line+=" · then "+actParts.join(", ");
+   return line;};
+  // Kural listesi kartlarının HTML'i.
+  var ruleCards="";
+  rules.forEach(function(r){
+   ruleCards+='<div class="card" style="padding:9px 11px;margin-bottom:7px">'
+    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+    +'<button class="sw '+(r.enabled?"on":"")+'" data-a="automationRuleToggle:'+d.pi+':'+r.id+':'+(r.enabled?0:1)+'" style="flex-shrink:0"><i></i></button>'
+    +'<span style="font-weight:600;font-size:12.5px;flex:1">'+esc(r.name)+'</span>'
+    +'<button class="b s d" data-a="automationRuleDelete:'+d.pi+':'+r.id+'">Delete</button></div>'
+    +'<p class="m" style="color:var(--tm);margin-top:5px">'+esc(ruleSummaryLine(r))+'</p></div>';});
+  if(!ruleCards)ruleCards='<p class="m" style="color:var(--tm)">No automation rules yet.</p>';
+  // Son otomasyon çalışmaları (varsa).
+  var logHtml="";
+  if(logs.length){
+   var logRows=logs.map(function(l){return '<div><span class="m" style="color:var(--ta)">'+esc(l.issue_key)+'</span> — '+esc(l.rule_name)+': '+esc(l.summary)+'</div>';}).join("");
+   logHtml='<div class="lbl" style="margin-top:16px">RECENT ACTIVITY</div>'
+    +'<div class="card" style="max-height:160px;overflow:auto;font-size:11.5px;line-height:1.7">'+logRows+'</div>';}
+  const listView='<div style="margin-top:12px">'+ruleCards
+   +'<button class="b s p" data-a="automationRuleNew" style="margin-top:6px">+ New rule</button></div>'+logHtml;
+  // Kural oluşturma (builder) formu.
+  var triggerValuePickerHtml="";
+  if(S.f.autoTrigger==="status_changed")triggerValuePickerHtml='<div style="margin-top:8px">'+automationValuePicker("fAutoTriggerValue","status",S.f.autoTriggerValue)+'</div>';
+  if(S.f.autoTrigger==="priority_changed")triggerValuePickerHtml='<div style="margin-top:8px">'+automationValuePicker("fAutoTriggerValue","priority",S.f.autoTriggerValue)+'</div>';
+  var condRowsHtml="";
+  (S.f.autoConditions||[]).forEach(function(c,idx){
+   var fieldOpts=Object.keys(FIELD_LABEL).map(function(f){return '<option value="'+f+'" '+(c.field===f?"selected":"")+'>'+FIELD_LABEL[f]+'</option>';}).join("");
+   var opOpts=Object.keys(OP_LABEL).map(function(o){return '<option value="'+o+'" '+(c.op===o?"selected":"")+'>'+OP_LABEL[o]+'</option>';}).join("");
+   var valPicker=c.op==="eq"?automationValuePicker("acVal"+idx,c.field,c.value):"";
+   condRowsHtml+='<div style="display:flex;gap:6px;align-items:center;margin-top:6px">'
+    +'<select id="acField'+idx+'" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">'+fieldOpts+'</select>'
+    +'<select id="acOp'+idx+'" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">'+opOpts+'</select>'
+    +valPicker+'<button class="b s d" data-a="automationCondRemove:'+idx+'">✕</button></div>';});
+  var actRowsHtml="";
+  (S.f.autoActions||[]).forEach(function(a,idx){
+   var typeOpts=Object.keys(ACTION_LABEL).map(function(t){return '<option value="'+t+'" '+(a.type===t?"selected":"")+'>'+ACTION_LABEL[t]+'</option>';}).join("");
+   var valPicker=automationActionValuePicker("aaVal"+idx,a.type,a.value||a.message,pr.k);
+   actRowsHtml+='<div style="display:flex;gap:6px;align-items:center;margin-top:6px">'
+    +'<select id="aaType'+idx+'" data-a="automationActionTypeChange:'+idx+'" style="padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">'+typeOpts+'</select>'
+    +valPicker+'<button class="b s d" data-a="automationActionRemove:'+idx+'">✕</button></div>';});
+  var triggerOpts=Object.keys(TRIGGER_LABEL).map(function(t){return '<option value="'+t+'" '+(S.f.autoTrigger===t?"selected":"")+'>'+TRIGGER_LABEL[t]+'</option>';}).join("");
+  const builderView='<div class="lbl" style="margin-top:6px">NAME</div>'
+   +'<input id="fAutoName" placeholder="e.g. Bug -&gt; High priority" value="'+esc(S.f.autoName||"")+'">'
+   +'<div class="lbl" style="margin-top:12px">TRIGGER</div>'
+   +'<select id="fAutoTrigger" data-a="automationTriggerChange" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12.5px;width:100%">'+triggerOpts+'</select>'
+   +triggerValuePickerHtml
+   +'<div class="lbl" style="margin-top:14px">CONDITIONS <span class="m" style="color:var(--tm)">(optional, all must match)</span></div>'
+   +condRowsHtml
+   +'<button class="b s" data-a="automationCondAdd" style="margin-top:8px">+ Add condition</button>'
+   +'<div class="lbl" style="margin-top:14px">ACTIONS</div>'
+   +actRowsHtml
+   +'<button class="b s" data-a="automationActionAdd" style="margin-top:8px">+ Add action</button>'
+   +'<div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px">'
+   +'<button class="b" data-a="automationRuleCancel">Cancel</button>'
+   +'<button class="b p" data-a="automationRuleSave:'+d.pi+'">Save rule</button></div>';
+  return wrap('<div style="display:flex;align-items:center;gap:9px">'
+   +'<div style="font-size:15px;flex:1">Automation Rules — '+pr.k+'</div>'
+   +'<button class="b s" data-a="dlgClose" style="padding:4px 9px">✕</button></div>'
+   +'<p class="m" style="color:var(--tm);margin-top:6px">Trigger, then condition(s), then action(s). An action can re-trigger another rule (max 3 chained steps — further cascades stop automatically to prevent infinite loops).</p>'
+   +(building?builderView:listView));}
  if(d.type==="savedFilterSave"){const pr=PROJ[d.pi];
   const f=S.allIssuesFilter||{};
   const summary=[f.status&&FLOW[f.status],f.type,f.priority,f.assigneeUsername,f.q&&`"${f.q}"`].filter(Boolean).join(" · ")||"(no criteria)";
@@ -5300,6 +5470,7 @@ app.addEventListener("drop",e=>{
   return;}
  audit("İş durumu sürükle-bırak ile değişti: "+it.key+" "+FLOW[from]+" → "+FLOW[to]);
  syncMeetingItemFromTaskDemo(pr.k,it.key,to,from);
+ runAutomationDemo(PROJ.indexOf(pr),"status_changed",it.key,{toValue:to});
  toast(it.key+": "+FLOW[from]+" → "+FLOW[to]);});
 /* Dinamik sayıdaki toplantı gündem maddesi satırlarının assignee/due date
    alanları için event delegation (her satır ayrı id yerine data-item-assign /
@@ -5836,6 +6007,7 @@ app.addEventListener("click",async ev=>{
    pri:S.f.pri||"Medium",pts:S.f.pts||3,as:S.f.as||null,parent:S.f.parent||null,
    desc:(S.f.desc||"").trim(),doc:S.f.docFile||null,rep:S.me.n,at:now(),labels:S.f.labels||[],due:S.f.due||null});
   audit("Issue created: "+key);PENDING_ISSUE_FILE=null;S.dlg=null;S.f={};
+  runAutomationDemo(PROJ.indexOf(pr),"issue_created",key,{});
   toast(key+" created in "+(S.f&&S.f.st==="todo"?"To Do":"Backlog")+".");return;}
 
  if(k==="teamAdd"){S.f={};S.dlg={type:"team"};render();return;}
@@ -6040,6 +6212,78 @@ app.addEventListener("click",async ev=>{
   SAVED_FILTERS_DEMO=SAVED_FILTERS_DEMO.filter(x=>String(x.id)!==String(id));
   toast("Filter deleted.");render();return;}
  if(k==="manageVC"){const pi=+p[1];S.dlg={type:"versionsComponents",pi};render();return;}
+ if(k==="automationRulesOpen"){const pi=+p[1],pk=PROJ[pi].k;
+  S.dlg={type:"automationRules",pi};S.f={};
+  if(LIVE_BACKEND){loadAutomationRulesLive(pk);loadAutomationLogLive(pk);}
+  render();return;}
+ if(k==="automationRuleNew"){
+  S.f={autoBuilding:true,autoName:"",autoTrigger:"issue_created",autoTriggerValue:"",
+   autoConditions:[],autoActions:[{type:"set_priority",value:"High"}]};render();return;}
+ if(k==="automationRuleCancel"){S.f.autoBuilding=false;render();return;}
+ if(k==="automationTriggerChange"){
+  automationSyncFormFromDOM();
+  S.f.autoTrigger=(document.getElementById("fAutoTrigger")||{}).value||"issue_created";
+  S.f.autoTriggerValue="";render();return;}
+ if(k==="automationActionTypeChange"){
+  automationSyncFormFromDOM();
+  const idx=+p[1];const sel=document.getElementById("aaType"+idx);
+  if(S.f.autoActions[idx]&&sel){S.f.autoActions[idx].type=sel.value;S.f.autoActions[idx].value="";S.f.autoActions[idx].message="";}
+  render();return;}
+ if(k==="automationCondAdd"){
+  automationSyncFormFromDOM();
+  (S.f.autoConditions=S.f.autoConditions||[]).push({field:"type",op:"eq",value:"Bug"});render();return;}
+ if(k==="automationCondRemove"){
+  automationSyncFormFromDOM();
+  S.f.autoConditions.splice(+p[1],1);render();return;}
+ if(k==="automationActionAdd"){
+  automationSyncFormFromDOM();
+  (S.f.autoActions=S.f.autoActions||[]).push({type:"set_priority",value:"High"});render();return;}
+ if(k==="automationActionRemove"){
+  automationSyncFormFromDOM();
+  S.f.autoActions.splice(+p[1],1);render();return;}
+ if(k==="automationRuleSave"){
+  automationSyncFormFromDOM();
+  const pi=+p[1],pr=PROJ[pi];
+  const name=(document.getElementById("fAutoName")||{}).value||"";
+  if(!name.trim()){toast("Rule name is required.",1);return;}
+  const triggerType=S.f.autoTrigger||"issue_created";
+  const triggerValueEl=document.getElementById("fAutoTriggerValue");
+  const triggerValue=triggerValueEl?triggerValueEl.value:"";
+  const conditions=(S.f.autoConditions||[]).map(c=>({field:c.field,op:c.op,value:c.op==="eq"?c.value:null}));
+  const actions=(S.f.autoActions||[]).map(a=>{
+   const isMsg=["notify_assignee","notify_watchers","add_comment"].includes(a.type);
+   return {type:a.type,value:isMsg?null:a.value,message:isMsg?a.value:null};});
+  if(!actions.length){toast("At least one action is required.",1);return;}
+  if(LIVE_BACKEND){
+   try{const res=await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/automation-rules",
+    {name:name.trim(),triggerType,triggerValue:triggerValue||null,conditions,actions});
+    AUTOMATION_RULES_LIVE[pr.k]=[res.item,...(AUTOMATION_RULES_LIVE[pr.k]||[])];
+    S.f.autoBuilding=false;toast("Rule saved.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  const rule={id:nextAutomationRuleId++,project_k:pr.k,name:name.trim(),enabled:true,
+   trigger_type:triggerType,trigger_value:triggerValue||null,conditions_json:conditions,actions_json:actions};
+  (AUTOMATION_RULES_DEMO[pr.k]=AUTOMATION_RULES_DEMO[pr.k]||[]).unshift(rule);
+  S.f.autoBuilding=false;toast("Rule saved.");render();return;}
+ if(k==="automationRuleToggle"){const pi=+p[1],id=p[2],enabled=p[3]==="1",pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/automation-rules/"+encodeURIComponent(id),{enabled});
+    const r=(AUTOMATION_RULES_LIVE[pk]||[]).find(x=>String(x.id)===String(id));if(r)r.enabled=enabled;
+    render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  const r=(AUTOMATION_RULES_DEMO[pk]||[]).find(x=>String(x.id)===String(id));
+  if(r)r.enabled=enabled;render();return;}
+ if(k==="automationRuleDelete"){const pi=+p[1],id=p[2],pk=PROJ[pi].k;
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/projects/"+encodeURIComponent(pk)+"/automation-rules/"+encodeURIComponent(id));
+    AUTOMATION_RULES_LIVE[pk]=(AUTOMATION_RULES_LIVE[pk]||[]).filter(x=>String(x.id)!==String(id));
+    toast("Rule deleted.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  AUTOMATION_RULES_DEMO[pk]=(AUTOMATION_RULES_DEMO[pk]||[]).filter(x=>String(x.id)!==String(id));
+  toast("Rule deleted.");render();return;}
+
  if(k==="releaseNotesGen"){const pi=+p[1],versionName=dec(p[2]),pr=PROJ[pi];
   if(LIVE_BACKEND&&!pr.itemsLoaded){toast("Issues are still loading, try again in a moment.",1);return;}
   const md=generateReleaseNotes(pr,versionName);
@@ -6432,7 +6676,7 @@ app.addEventListener("click",async ev=>{
    try{await api("PUT","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key),{priority:val});}
    catch(e){it.pri=old;toast(e.message,1);render();}
    return;}
-  audit("Priority changed: "+key+" -> "+val);return;}
+  audit("Priority changed: "+key+" -> "+val);runAutomationDemo(pi,"priority_changed",key,{toValue:val});return;}
  if(k==="issueSetPts"){const pi=+p[1],key=p[2],val=+p[3],pk=PROJ[pi].k;
   const it=itemByKey(PROJ[pi],key);if(!it)return;
   const old=it.pts;it.pts=val;render();
@@ -6675,6 +6919,7 @@ app.addEventListener("click",async ev=>{
    return;}
   pushDemoHistory(pr.k,p[2],"Durum: "+FLOW[from]+" → "+FLOW[to]);
   syncMeetingItemFromTaskDemo(pr.k,p[2],to,from);
+  runAutomationDemo(+p[1],"status_changed",p[2],{toValue:to});
   return;}
  if(k==="toggleBulkSelect"){const key=p[1];
   const cur=S.bulkSelected||[];

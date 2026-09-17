@@ -10,6 +10,7 @@ const { canWrite, MEETING_ALWAYS_ROLES, DEFAULT_ACCESS, setProjectModuleAccess, 
 const { audit } = require("../lib/audit");
 const { sendMail } = require("../lib/mailer");
 const { getEmailPrefs } = require("../lib/notify");
+const { runAutomation } = require("../lib/automation");
 const { config } = require("../config");
 
 const router = express.Router();
@@ -724,6 +725,7 @@ router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
     }));
     await logIssueHistory(query, req.user.username, req.params.k, result.issue_key, `Konu oluşturuldu: ${title.trim()}`);
     res.status(201).json({ item: result });
+    runAutomation(req.params.k, "issue_created", result.issue_key, {}, req.user.username).catch(() => {});
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Bu konu anahtarı zaten var, tekrar deneyin." });
     next(e);
@@ -845,6 +847,12 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
       }
     }
     res.json({ ok: true });
+    if (status !== undefined && status !== issue.status) {
+      runAutomation(req.params.k, "status_changed", req.params.issueKey, { toValue: status }, req.user.username).catch(() => {});
+    }
+    if (priority !== undefined && priority !== issue.priority) {
+      runAutomation(req.params.k, "priority_changed", req.params.issueKey, { toValue: priority }, req.user.username).catch(() => {});
+    }
 
     // Atama bildirimi: assignee GERÇEKTEN değiştiyse (ve yeni biri atandıysa,
     // boşa alma değilse) yeni atanan kişiye VE bu konuyu izleyenlere (watcher)
@@ -2319,6 +2327,88 @@ router.delete("/:k/gantt/:id", requireWrite("d.gantt"), async (req, res, next) =
   try {
     await query("DELETE FROM gantt_tasks WHERE id=$1 AND project_k=$2", [req.params.id, req.params.k]);
     await audit(`Gantt görevi silindi: #${req.params.id} — ${req.params.k}`, req.user.username);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// ── Otomasyon kuralları ──────────────────────────────────────────────
+// Proje bazlı "tetikleyici -> koşul(lar) -> eylem(ler)" kuralları.
+// Görüntüleme (d.board yetkisi) herkese, yazma (oluşturma/silme/aç-kapa)
+// yalnızca proje ekibinin yazma yetkisi olanlara açık — Versions &
+// Components ekranıyla aynı yetki modeli.
+const AUTOMATION_TRIGGERS = ["issue_created", "status_changed", "priority_changed"];
+const AUTOMATION_ACTIONS = ["set_priority", "set_status", "set_assignee", "notify_assignee", "notify_watchers", "add_comment"];
+function sanitizeAutomationConditions(conditions) {
+  if (!Array.isArray(conditions)) return [];
+  return conditions
+    .filter((c) => c && ["type", "priority", "status", "assignee"].includes(c.field) && ["eq", "empty", "not_empty"].includes(c.op))
+    .map((c) => ({ field: c.field, op: c.op, value: c.op === "eq" ? String(c.value || "") : null }))
+    .slice(0, 10);
+}
+function sanitizeAutomationActions(actions) {
+  if (!Array.isArray(actions)) return [];
+  return actions
+    .filter((a) => a && AUTOMATION_ACTIONS.includes(a.type))
+    .map((a) => ({ type: a.type, value: a.value ? String(a.value).slice(0, 100) : null, message: a.message ? String(a.message).slice(0, 500) : null }))
+    .slice(0, 10);
+}
+
+router.get("/:k/automation-rules", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "SELECT * FROM automation_rules WHERE project_k=$1 ORDER BY id DESC", [req.params.k]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.get("/:k/automation-log", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "SELECT * FROM automation_log WHERE project_k=$1 ORDER BY fired_at DESC LIMIT 50", [req.params.k]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/automation-rules", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { name, triggerType, triggerValue, conditions, actions } = req.body || {};
+    if (!name || !name.trim()) return res.status(400).json({ error: "Kural adı zorunlu." });
+    if (!AUTOMATION_TRIGGERS.includes(triggerType)) return res.status(400).json({ error: "Geçersiz tetikleyici." });
+    const sanitizedActions = sanitizeAutomationActions(actions);
+    if (!sanitizedActions.length) return res.status(400).json({ error: "En az bir eylem tanımlanmalı." });
+    const { rows } = await query(
+      `INSERT INTO automation_rules (project_k, name, trigger_type, trigger_value, conditions_json, actions_json, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [req.params.k, name.trim(), triggerType, triggerValue || null,
+       JSON.stringify(sanitizeAutomationConditions(conditions)), JSON.stringify(sanitizedActions), req.user.username]
+    );
+    await audit(`Otomasyon kuralı oluşturuldu: ${name.trim()} (${req.params.k})`, req.user.username);
+    res.status(201).json({ item: rows[0] });
+  } catch (e) { next(e); }
+});
+
+router.put("/:k/automation-rules/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { enabled } = req.body || {};
+    if (enabled === undefined) return res.status(400).json({ error: "Güncellenecek alan yok." });
+    const { rowCount } = await query(
+      "UPDATE automation_rules SET enabled=$1 WHERE id=$2 AND project_k=$3",
+      [!!enabled, req.params.id, req.params.k]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Kural bulunamadı." });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+router.delete("/:k/automation-rules/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { rowCount } = await query(
+      "DELETE FROM automation_rules WHERE id=$1 AND project_k=$2", [req.params.id, req.params.k]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Kural bulunamadı." });
+    await audit(`Otomasyon kuralı silindi (id ${req.params.id}, ${req.params.k})`, req.user.username);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
