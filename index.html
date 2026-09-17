@@ -6394,6 +6394,7 @@ app.addEventListener("click",async ev=>{
   if(it){it.status=newStatus;if(!makeDone){it.completion_date=null;it.archived=false;}}
   render();return;}
  if(k==="todoDelete"){const id=p[1];
+  if(!confirm("Bu kayıt silinecektir. Emin misiniz?"))return;
   if(LIVE_BACKEND){
    try{await api("DELETE","/api/todo/"+encodeURIComponent(id));
     TODO_ITEMS_LIVE=(TODO_ITEMS_LIVE||[]).filter(x=>String(x.id)!==String(id));
