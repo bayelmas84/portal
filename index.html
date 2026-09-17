@@ -5048,6 +5048,12 @@ function dialogView(){
     <button class="b s" data-a="releaseNotesCopy">Copy</button>
     <button class="b s" data-a="releaseNotesDownload:${d.pi}:${encodeURIComponent(d.versionName)}">Download .md</button>
     <button class="b p" data-a="dlgClose">Close</button></div>`);}
+ if(d.type==="todoDeleteConfirm"){
+  return wrap(`<div style="font-size:15px">Kaydı sil</div>
+   <p class="m" style="color:var(--tm);margin-top:8px">Bu kayıt silinecektir. Emin misiniz?</p>
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Hayır</button>
+    <button class="b p d" data-a="todoDeleteConfirmed:${d.id}">Evet, sil</button></div>`);}
  if(d.type==="todoArchive"){
   const items=LIVE_BACKEND?(TODO_ARCHIVE_LIVE||[]):TODO_ARCHIVE_DEMO;
   const rows=items.map(it=>`<div style="padding:8px 4px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:8px">
@@ -6393,8 +6399,10 @@ app.addEventListener("click",async ev=>{
   const it=TODO_ITEMS_DEMO.find(x=>String(x.id)===String(id));
   if(it){it.status=newStatus;if(!makeDone){it.completion_date=null;it.archived=false;}}
   render();return;}
- if(k==="todoDelete"){const id=p[1];
-  if(!confirm("Bu kayıt silinecektir. Emin misiniz?"))return;
+ if(k==="todoDelete"){
+  S.dlg={type:"todoDeleteConfirm",id:p[1]};render();return;}
+ if(k==="todoDeleteConfirmed"){const id=p[1];
+  S.dlg=null;
   if(LIVE_BACKEND){
    try{await api("DELETE","/api/todo/"+encodeURIComponent(id));
     TODO_ITEMS_LIVE=(TODO_ITEMS_LIVE||[]).filter(x=>String(x.id)!==String(id));
