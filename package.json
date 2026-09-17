@@ -1,8 +1,8 @@
 {
-  "name": "tera-portal",
+  "name": "byelmas-portal",
   "version": "2.0.0",
   "private": true,
-  "description": "Tera Yatirim kurumsal portal - gercek backend (Express + PostgreSQL)",
+  "description": "BYELMAS AS kurumsal portal - gercek backend (Express + PostgreSQL)",
   "type": "commonjs",
   "engines": {
     "node": ">=20.11.0"

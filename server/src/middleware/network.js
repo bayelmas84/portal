@@ -1,5 +1,5 @@
 "use strict";
-// Ağ seviyesinde erişim kısıtlaması: yalnızca kurumsal ağdaki (Tera domain)
+// Ağ seviyesinde erişim kısıtlaması: yalnızca kurumsal ağdaki (BYELMAS domain)
 // cihazlardan erişime izin verir. ÖNEMLİ DÜRÜST NOT: bir web sunucusu,
 // bir istemcinin gerçekten Windows AD domainine (byelmas.local) üye olup
 // olmadığını doğrudan doğrulayamaz — bu, istemci tarafı entegre kimlik
@@ -40,7 +40,7 @@ function networkAllowlist(req, res, next) {
   const ip = normalizeIp(req.ip);
   const allowed = cidrs.some((c) => inCidr(ip, c));
   if (!allowed) {
-    return res.status(403).json({ error: "Bu uygulamaya yalnızca kurumsal ağdan (Tera) erişilebilir." });
+    return res.status(403).json({ error: "Bu uygulamaya yalnızca kurumsal ağdan (BYELMAS) erişilebilir." });
   }
   next();
 }

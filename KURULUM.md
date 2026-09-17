@@ -1,4 +1,4 @@
-# Tera Portal — Kurulum Kılavuzu
+# BY Portal — Kurulum Kılavuzu
 
 Bu belge kurulumu yapacak kişi için yazılmıştır. Sırayla uygulayın; her adımın
 sonunda bir **doğrulama** komutu vardır.
@@ -135,7 +135,7 @@ kullanmanız gerekir.
 - PostgreSQL için yönetici erişimi
 
 ```bash
-nc -zv dc01.tera.local 636      # LDAPS açık olmalı (gerçek AD kullanılacaksa)
+nc -zv dc01.byelmas.local 636      # LDAPS açık olmalı (gerçek AD kullanılacaksa)
 ```
 
 ## 2. Sistem paketleri ve kullanıcı
@@ -147,44 +147,44 @@ sudo apt install -y curl ca-certificates postgresql postgresql-contrib nginx cer
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
 
-sudo useradd --system --home /opt/tera-portal --shell /usr/sbin/nologin teraportal
+sudo useradd --system --home /opt/byelmas-portal --shell /usr/sbin/nologin byelmasportal
 ```
 
 **Doğrulama**
 ```bash
-node -v && psql --version && nginx -v && id teraportal
+node -v && psql --version && nginx -v && id byelmasportal
 ```
 
 ## 3. Dosyaların yerleştirilmesi
 
 ```bash
-sudo mkdir -p /opt/tera-portal /var/lib/tera-portal/uploads /var/log/tera-portal
-sudo unzip tera-portal.zip -d /opt/tera-portal
-cd /opt/tera-portal
+sudo mkdir -p /opt/byelmas-portal /var/lib/byelmas-portal/uploads /var/log/byelmas-portal
+sudo unzip byelmas-portal.zip -d /opt/byelmas-portal
+cd /opt/byelmas-portal
 sudo npm ci --omit=dev
-sudo chown -R teraportal:teraportal /opt/tera-portal /var/lib/tera-portal /var/log/tera-portal
+sudo chown -R byelmasportal:byelmasportal /opt/byelmas-portal /var/lib/byelmas-portal /var/log/byelmas-portal
 ```
 
 **Doğrulama**
 ```bash
-ls /opt/tera-portal/server/src/index.js && echo "dosyalar yerinde"
+ls /opt/byelmas-portal/server/src/index.js && echo "dosyalar yerinde"
 ```
 
 ## 4. Veritabanı
 
 ```bash
 sudo -u postgres psql <<'SQL'
-CREATE USER tera_portal WITH PASSWORD 'BURAYA_GUCLU_PAROLA';
-CREATE DATABASE tera_portal OWNER tera_portal ENCODING 'UTF8';
+CREATE USER byelmas_portal WITH PASSWORD 'BURAYA_GUCLU_PAROLA';
+CREATE DATABASE byelmas_portal OWNER byelmas_portal ENCODING 'UTF8';
 SQL
 ```
 
 ```bash
-cd /opt/tera-portal
-sudo -u teraportal cp .env.example .env
-sudo -u teraportal nano .env   # DB_PASSWORD, LDAP_*, APP_ENCRYPTION_KEY doldurun
-sudo -u teraportal npm run migrate
-sudo -u teraportal npm run seed    # yalnızca ilk kurulumda — başlangıç kullanıcıları/rolleri
+cd /opt/byelmas-portal
+sudo -u byelmasportal cp .env.example .env
+sudo -u byelmasportal nano .env   # DB_PASSWORD, LDAP_*, APP_ENCRYPTION_KEY doldurun
+sudo -u byelmasportal npm run migrate
+sudo -u byelmasportal npm run seed    # yalnızca ilk kurulumda — başlangıç kullanıcıları/rolleri
 ```
 
 Şifreleme anahtarı üretmek için:
@@ -194,8 +194,8 @@ openssl rand -base64 32   # APP_ENCRYPTION_KEY için
 
 **Doğrulama**
 ```bash
-sudo -u postgres psql -d tera_portal -c '\dt'   # tablolar listelenmeli
-sudo -u postgres psql -d tera_portal -c 'select count(*) from users;'   # 12 dönmeli (seed sonrası)
+sudo -u postgres psql -d byelmas_portal -c '\dt'   # tablolar listelenmeli
+sudo -u postgres psql -d byelmas_portal -c 'select count(*) from users;'   # 12 dönmeli (seed sonrası)
 ```
 
 ## 5. Üretim ortamı ayarları (.env)
@@ -207,9 +207,9 @@ NODE_ENV=production
 AUTH_MODE=ldap
 APP_ENCRYPTION_KEY=<openssl rand -base64 32>
 DB_PASSWORD=<adım 4'te verdiğiniz parola>
-LDAP_URL=ldaps://dc01.tera.local:636
-LDAP_BASE_DN=DC=tera,DC=local
-LDAP_BIND_DN=CN=svc-portal,OU=ServisHesaplari,DC=tera,DC=local
+LDAP_URL=ldaps://dc01.byelmas.local:636
+LDAP_BASE_DN=DC=byelmas,DC=local
+LDAP_BIND_DN=CN=svc-portal,OU=ServisHesaplari,DC=byelmas,DC=local
 NETWORK_ALLOWED_CIDRS=10.20.0.0/16   # kurumsal ağ/VPN aralığınız — BOŞ BIRAKMAYIN
 LOGIN_MAX_ATTEMPTS=8                 # sonradan Admin Panel > Genel Ayarlar'dan da değiştirilebilir
 ```
@@ -221,24 +221,24 @@ ekranlarından girilir; veritabanında şifreli saklanır.
 
 ## 6. systemd servisi
 
-`/etc/systemd/system/tera-portal.service`:
+`/etc/systemd/system/byelmas-portal.service`:
 
 ```ini
 [Unit]
-Description=Tera Portal API
+Description=BY Portal API
 After=network.target postgresql.service
 
 [Service]
 Type=simple
-User=teraportal
-WorkingDirectory=/opt/tera-portal
-EnvironmentFile=/opt/tera-portal/.env
+User=byelmasportal
+WorkingDirectory=/opt/byelmas-portal
+EnvironmentFile=/opt/byelmas-portal/.env
 ExecStart=/usr/bin/node server/src/index.js
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/tera-portal /var/log/tera-portal
+ReadWritePaths=/var/lib/byelmas-portal /var/log/byelmas-portal
 
 [Install]
 WantedBy=multi-user.target
@@ -246,24 +246,24 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now tera-portal
+sudo systemctl enable --now byelmas-portal
 ```
 
 **Doğrulama**
 ```bash
-sudo systemctl status tera-portal
+sudo systemctl status byelmas-portal
 curl -s http://127.0.0.1:8080/api/healthz    # {"ok":true} dönmeli
 ```
 
 ## 7. Nginx (statik dosya + API ters vekili)
 
-`/etc/nginx/sites-available/tera-portal`:
+`/etc/nginx/sites-available/byelmas-portal`:
 
 ```nginx
 server {
     listen 80;
-    server_name portal.terayatirim.com.tr;
-    root /opt/tera-portal;
+    server_name portal.byelmas.com;
+    root /opt/byelmas-portal;
     index index.html;
 
     location /api/ {
@@ -293,14 +293,14 @@ server {
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/tera-portal /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/byelmas-portal /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d portal.terayatirim.com.tr
+sudo certbot --nginx -d portal.byelmas.com
 ```
 
 **Doğrulama**
 ```bash
-curl -I https://portal.terayatirim.com.tr/api/healthz   # 200 OK
+curl -I https://portal.byelmas.com/api/healthz   # 200 OK
 ```
 
 ## 8. Teslim kontrol listesi
@@ -318,7 +318,7 @@ curl -I https://portal.terayatirim.com.tr/api/healthz   # 200 OK
 - [ ] `NETWORK_ALLOWED_CIDRS` gerçek kurumsal ağ/VPN aralığınızla dolduruldu ve
       kurumsal ağ DIŞINDAN bir denemeyle (örn. mobil veri) erişimin reddedildiği
       doğrulandı
-- [ ] `systemctl status tera-portal` "active (running)"
+- [ ] `systemctl status byelmas-portal` "active (running)"
 - [ ] Arayüz (`index.html`) gerçek API'ye bağlıdır ve bu depoda test edilmiştir
       (giriş, şifre değişimi, onay akışları, admin paneli, arama, bildirimler)
       — ancak bu testler geliştirme ortamında (mock AD/SMTP) yapılmıştır; SİZİN
@@ -406,11 +406,11 @@ sudo systemctl reload nginx
 
 ```bash
 # SQLi denemesi — 403 dönmeli
-curl -s -o /dev/null -w "%{http_code}\n" -X POST https://portal.terayatirim.com.tr/api/auth/login \
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://portal.byelmas.com/api/auth/login \
   -H "Content-Type: application/json" -d "{\"username\":\"x' OR '1'='1\",\"password\":\"x\"}"
 
 # Meşru bir giriş — 200/401 (normal davranış) dönmeli, ASLA 403 OLMAMALI
-curl -s -o /dev/null -w "%{http_code}\n" -X POST https://portal.terayatirim.com.tr/api/auth/login \
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://portal.byelmas.com/api/auth/login \
   -H "Content-Type: application/json" -d '{"username":"gercek.kullanici","password":"gercek-sifre"}'
 ```
 
@@ -450,11 +450,11 @@ doğrulayın.
 
 
 ```bash
-cd /opt/tera-portal
-sudo -u teraportal git pull   # veya yeni paketi açın
-sudo -u teraportal npm ci --omit=dev
-sudo -u teraportal npm run migrate   # yeni göç varsa
-sudo systemctl restart tera-portal
+cd /opt/byelmas-portal
+sudo -u byelmasportal git pull   # veya yeni paketi açın
+sudo -u byelmasportal npm ci --omit=dev
+sudo -u byelmasportal npm run migrate   # yeni göç varsa
+sudo systemctl restart byelmas-portal
 ```
 
 ## 10. Sorun giderme
@@ -479,10 +479,10 @@ yeni bir geçici şifreyle değiştirir ve zorunlu değişikliği tetikler:
 
 ```bash
 # Önce yeni geçici şifrenin hash'ini üretin (argon2id):
-node -e "require('/opt/tera-portal/server/src/lib/password').hashPassword(process.argv[1]).then(h=>console.log(h))" 'GeciciSifre123'
+node -e "require('/opt/byelmas-portal/server/src/lib/password').hashPassword(process.argv[1]).then(h=>console.log(h))" 'GeciciSifre123'
 
 # Çıkan hash'i aşağıdaki sorguda kullanın:
-sudo -u postgres psql -d tera_portal -c "
+sudo -u postgres psql -d byelmas_portal -c "
   UPDATE users SET password_hash='<yukarida-uretilen-hash>', must_change_password=true WHERE username='KULLANICI_ADI';
   DELETE FROM sessions WHERE username='KULLANICI_ADI';
 "

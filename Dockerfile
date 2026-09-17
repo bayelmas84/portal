@@ -1,4 +1,4 @@
-# Tera Portal — üretim imajı
+# BY Portal — üretim imajı
 # Node 20 LTS, Alpine tabanlı (küçük imaj boyutu, güvenlik yaması alan bir dağıtım).
 FROM node:20-alpine
 
@@ -16,12 +16,12 @@ COPY server ./server
 
 # Yüklenen dosyalar (eğitim dokümanları vb.) konteyner dışında bir
 # volume'da tutulmalı — bkz. docker-compose.yml.
-RUN mkdir -p /var/lib/tera-portal/uploads
+RUN mkdir -p /var/lib/byelmas-portal/uploads
 
 # Uygulama kök yetkisiyle çalışmamalı.
-RUN addgroup -S teraportal && adduser -S teraportal -G teraportal \
-    && chown -R teraportal:teraportal /app /var/lib/tera-portal
-USER teraportal
+RUN addgroup -S byelmasportal && adduser -S byelmasportal -G byelmasportal \
+    && chown -R byelmasportal:byelmasportal /app /var/lib/byelmas-portal
+USER byelmasportal
 
 EXPOSE 8080
 

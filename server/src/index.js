@@ -6,7 +6,7 @@ const { query } = require("./db");
 const app = createApp();
 app.listen(config.port, () => {
   // eslint-disable-next-line no-console
-  console.log(`[tera-portal] ${config.nodeEnv} modunda ${config.port} portunda dinliyor (auth: ${config.authMode})`);
+  console.log(`[byelmas-portal] ${config.nodeEnv} modunda ${config.port} portunda dinliyor (auth: ${config.authMode})`);
 });
 
 // Süresi dolmuş oturumlar hiç silinmediği için `sessions` tablosu zamanla
@@ -18,7 +18,7 @@ async function cleanupExpiredSessions() {
     const { rowCount } = await query(
       "DELETE FROM sessions WHERE idle_expires_at < now() OR absolute_expires_at < now()"
     );
-    if (rowCount) console.log(`[tera-portal] ${rowCount} süresi dolmuş oturum temizlendi.`);
+    if (rowCount) console.log(`[byelmas-portal] ${rowCount} süresi dolmuş oturum temizlendi.`);
   } catch (e) {
     console.error("[hata] oturum temizliği başarısız:", e.message);
   }

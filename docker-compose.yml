@@ -2,13 +2,13 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: tera_portal
-      POSTGRES_USER: tera_portal
+      POSTGRES_DB: byelmas_portal
+      POSTGRES_USER: byelmas_portal
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env dosyasinda tanimli olmali}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tera_portal"]
+      test: ["CMD-SHELL", "pg_isready -U byelmas_portal"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -24,11 +24,11 @@ services:
       PORT: 8080
       DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: tera_portal
-      DB_USER: tera_portal
+      DB_NAME: byelmas_portal
+      DB_USER: byelmas_portal
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env dosyasinda tanimli olmali}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?openssl rand -base64 32 ile uretin}
-      APP_URL: ${APP_URL:-https://portal.terayatirim.com.tr}
+      APP_URL: ${APP_URL:-https://portal.byelmas.com}
       AUTH_MODE: ${AUTH_MODE:-local}
       TRUST_PROXY: "true"
       NETWORK_ALLOWED_CIDRS: ${NETWORK_ALLOWED_CIDRS:-}
@@ -38,7 +38,7 @@ services:
     # ilk kurulumda elle bir kez calistirilir (asagidaki README notuna bakin).
     command: sh -c "node server/src/migrate.js && node server/src/index.js"
     volumes:
-      - uploads:/var/lib/tera-portal/uploads
+      - uploads:/var/lib/byelmas-portal/uploads
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8080/api/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 15s
@@ -49,6 +49,13 @@ services:
 
   nginx:
     image: nginx:alpine
+    # UYARI: Bu servis yalnızca düz HTTP (80) sunar, TLS sonlandırma
+    # YAPMAZ. Üretimde bu container'ın önüne mutlaka TLS sonlandıran bir
+    # katman koyun (örn. host üzerinde certbot ile Nginx/Caddy, bir bulut
+    # yük dengeleyici, ya da Cloudflare gibi bir CDN/proxy). Doğrudan
+    # 80 portunu internete açık bırakmayın. Sunucuya doğrudan kurulum
+    # (Docker olmadan) için bkz. KURULUM.md — orada certbot ile tam TLS
+    # kurulumu adım adım anlatılıyor.
     depends_on:
       - app
     ports:

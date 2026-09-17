@@ -3901,8 +3901,8 @@ function screenView(){
    <div class="card">
     <div class="lbl">SUNUCU ADRESİ</div><input id="dUrl" value="${esc(f.url)}" placeholder="ldaps://dc01.byelmas.local:636" ${cw("m.dir")?"":"disabled"}>
     <p class="m" style="color:var(--tm);margin:6px 0 0">Üretimde yalnızca ldaps:// kabul edilir.</p>
-    <div class="lbl" style="margin-top:11px">BASE DN</div><input id="dBase" value="${esc(f.baseDn)}" placeholder="DC=tera,DC=local" ${cw("m.dir")?"":"disabled"}>
-    <div class="lbl" style="margin-top:11px">SERVİS HESABI DN</div><input id="dBind" value="${esc(f.bindDn)}" placeholder="CN=svc-portal,OU=Servis,DC=tera,DC=local" ${cw("m.dir")?"":"disabled"}>
+    <div class="lbl" style="margin-top:11px">BASE DN</div><input id="dBase" value="${esc(f.baseDn)}" placeholder="DC=byelmas,DC=local" ${cw("m.dir")?"":"disabled"}>
+    <div class="lbl" style="margin-top:11px">SERVİS HESABI DN</div><input id="dBind" value="${esc(f.bindDn)}" placeholder="CN=svc-portal,OU=Servis,DC=byelmas,DC=local" ${cw("m.dir")?"":"disabled"}>
     <div class="lbl" style="margin-top:11px">SERVİS HESABI PAROLASI</div>
     <input id="dPass" type="password" autocomplete="new-password" placeholder="${DIR.passwordSet?"kayıtlı — değiştirmek için yazın":"parola"}" ${cw("m.dir")?"":"disabled"}>
     <p class="m" style="color:var(--tm);margin:6px 0 0">${DIR.passwordSet?"Parola şifreli saklanıyor; boş bırakırsanız korunur.":"Parola henüz tanımlı değil."}</p>

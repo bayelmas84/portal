@@ -15,8 +15,8 @@ const config = {
   db: {
     host: process.env.DB_HOST || "127.0.0.1",
     port: Number(process.env.DB_PORT || 5432),
-    database: process.env.DB_NAME || "tera_portal",
-    user: process.env.DB_USER || "tera_portal",
+    database: process.env.DB_NAME || "byelmas_portal",
+    user: process.env.DB_USER || "byelmas_portal",
     password: process.env.DB_PASSWORD || "",
     ssl: bool(process.env.DB_SSL, false),
   },
@@ -43,10 +43,10 @@ const config = {
   readingSecondsPerPage: Number(process.env.READING_SECONDS_PER_PAGE || 30),
   quizPassScore: Number(process.env.QUIZ_PASS_SCORE || 70),
 
-  uploadDir: process.env.UPLOAD_DIR || "/var/lib/tera-portal/uploads",
+  uploadDir: process.env.UPLOAD_DIR || "/var/lib/byelmas-portal/uploads",
   uploadMaxMb: Number(process.env.UPLOAD_MAX_MB || 25),
 
-  // Kurumsal ağ (Tera domain) kısıtlaması: virgülle ayrılmış CIDR listesi
+  // Kurumsal ağ (BYELMAS domain) kısıtlaması: virgülle ayrılmış CIDR listesi
   // (örn. "10.20.0.0/16,192.168.50.0/24"). Boşsa kısıtlama uygulanmaz.
   networkAllowedCidrs: String(process.env.NETWORK_ALLOWED_CIDRS || "")
     .split(",").map((s) => s.trim()).filter(Boolean),
