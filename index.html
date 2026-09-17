@@ -1835,7 +1835,7 @@ function todoWidgetHTML(){
     <span style="font-size:14px;font-weight:500">Kişisel notlarım</span>
     <span data-a="todoArchiveOpen" style="cursor:pointer;display:flex;align-items:center;gap:5px" title="Geçmiş kayıtlar">
      ${ic("inbox",14,"color:var(--tm)")}<span class="m" style="font-size:11px;color:var(--tm)">Geçmiş kayıtlar</span></span></div>
-   <div class="card" style="background:var(--s1);padding:10px;margin-bottom:11px">
+   <div style="border:1px solid var(--bd);border-radius:10px;padding:10px;margin-bottom:11px">
     <div class="lbl" style="margin-bottom:6px">FİLTRELE</div>
     <div style="display:flex;flex-direction:column;gap:6px">
      <div>
@@ -4268,8 +4268,8 @@ function homeView(){
       ${cw("t.un")?`<button class="b s p" data-a="read:train:${i}">Oku</button>`:""}</div></div>`).join("")
     :`<div class="card ok"><span style="font-size:12px">Bekleyen zorunlu okumanız yok.</span></div>`}</div>`:""}</div>
   <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
-   <div style="flex:1;min-width:280px;max-width:400px">${todoWidgetHTML()}</div>
-   <div style="flex:2;min-width:320px">
+   <div style="flex:1;min-width:320px">${todoWidgetHTML()}</div>
+   <div style="flex:1;min-width:320px">
     <div class="lbl">Modüller</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
      ${mods.map(m=>`<div class="card" style="cursor:pointer" data-a="mod:${m[0]}">
