@@ -5052,8 +5052,8 @@ function dialogView(){
   return wrap(`<div style="font-size:15px">Kaydı sil</div>
    <p class="m" style="color:var(--tm);margin-top:8px">Bu kayıt silinecektir. Emin misiniz?</p>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
-    <button class="b" data-a="dlgClose">Hayır</button>
-    <button class="b p d" data-a="todoDeleteConfirmed:${d.id}">Evet, sil</button></div>`);}
+    <button class="b" data-a="todoDeleteCancel:${d.returnTo||""}">Hayır</button>
+    <button class="b p d" data-a="todoDeleteConfirmed:${d.id}:${d.returnTo||""}">Evet, sil</button></div>`);}
  if(d.type==="todoArchive"){
   const items=LIVE_BACKEND?(TODO_ARCHIVE_LIVE||[]):TODO_ARCHIVE_DEMO;
   const rows=items.map(it=>`<div style="padding:8px 4px;border-bottom:0.5px solid var(--bd);display:flex;align-items:center;gap:8px">
@@ -6400,9 +6400,12 @@ app.addEventListener("click",async ev=>{
   if(it){it.status=newStatus;if(!makeDone){it.completion_date=null;it.archived=false;}}
   render();return;}
  if(k==="todoDelete"){
-  S.dlg={type:"todoDeleteConfirm",id:p[1]};render();return;}
- if(k==="todoDeleteConfirmed"){const id=p[1];
-  S.dlg=null;
+  const returnTo=S.dlg&&S.dlg.type==="todoArchive"?"todoArchive":null;
+  S.dlg={type:"todoDeleteConfirm",id:p[1],returnTo};render();return;}
+ if(k==="todoDeleteCancel"){
+  S.dlg=p[1]==="todoArchive"?{type:"todoArchive"}:null;render();return;}
+ if(k==="todoDeleteConfirmed"){const id=p[1],returnTo=p[2]==="todoArchive"?"todoArchive":null;
+  S.dlg=returnTo==="todoArchive"?{type:"todoArchive"}:null;
   if(LIVE_BACKEND){
    try{await api("DELETE","/api/todo/"+encodeURIComponent(id));
     TODO_ITEMS_LIVE=(TODO_ITEMS_LIVE||[]).filter(x=>String(x.id)!==String(id));

@@ -12,7 +12,7 @@ duyuru, denetim kaydı ve daha fazlasını kapsayan Jira benzeri bir iş uygulam
 | `index.html` | Tüm arayüz — tek dosyalık frontend. Hem gerçek backend'e (LIVE_BACKEND modu) hem sunucusuz bir demo moduna (bellek içi sahte veri) bağlanabilir |
 | `server/` | Gerçek backend: Express + PostgreSQL, AD (LDAPS) kimlik doğrulama, SMTP entegrasyonu |
 | `server/migrations/` | PostgreSQL şeması, 46 migration dosyası |
-| `tests/` | `server/`'ı gerçek bir veritabanına karşı sınayan uçtan uca testler (`npm test`, 35+ test) |
+| `tests/` | Backend (gerçek Postgres'e karşı, `api.test.js`) ve frontend (jsdom ile `index.html`, `frontend.test.js`) testleri — birlikte `npm test`, 43 test |
 
 **Arayüz gerçek API'ye tam olarak bağlıdır** — giriş, onay akışları, admin
 paneli, denetim kaydı, arama, bildirimler, otomasyon kuralları, kayıtlı
