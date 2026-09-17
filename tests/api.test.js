@@ -1144,6 +1144,50 @@ test("Otomasyon kuralları: tetikleyici-koşul-eylem doğru çalışır ve döng
   await request(app).delete(`/api/projects/TRADE/automation-rules/${ruleB.body.item.id}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
 });
 
+test("Kişisel to-do listesi: oluşturma, Done->Completion Date->arşiv akışı, kullanıcı izolasyonu doğru çalışır", async () => {
+  const u1 = await login("tolga.firat");
+  const u2 = await login("bayram.elmas");
+
+  const create = await request(app).post("/api/todo").set("Cookie", u1.cookie).set("X-CSRF-Token", u1.csrf)
+    .send({ category: "İş", description: "Test kalemi", dueDate: "2026-09-25" });
+  assert.equal(create.status, 201);
+  assert.equal(create.body.item.status, "open");
+  assert.equal(create.body.item.archived, false);
+  const id = create.body.item.id;
+
+  // Boş açıklama reddedilir.
+  const bad = await request(app).post("/api/todo").set("Cookie", u1.cookie).set("X-CSRF-Token", u1.csrf).send({ description: "" });
+  assert.equal(bad.status, 400);
+
+  // Done yapılınca (completion date yokken) arşivlenmemeli.
+  const toDone = await request(app).put(`/api/todo/${id}`).set("Cookie", u1.cookie).set("X-CSRF-Token", u1.csrf).send({ status: "done" });
+  assert.equal(toDone.status, 200);
+  assert.equal(toDone.body.item.status, "done");
+  assert.equal(toDone.body.item.archived, false);
+
+  // Completion date girilince arşivlenmeli.
+  const withDate = await request(app).put(`/api/todo/${id}`).set("Cookie", u1.cookie).set("X-CSRF-Token", u1.csrf)
+    .send({ completionDate: "2026-09-17" });
+  assert.equal(withDate.status, 200);
+  assert.equal(withDate.body.item.archived, true);
+
+  // Normal listede görünmemeli, arşivde görünmeli.
+  const normalList = await request(app).get("/api/todo").set("Cookie", u1.cookie);
+  assert.ok(!normalList.body.items.some((x) => x.id === id));
+  const archiveList = await request(app).get("/api/todo?archived=true").set("Cookie", u1.cookie);
+  assert.ok(archiveList.body.items.some((x) => x.id === id));
+
+  // Başka kullanıcı bu kalemi göremez ve silemez.
+  const otherList = await request(app).get("/api/todo?archived=true").set("Cookie", u2.cookie);
+  assert.ok(!otherList.body.items.some((x) => x.id === id));
+  const otherDelete = await request(app).delete(`/api/todo/${id}`).set("Cookie", u2.cookie).set("X-CSRF-Token", u2.csrf);
+  assert.equal(otherDelete.status, 404);
+
+  // Sahibi siler.
+  const ownDelete = await request(app).delete(`/api/todo/${id}`).set("Cookie", u1.cookie).set("X-CSRF-Token", u1.csrf);
+  assert.equal(ownDelete.status, 200);
+});
+
 test.after(async () => {
   await pool.end();
 });
