@@ -129,6 +129,16 @@ kullanmanız gerekir.
 
 
 - Ubuntu 22.04 / RHEL 9, en az 2 vCPU, 4 GB RAM, 20 GB disk
+  - Yük testiyle doğrulandı (`autocannon`): normal kullanım (oturum açmış
+    kullanıcıların GET istekleri) tek çekirdekte bile saniyede ~600
+    istek, %97.5 gecikme ~95ms — kurumsal içi bir portal için bolca pay.
+    Ancak `/api/auth/login` bilinçli olarak CPU-yoğun argon2id hashleme
+    kullanır (brute-force'u zorlaştırmak için); tek çekirdekli bir test
+    ortamında 20 eşzamanlı giriş isteği %50 gecikmeyi ~3.6 saniyeye
+    çıkardı. Bu, günlük kullanımda (kullanıcılar zamana yayılı giriş
+    yapar) sorun yaratmaz, ama "herkes sabah 9'da aynı anda giriş
+    yapıyor" gibi yoğun-eşzamanlı senaryolar bekleniyorsa en az 2-4
+    vCPU'lu bir sunucu (bu maddedeki asgari değerin üstü) önerilir.
 - DNS kaydı + TLS sertifikası (Let's Encrypt veya kurumsal CA)
 - AD servis hesabı (okuma yetkili) ve LDAPS (636) erişimi
 - SMTP sunucu adresi
