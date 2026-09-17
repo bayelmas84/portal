@@ -1807,7 +1807,9 @@ function todoWidgetHTML(){
  const f=S.todoFilter||{};
  const filtered=items.filter(it=>{
   if(f.status&&it.status!==f.status)return false;
-  if(f.dueBefore&&(!it.due_date||String(it.due_date).slice(0,10)>f.dueBefore))return false;
+  const dd=it.due_date?String(it.due_date).slice(0,10):null;
+  if(f.startDate&&(!dd||dd<f.startDate))return false;
+  if(f.endDate&&(!dd||dd>f.endDate))return false;
   return true;});
  const rows=filtered.map(it=>{
   const st=it.status,isDone=st==="done";
@@ -1831,13 +1833,25 @@ function todoWidgetHTML(){
  return `<div class="card" style="padding:16px">
    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
     <span style="font-size:14px;font-weight:500">Kişisel notlarım</span>
-    <span data-a="todoArchiveOpen" style="cursor:pointer" title="Arşivi görüntüle">${ic("inbox",15,"color:var(--tm)")}</span></div>
-   <div style="display:flex;gap:6px;margin-bottom:11px">
-    <select id="todoFilterStatus" data-a="todoFilterApply" style="flex:1;padding:5px 6px;font-size:11px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
-     <option value="">Tüm durumlar</option>
-     ${Object.keys(TODO_STATUS_LABEL).map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${TODO_STATUS_LABEL[s]}</option>`).join("")}</select>
-    <input type="date" id="todoFilterDate" data-a="todoFilterApply" value="${esc(f.dueBefore||"")}" style="width:130px;padding:5px 6px;font-size:11px">
-    ${(f.status||f.dueBefore)?`<button class="b s d" data-a="todoFilterClear" style="padding:5px 8px;font-size:11px">✕</button>`:""}</div>
+    <span data-a="todoArchiveOpen" style="cursor:pointer;display:flex;align-items:center;gap:5px" title="Geçmiş kayıtlar">
+     ${ic("inbox",14,"color:var(--tm)")}<span class="m" style="font-size:11px;color:var(--tm)">Geçmiş kayıtlar</span></span></div>
+   <div class="card" style="background:var(--s1);padding:10px;margin-bottom:11px">
+    <div class="lbl" style="margin-bottom:6px">FİLTRELE</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+     <div>
+      <div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Durum</div>
+      <select id="todoFilterStatus" style="width:100%;padding:5px 6px;font-size:11px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
+       <option value="">Tüm durumlar</option>
+       ${Object.keys(TODO_STATUS_LABEL).map(s=>`<option value="${s}" ${f.status===s?"selected":""}>${TODO_STATUS_LABEL[s]}</option>`).join("")}</select></div>
+     <div style="display:flex;gap:6px">
+      <div style="flex:1"><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Başlangıç</div>
+       <input type="date" id="todoFilterStart" value="${esc(f.startDate||"")}" style="width:100%;padding:5px 6px;font-size:11px"></div>
+      <div style="flex:1"><div class="m" style="font-size:9.5px;color:var(--tm);margin-bottom:2px">Bitiş</div>
+       <input type="date" id="todoFilterEnd" value="${esc(f.endDate||"")}" style="width:100%;padding:5px 6px;font-size:11px"></div></div>
+     <div style="display:flex;gap:6px;margin-top:2px">
+      <button class="b p" data-a="todoFilterApply" style="flex:1;padding:6px;font-size:11px">Filtreyi uygula</button>
+      ${(f.status||f.startDate||f.endDate)?`<button class="b s" data-a="todoFilterClear" style="padding:6px 10px;font-size:11px">Temizle</button>`:""}</div>
+    </div></div>
    <div style="margin-bottom:11px">${rows||`<p class="m" style="color:var(--tm);font-size:12px">Kayıtlı not yok.</p>`}</div>
    <div style="border-top:0.5px solid var(--bd);padding-top:10px;display:flex;flex-direction:column;gap:6px">
     <div style="display:flex;gap:6px">
@@ -4253,10 +4267,10 @@ function homeView(){
       <span class="m" style="color:var(--tm);flex:1">${d.pages.length} sayfa · ${d.pages.length*SPP} sn · ${d.quiz.length} soru</span>
       ${cw("t.un")?`<button class="b s p" data-a="read:train:${i}">Oku</button>`:""}</div></div>`).join("")
     :`<div class="card ok"><span style="font-size:12px">Bekleyen zorunlu okumanız yok.</span></div>`}</div>`:""}</div>
-  <div class="lbl">Modüller</div>
   <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
    <div style="flex:1;min-width:280px;max-width:400px">${todoWidgetHTML()}</div>
    <div style="flex:2;min-width:320px">
+    <div class="lbl">Modüller</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
      ${mods.map(m=>`<div class="card" style="cursor:pointer" data-a="mod:${m[0]}">
       <div style="display:flex;gap:11px;align-items:center">
@@ -6322,7 +6336,8 @@ app.addEventListener("click",async ev=>{
  if(k==="todoFilterApply"){
   S.todoFilter={
    status:(document.getElementById("todoFilterStatus")||{}).value||"",
-   dueBefore:(document.getElementById("todoFilterDate")||{}).value||"",
+   startDate:(document.getElementById("todoFilterStart")||{}).value||"",
+   endDate:(document.getElementById("todoFilterEnd")||{}).value||"",
   };render();return;}
  if(k==="todoFilterClear"){S.todoFilter={};render();return;}
  if(k==="todoAdd"){
