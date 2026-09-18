@@ -1417,6 +1417,60 @@ test("Wiki yorumları: ekleme, @mention bildirimi, boş yorum reddi, silme yetki
   assert.equal(pmDelete.status, 200);
 });
 
+test("Wiki toplantı notları: proje seçilmezse task açılmaz, PUT ile proje eklenirse retroaktif task açılır", async () => {
+  const pm = await login("bayram.elmas");
+
+  const page = await request(app).post("/api/wiki/spaces/GENEL/pages").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ title: "Test Toplantı Sayfası " + Date.now(), content: "" });
+  const pageId = page.body.item.id;
+
+  // Zorunlu alanlar: tarih ve katılımcı.
+  const noDate = await request(app).post("/api/projects/meetings").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ wikiPageId: pageId, participants: ["bayram.elmas"] });
+  assert.equal(noDate.status, 400);
+  const noParts = await request(app).post("/api/projects/meetings").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ wikiPageId: pageId, date: "2026-09-20", participants: [] });
+  assert.equal(noParts.status, 400);
+
+  // Proje seçilmeden oluşturma: madde eklense bile HİÇBİR issue açılmamalı.
+  const itemText = "Standalone madde " + Date.now();
+  const created = await request(app).post("/api/projects/meetings").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ wikiPageId: pageId, date: "2026-09-20", participants: ["bayram.elmas"], items: [{ text: itemText, assigneeUsername: "bayram.elmas" }] });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.item.project_k, null);
+  assert.equal(created.body.item.wiki_page_id, pageId);
+  const meetingId = created.body.item.id;
+
+  const toplantiIssuesBefore = await request(app).get("/api/projects/TOPLANTI/issues").set("Cookie", pm.cookie);
+  assert.ok(!toplantiIssuesBefore.body.items.some((i) => i.title === itemText), "proje seçilmeden task açılmamalı");
+
+  // PUT ile proje eklenip düzeltilirse, o ANDA retroaktif task açılmalı.
+  const putRes = await request(app).put(`/api/projects/meetings/${meetingId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ projectK: "TRADE" });
+  assert.equal(putRes.status, 200);
+  assert.equal(putRes.body.issuesCreated, 1);
+  assert.equal(putRes.body.item.project_k, "TRADE");
+
+  const toplantiIssuesAfter = await request(app).get("/api/projects/TOPLANTI/issues").set("Cookie", pm.cookie);
+  assert.ok(toplantiIssuesAfter.body.items.some((i) => i.title === itemText), "PUT sonrası retroaktif task açılmadı");
+
+  // Aynı toplantıyı TEKRAR PUT etmek (zaten projesi var) yeni task açmamalı.
+  const putAgain = await request(app).put(`/api/projects/meetings/${meetingId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ notes: "güncelleme" });
+  assert.equal(putAgain.status, 200);
+  assert.equal(putAgain.body.issuesCreated, 0);
+
+  // Baştan proje SEÇEREK oluşturulan bir wiki toplantısı da normal şekilde task açmalı.
+  const page2 = await request(app).post("/api/wiki/spaces/GENEL/pages").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ title: "Test Toplantı Sayfası 2 " + Date.now(), content: "" });
+  const itemText2 = "Projeli madde " + Date.now();
+  const created2 = await request(app).post("/api/projects/meetings").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ wikiPageId: page2.body.item.id, projectK: "TRADE", date: "2026-09-20", participants: ["bayram.elmas"], items: [{ text: itemText2, assigneeUsername: "bayram.elmas" }] });
+  assert.equal(created2.status, 201);
+  const toplantiIssuesAfter2 = await request(app).get("/api/projects/TOPLANTI/issues").set("Cookie", pm.cookie);
+  assert.ok(toplantiIssuesAfter2.body.items.some((i) => i.title === itemText2), "baştan proje seçilince task açılmadı");
+});
+
 test.after(async () => {
   await pool.end();
 });

@@ -2302,8 +2302,10 @@ router.get("/meetings", requireRead("d.meeting"), async (req, res, next) => {
 
 router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
   try {
-    const { projectK, otherSubject, title, date, time, notes, participants, items, recurrence } = req.body || {};
-    if (!projectK && !otherSubject) return res.status(400).json({ error: "Proje veya toplantı konusu (Diğer) zorunlu." });
+    const { projectK, otherSubject, wikiPageId, title, date, time, notes, participants, items, recurrence } = req.body || {};
+    if (!projectK && !otherSubject && !wikiPageId) {
+      return res.status(400).json({ error: "Proje, toplantı konusu (Diğer) ya da wiki sayfası zorunlu." });
+    }
     if (!date) return res.status(400).json({ error: "Tarih zorunlu." });
     if (!Array.isArray(participants) || !participants.length) return res.status(400).json({ error: "En az bir katılımcı gerekli." });
     if (recurrence && !["weekly", "monthly", "quarterly"].includes(recurrence)) {
@@ -2330,10 +2332,19 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
     const subjectPrefix = deriveSubjectPrefix(subjectSource);
     const explicitTitle = (title || "").trim() || otherSubject || null;
 
+    // Wiki'den (proje bağımsız) oluşturulan bir toplantı notunda, EĞER bir
+    // proje de seçilmişse mevcut davranışla (Epic+Task "TOPLANTI" sanal
+    // projesine açılır) aynı şekilde işlenir. Proje seçilmemişse (yalnızca
+    // wikiPageId varsa) HİÇBİR Epic/Task açılmaz — madde yalnızca bu wiki
+    // sayfasında, meeting_items olarak kalır. Bu, kullanıcının açık isteği:
+    // "Proje seçilmezse sadece bu alanda kalacak maddeler olmalı, backlogda
+    // ticket oluşturmamalı."
+    const shouldCreateIssues = !wikiPageId || !!projectK;
+
     const meeting = await withTransaction(async (client) => {
       let epicKey = null;
       let meetingTitle = explicitTitle;
-      if ((items || []).length) {
+      if ((items || []).length && shouldCreateIssues) {
         await ensureMeetingProject(client, req.user.username);
         const uniqueAssignees = [...new Set(items.map((it) => it.assigneeUsername))];
         for (const u of uniqueAssignees) await ensureMeetingTeamMember(client, u);
@@ -2359,9 +2370,9 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
       if (!meetingTitle) meetingTitle = "Toplantı Notu";
 
       const m = await client.query(
-        `INSERT INTO meetings (project_k, project_other_subject, title, meeting_date, meeting_time, notes, created_by, recurrence)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [projectK || null, projectK ? null : otherSubject, meetingTitle, date, time || null, notes || null, req.user.username, recurrence || null]
+        `INSERT INTO meetings (project_k, project_other_subject, wiki_page_id, title, meeting_date, meeting_time, notes, created_by, recurrence)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [projectK || null, projectK ? null : (otherSubject || null), wikiPageId || null, meetingTitle, date, time || null, notes || null, req.user.username, recurrence || null]
       );
       for (const p of participants) {
         await client.query("INSERT INTO meeting_participants (meeting_id, username) VALUES ($1,$2)", [m.rows[0].id, p]);
@@ -2412,6 +2423,99 @@ router.post("/meetings", requireWrite("d.meeting"), async (req, res, next) => {
     }
     await audit(`Toplantı notu oluşturuldu: ${meeting.title} · bildirim: ${sentCount}/${users.rowCount}`, req.user.username);
     res.status(201).json({ item: meeting, mailSent: sentCount, mailTotal: users.rowCount });
+  } catch (e) { next(e); }
+});
+
+// Wiki'de proje seçilmeden oluşturulmuş bir toplantı notu, DÜZELTİLİP proje
+// eklenirse (kullanıcının açık isteği: "bir hatadan dolayı proje seçimi
+// yapılmaz ve toplantı notu düzeltilmek istenir ve proje seçilip kaydedilirse,
+// o zaman backloga task açılmalı"), bu noktada mevcut açık maddeler için
+// RETROAKTİF olarak Epic+Task açılır. Zaten bir projesi olan ya da zaten
+// Epic'i açılmış bir toplantının düzenlenmesi bu ekstra adımı tetiklemez.
+router.put("/meetings/:id", requireWrite("d.meeting"), async (req, res, next) => {
+  try {
+    const existing = await query("SELECT * FROM meetings WHERE id=$1", [req.params.id]);
+    if (!existing.rowCount) return res.status(404).json({ error: "Toplantı bulunamadı." });
+    const meeting = existing.rows[0];
+    if (!meeting.wiki_page_id) {
+      return res.status(400).json({ error: "Yalnızca wiki üzerinden oluşturulan toplantı notları bu şekilde düzenlenebilir." });
+    }
+    const { projectK, title, date, time, notes, participants } = req.body || {};
+    if (date !== undefined && !date) return res.status(400).json({ error: "Tarih boş olamaz." });
+    if (participants !== undefined && (!Array.isArray(participants) || !participants.length)) {
+      return res.status(400).json({ error: "En az bir katılımcı gerekli." });
+    }
+    const wasStandalone = !meeting.project_k;
+    const nowHasProject = projectK !== undefined ? !!projectK : !!meeting.project_k;
+    const retroactivelyCreateIssues = wasStandalone && nowHasProject;
+
+    const updated = await withTransaction(async (client) => {
+      const openItems = retroactivelyCreateIssues
+        ? (await client.query("SELECT * FROM meeting_items WHERE meeting_id=$1 AND status='open' AND linked_issue_key IS NULL", [req.params.id])).rows
+        : [];
+      let epicKey = null;
+      if (openItems.length) {
+        await ensureMeetingProject(client, req.user.username);
+        const uniqueAssignees = [...new Set(openItems.map((it) => it.assignee_username).filter(Boolean))];
+        for (const u of uniqueAssignees) await ensureMeetingTeamMember(client, u);
+        let subjectSource = (title !== undefined ? title : meeting.title) || "";
+        if (!subjectSource && projectK) {
+          const projRow = await client.query("SELECT name FROM projects WHERE k=$1", [projectK]);
+          subjectSource = projRow.rows[0] ? projRow.rows[0].name : "";
+        }
+        const subjectPrefix = deriveSubjectPrefix(subjectSource);
+        const epic = await insertIssueRow(client, MEETING_PROJECT_K, {
+          issueType: "Epic",
+          title: meeting.title,
+          description: notes !== undefined ? notes : meeting.notes || "",
+          createdBy: req.user.username,
+          createdAt: meeting.meeting_date,
+          keyPrefix: subjectPrefix,
+        });
+        epicKey = epic.issue_key;
+        await logIssueHistory(client.query.bind(client), req.user.username, MEETING_PROJECT_K, epicKey, `Konu oluşturuldu (toplantı notu düzeltmesi): ${epic.title}`);
+        for (const it of openItems) {
+          const task = await insertIssueRow(client, MEETING_PROJECT_K, {
+            issueType: "Task",
+            title: it.text,
+            parentKey: epicKey,
+            assigneeUsername: it.assignee_username,
+            dueDate: it.due_date || null,
+            status: "backlog",
+            createdBy: req.user.username,
+            createdAt: meeting.meeting_date,
+            keyPrefix: subjectPrefix,
+          });
+          await logIssueHistory(client.query.bind(client), req.user.username, MEETING_PROJECT_K, task.issue_key, `Konu oluşturuldu (toplantı notu düzeltmesi): ${task.title}`);
+          await client.query("UPDATE meeting_items SET linked_issue_key=$1 WHERE id=$2", [task.issue_key, it.id]);
+        }
+      }
+
+      const fields = [], values = [];
+      let i = 1;
+      if (projectK !== undefined) { fields.push(`project_k=$${i++}`); values.push(projectK || null); }
+      if (title !== undefined) { fields.push(`title=$${i++}`); values.push(title.trim() || meeting.title); }
+      if (date !== undefined) { fields.push(`meeting_date=$${i++}`); values.push(date); }
+      if (time !== undefined) { fields.push(`meeting_time=$${i++}`); values.push(time || null); }
+      if (notes !== undefined) { fields.push(`notes=$${i++}`); values.push(notes || null); }
+      if (fields.length) {
+        values.push(req.params.id);
+        await client.query(`UPDATE meetings SET ${fields.join(", ")} WHERE id=$${i}`, values);
+      }
+      if (participants !== undefined) {
+        await client.query("DELETE FROM meeting_participants WHERE meeting_id=$1", [req.params.id]);
+        for (const p of participants) {
+          await client.query("INSERT INTO meeting_participants (meeting_id, username) VALUES ($1,$2)", [req.params.id, p]);
+        }
+      }
+      const { rows } = await client.query("SELECT * FROM meetings WHERE id=$1", [req.params.id]);
+      return { meeting: rows[0], issuesCreated: openItems.length };
+    });
+
+    if (updated.issuesCreated) {
+      await audit(`Toplantı notu düzeltildi, proje eklendi ve ${updated.issuesCreated} madde için task açıldı: ${updated.meeting.title}`, req.user.username);
+    }
+    res.json({ item: updated.meeting, issuesCreated: updated.issuesCreated });
   } catch (e) { next(e); }
 });
 
