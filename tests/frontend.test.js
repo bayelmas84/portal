@@ -404,3 +404,38 @@ test("wiki gelişmiş özellikler: serbest space oluşturma (Confluence tarzı s
   await clickPrefix(app, window, "wikiRestrictSave:", { wait: 300 });
   assert.ok(app.innerHTML.includes("kısıtlaması güncellendi"), "yetkilendirme kaydedilmedi");
 });
+test("wiki markdown: gerçek tablo render edilir ve proje şablonları galeride üstte sıralanır", async () => {
+  const { window, doc, app } = await openDemoApp();
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:wiki");
+  await click(app, window, "scr:w.pages", { wait: 300 });
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+
+  // Sıralama: Boş ilk, ardından proje/PM odaklı şablonlar (Proje Analizi,
+  // Retrospective...), genel şablonlar (Toplantı Notu vb.) en sonda.
+  const cards = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")];
+  assert.ok(cards[0].textContent.includes("Boş"), "ilk kart 'Boş' değil");
+  assert.ok(cards[1].textContent.includes("Proje Analizi"), "ikinci kart 'Proje Analizi' değil");
+  assert.ok(cards[2].textContent.includes("Retrospective"), "üçüncü kart 'Retrospective' değil");
+  const toplantiIdx = cards.findIndex((c) => c.textContent.includes("Toplantı Notu"));
+  assert.ok(toplantiIdx > 13, "'Toplantı Notu' (genel şablon) proje şablonlarından önce görünüyor");
+
+  // Risk Kaydı şablonu markdown tablosu içerir — gerçek bir <table>
+  // olarak render edilmeli, ham "| ... |" metni olarak DEĞİL.
+  const riskCard = cards.find((c) => c.textContent.includes("Risk Kaydı"));
+  assert.ok(riskCard, "'Risk Kaydı' şablon kartı bulunamadı");
+  riskCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  setVal(doc, "fWikiNewTitle", "Tablo Testi");
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+  const saveBtn = [...app.querySelectorAll("[data-a^='wikiSavePage:']")][0];
+  saveBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+
+  const mainCard = [...app.querySelectorAll(".card")].find((c) => c.innerHTML.includes("Sahibi:"));
+  assert.ok(mainCard.innerHTML.includes("<table"), "markdown tablosu gerçek <table> olarak render edilmedi");
+  assert.ok(mainCard.innerHTML.includes("<th"), "tablo başlık hücreleri (<th>) render edilmedi");
+});

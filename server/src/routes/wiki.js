@@ -306,7 +306,7 @@ router.put("/pages/:id/restore/:versionId", requireAuth, async (req, res, next) 
 // kullanabilir. Yeni şablon tanımlamak/silmek yalnızca pm/pmdir'e aittir.
 router.get("/templates", requireAuth, async (req, res, next) => {
   try {
-    const { rows } = await query("SELECT * FROM wiki_page_templates ORDER BY created_by NULLS FIRST, name");
+    const { rows } = await query("SELECT * FROM wiki_page_templates ORDER BY sort_order, created_by NULLS FIRST, name");
     res.json({ items: rows });
   } catch (e) { next(e); }
 });
