@@ -377,13 +377,13 @@ test("wiki gelişmiş özellikler: serbest space oluşturma (Confluence tarzı s
   assert.ok(app.innerHTML.includes("ALTINA") && app.innerHTML.includes("Ana Sayfa"),
     "alt sayfa diyaloğu hedef üst sayfayı (Ana Sayfa) belirtmiyor");
 
-  // Şablon galerisi: Boş ilk sırada, temel-konu şablonları listede.
+  // Şablon galerisi: Boş ilk sırada, temel şablonlar listede.
   assert.ok(app.innerHTML.includes("Boş (şablonsuz)"), "'Boş' seçeneği yok");
-  assert.ok(app.innerHTML.includes("Proje Planı"), "'Proje Planı' şablonu yok");
-  assert.ok(app.innerHTML.includes("Doküman Kontrol"), "'Doküman Kontrol Sayfası' şablonu yok");
+  assert.ok(app.innerHTML.includes(">BRD<"), "'BRD' şablonu yok");
+  assert.ok(app.innerHTML.includes(">Diğer<"), "'Diğer' şablonu yok");
 
-  const planCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((e) => e.textContent.includes("Proje Planı"));
-  assert.ok(planCard, "'Proje Planı' şablon kartı bulunamadı");
+  const planCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((e) => e.textContent.includes("BRD"));
+  assert.ok(planCard, "'BRD' şablon kartı bulunamadı");
   planCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   await sleep(300);
   assert.ok(planCard.outerHTML.includes("var(--navy)") || app.innerHTML.includes("font-weight:600"),
@@ -391,7 +391,7 @@ test("wiki gelişmiş özellikler: serbest space oluşturma (Confluence tarzı s
 
   setVal(doc, "fWikiNewTitle", "Şablonlu Test Sayfası");
   await click(app, window, "wikiNewPageCreate", { wait: 300 });
-  assert.ok(doc.getElementById("fWikiContent").value.includes("Kilometre Taşları"), "şablon içeriği textarea'ya yüklenmedi");
+  assert.ok(doc.getElementById("fWikiContent").value.includes("İş Gereksinimleri"), "şablon içeriği textarea'ya yüklenmedi");
   await click(app, window, "wikiEditCancel", { wait: 300 });
 
   // Yorum ekleme.
@@ -420,19 +420,18 @@ test("wiki markdown: gerçek tablo render edilir ve proje şablonları galeride 
   await click(app, window, "scr:w.pages", { wait: 300 });
   await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
 
-  // Sıralama: Boş ilk, ardından proje/PM odaklı şablonlar (Proje Analizi,
-  // Retrospective...), genel şablonlar (Toplantı Notu vb.) en sonda.
+  // Kullanıcının istediği kesin sıralama: Boş, Toplantı Notu, Analiz,
+  // BRD, FRD, Retro, UAT, Risk, Diğer — tam olarak bu 9 kart, başka
+  // hiçbir şablon yok.
   const cards = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")];
-  assert.ok(cards[0].textContent.includes("Boş"), "ilk kart 'Boş' değil");
-  assert.ok(cards[1].textContent.includes("Proje Analizi"), "ikinci kart 'Proje Analizi' değil");
-  assert.ok(cards[2].textContent.includes("Retrospective"), "üçüncü kart 'Retrospective' değil");
-  const toplantiIdx = cards.findIndex((c) => c.textContent.includes("Toplantı Notu"));
-  assert.ok(toplantiIdx > 13, "'Toplantı Notu' (genel şablon) proje şablonlarından önce görünüyor");
+  const names = cards.map((c) => c.textContent.trim());
+  assert.deepEqual(names, ["Boş (şablonsuz)", "Toplantı Notu", "Analiz", "BRD", "FRD", "Retro", "UAT", "Risk", "Diğer"],
+    "şablon galerisi tam istenen 8'li listeyle eşleşmiyor: " + names.join(", "));
 
-  // Risk Kaydı şablonu markdown tablosu içerir — gerçek bir <table>
-  // olarak render edilmeli, ham "| ... |" metni olarak DEĞİL.
-  const riskCard = cards.find((c) => c.textContent.includes("Risk Kaydı"));
-  assert.ok(riskCard, "'Risk Kaydı' şablon kartı bulunamadı");
+  // Risk şablonu markdown tablosu içerir — gerçek bir <table> olarak
+  // render edilmeli, ham "| ... |" metni olarak DEĞİL.
+  const riskCard = cards.find((c) => c.textContent.trim() === "Risk");
+  assert.ok(riskCard, "'Risk' şablon kartı bulunamadı");
   riskCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   await sleep(300);
   setVal(doc, "fWikiNewTitle", "Tablo Testi");
@@ -588,7 +587,7 @@ test("wiki düzeltmeleri: şablon seçilince başlık kaybolmaz, toplantı formu
   // 1) Başlık girip sonra şablon seçince başlık KORUNMALI (regresyon testi).
   await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
   setVal(doc, "fWikiNewTitle", "Kalıcı Başlık Testi");
-  const planCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.includes("Proje Planı"));
+  const planCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.includes("BRD"));
   planCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   await sleep(300);
   assert.equal(doc.getElementById("fWikiNewTitle").value, "Kalıcı Başlık Testi", "şablon seçilince başlık kayboldu");
@@ -606,10 +605,10 @@ test("wiki düzeltmeleri: şablon seçilince başlık kaybolmaz, toplantı formu
   assert.ok(app.innerHTML.includes("Proje (opsiyonel)"), "sağ panelde proje seçimi yok");
   await click(app, window, "wikiCreateCancel", { wait: 300 });
 
-  // 3) Şablon içerikleri artık gerçek tablo + blockquote üretiyor (Risk Kaydı).
+  // 3) Şablon içerikleri artık gerçek tablo + blockquote üretiyor (Risk).
   await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
   setVal(doc, "fWikiNewTitle", "Risk Kaydı Testi");
-  const riskCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.includes("Risk Kaydı (Risk Register)"));
+  const riskCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.trim() === "Risk");
   riskCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   await sleep(300);
   await click(app, window, "wikiNewPageCreate", { wait: 300 });
@@ -620,4 +619,46 @@ test("wiki düzeltmeleri: şablon seçilince başlık kaybolmaz, toplantı formu
   assert.ok(mainCard.innerHTML.includes("border-left:3px solid"), "blockquote (rehber notu) render edilmedi");
   assert.ok(mainCard.innerHTML.includes("<table"), "şablon tablosu render edilmedi");
   assert.ok(mainCard.innerHTML.includes("Yüksek Öncelikli Riskler"), "zengin şablon içeriği eksik görünüyor");
+});
+test("wiki biçimlendirme araç çubuğu: H1/kalın/tablo doğru eklenir ve render() tetiklenmeden içerik korunur", async () => {
+  const { window, doc, app } = await openDemoApp();
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:wiki");
+  await click(app, window, "scr:w.pages", { wait: 300 });
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+  setVal(doc, "fWikiNewTitle", "Araç Çubuğu Testi");
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+
+  const ta = doc.getElementById("fWikiContent");
+  assert.ok(app.innerHTML.includes('data-a="wikiFmt:h1"'), "H1 butonu yok");
+  assert.ok(app.innerHTML.includes('data-a="wikiFmt:table"'), "tablo butonu yok");
+
+  ta.value = "";
+  ta.focus();
+  ta.setSelectionRange(0, 0);
+  const h1Btn = app.querySelector("[data-a='wikiFmt:h1']");
+  h1Btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(50);
+  assert.equal(ta.value, "# Başlık", "H1 butonu satır başına '# ' eklemedi");
+
+  ta.value = "Merhaba dünya";
+  ta.setSelectionRange(0, 7); // "Merhaba" seçili
+  const boldBtn = app.querySelector("[data-a='wikiFmt:bold']");
+  boldBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(50);
+  assert.equal(ta.value, "**Merhaba** dünya", "kalın butonu seçili metni sarmalamadı");
+
+  ta.value = "";
+  ta.setSelectionRange(0, 0);
+  const tableBtn = app.querySelector("[data-a='wikiFmt:table']");
+  tableBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(50);
+  assert.ok(ta.value.includes("| Başlık 1 | Başlık 2 |"), "tablo iskeleti eklenmedi");
+
+  // KRİTİK: araç çubuğu render() tetiklememeli, aksi halde yazılmış
+  // içerik (henüz kaydedilmemiş) sessizce kaybolur.
+  assert.ok(doc.getElementById("fWikiContent"), "araç çubuğu kullanımı sonrası düzenleme modundan çıkılmış");
 });
