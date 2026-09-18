@@ -3906,37 +3906,32 @@ function screenView(){
   const ancestorsOf=(pageId)=>{const chain=[];let cur=pages.find(p=>p.id===pageId);
    while(cur){chain.unshift(cur);cur=cur.parent_id?pages.find(p=>p.id===cur.parent_id):null;}
    return chain;};
-  // Confluence'ta space/sayfa oluşturma İÇERİKTEN AYRI, kalıcı bir menü
-  // alanından (space seçici barı, sidebar başlığı) yapılır — sayfanın
-  // kendi gövdesine büyük metinli butonlar konmaz. Bu yüzden burada
-  // yalnızca ikon boyutlu, title tooltipli butonlar kullanılıyor.
-  const iconBtn=(action,icon,title,extraStyle)=>`<span data-a="${action}" title="${esc(title)}" class="icon-btn"
-    style="cursor:pointer;width:28px;height:28px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;transition:background .1s;${extraStyle||""}">${ic(icon,15,"color:var(--tm)")}</span>`;
-  const spaceSelector=`<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
-   <select id="fWikiSpace" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px;font-weight:600">
-    ${spaces.map(sp=>`<option value="${esc(sp.space_key)}" ${spaceKey===sp.space_key?"selected":""}>${sp.project_k?"📁 ":"🏠 "}${esc(sp.name)}</option>`).join("")}</select>
-   ${canWriteWiki?iconBtn("wikiNewSpaceOpen","plus","Yeni alan (space) oluştur","border:1px solid var(--bd)"):""}
-   ${cw("d.board")&&projectSpaces.length?`<select id="fWikiEnsureProject" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
-     <option value="">Bir projeden alan oluştur…</option>
-     ${projectSpaces.map(pr=>`<option value="${esc(pr.k)}">${esc(pr.k)} — ${esc(pr.n)}</option>`).join("")}</select>
-    <button class="b s" data-a="wikiEnsureProjectSpace">Ekle</button>`:""}</div>`;
-  // Sayfa ağacı: Confluence tarzı girinti + dikey bağlantı çizgisi.
+  // Kullanıcı isteği: "Sol koyu gri menüde her şey olmalı" — space seçimi,
+  // yeni space oluşturma, seçili space'in TÜM içerik ağacı ve yeni sayfa
+  // oluşturma, TEK bir kalıcı koyu sidebar'da toplanır. Sayfa/space
+  // oluşturma asla ana içerik alanında değil, yalnızca bu sidebar'dan
+  // tetiklenir.
   const pageTree=(parentId,depth)=>pages.filter(p=>(p.parent_id||null)===(parentId||null)).map(p=>{
     const hasKids=pages.some(k2=>k2.parent_id===p.id);
-    return `<div style="padding:4px 0 4px ${depth*16}px;${depth?"border-left:1px solid var(--bd);margin-left:"+((depth-1)*16+7)+"px;padding-left:9px":""}">
-      <span data-a="wikiOpenPage:${p.id}" style="cursor:pointer;font-size:12.5px;display:inline-flex;align-items:center;gap:5px;${currentPageId===p.id?"font-weight:600;color:var(--ta)":""}">
-       ${ic(hasKids?"files":"file-text",13,"color:var(--tm)")}${esc(p.title)}</span>
+    return `<div style="padding:4px 0 4px ${depth*14}px">
+      <span data-a="wikiOpenPage:${p.id}" style="cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:5px;color:${currentPageId===p.id?"#fff":"rgba(255,255,255,.72)"};${currentPageId===p.id?"font-weight:600":""}">
+       ${ic(hasKids?"files":"file-text",12,"color:rgba(255,255,255,.5)")}${esc(p.title)}</span>
       ${pageTree(p.id,depth+1)}</div>`;}).join("");
   const totalPages=pages.length;
-  // Sidebar Confluence'taki gibi KALICI bir gezinme paneli: "İÇERİK"
-  // başlığının hemen yanında (sağında) küçük bir "+" simgesi — yeni sayfa
-  // eklemenin TEK yolu burasıdır, sayfa görüntüleme alanında büyük bir
-  // "Yeni sayfa" butonu YOKTUR (kullanıcının işaret ettiği asıl fark).
-  const sidebar=`<div class="card" style="min-width:230px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-     <div class="lbl">İÇERİK (${totalPages})</div>
-     ${canWriteWiki?iconBtn("wikiNewPage:","plus","Bu alana yeni bir üst düzey sayfa ekle"):""}</div>
-    ${pageTree(null,0)||`<p class="m" style="color:var(--tm)">Bu alanda henüz sayfa yok.</p>`}</div>`;
+  const navRow=(action,icon,label,active)=>`<div data-a="${action}" class="icon-btn" style="cursor:pointer;display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:7px;font-size:12.5px;color:${active?"#fff":"rgba(255,255,255,.78)"};${active?"background:rgba(255,255,255,.1)":""}">
+    ${ic(icon,14,"color:"+(active?"#fff":"rgba(255,255,255,.55)"))}<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(label)}</span></div>`;
+  const spaceSidebar=`<div class="card" style="min-width:240px;background:var(--navy);border-color:var(--navy)">
+    <div class="lbl" style="color:rgba(255,255,255,.5);margin-bottom:4px">ALANLAR (SPACES)</div>
+    ${spaces.map(sp=>navRow("wikiSwitchSpace:"+sp.space_key,sp.project_k?"files":"home",sp.name,sp.space_key===spaceKey)).join("")}
+    ${canWriteWiki?navRow("wikiNewSpaceOpen","plus","Yeni alan oluştur"):""}
+    <div style="height:1px;background:rgba(255,255,255,.14);margin:10px 0"></div>
+    <div class="lbl" style="color:rgba(255,255,255,.5);margin-bottom:4px">İÇERİK (${totalPages})</div>
+    ${pageTree(null,0)||`<p class="m" style="color:rgba(255,255,255,.4)">Bu alanda henüz sayfa yok.</p>`}
+    ${canWriteWiki?navRow("wikiNewPage:"+(currentPageId||""),"plus",currentPageId?"Alt sayfa oluştur":"Yeni sayfa oluştur"):""}
+    ${cw("d.board")&&projectSpaces.length?`<div style="margin-top:10px"><select id="fWikiEnsureProject" style="width:100%;padding:6px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:11.5px">
+     <option value="" style="color:#000">Bir projeden alan oluştur…</option>
+     ${projectSpaces.map(pr=>`<option value="${esc(pr.k)}" style="color:#000">${esc(pr.k)} — ${esc(pr.n)}</option>`).join("")}</select>
+    <button class="b s" style="width:100%;margin-top:5px" data-a="wikiEnsureProjectSpace">Ekle</button></div>`:""}</div>`;
   let mainPanel;
   if(S.wikiEditing&&currentPage){
    mainPanel=`<div class="card">
@@ -3960,7 +3955,6 @@ function screenView(){
      ${ic(icon,13,"color:currentColor")}${esc(label)}</span>`;
    const toolbar=canWriteWiki?`<div style="display:flex;align-items:center;gap:2px;flex-wrap:wrap">
      ${actionLink("wikiEditStart","writing","Düzenle")}
-     ${actionLink("wikiNewPage:"+currentPage.id,"plus","Alt sayfa ekle")}
      ${actionLink("wikiRestrictOpen:"+currentPage.id,"lock","Yetkilendirme")}
      ${actionLink("wikiVersionsOpen:"+currentPage.id,"clock","Geçmiş")}
      ${actionLink("wikiDeletePage:"+currentPage.id,"scissors","Sil","color:var(--er-fg)")}</div>`:"";
@@ -3996,11 +3990,11 @@ function screenView(){
   }else{
    mainPanel=`<div class="card"><p class="m" style="color:var(--tm)">
      Şu an <b style="color:var(--t1)">${esc((currentSpace||{}).name||spaceKey)}</b> alanındasınız.
-     Görüntülemek için soldaki içerik listesinden bir sayfa seçin${canWriteWiki?", ya da 'İÇERİK' başlığının yanındaki + simgesiyle yeni bir sayfa oluşturun.":"."}</p></div>`;
+     Görüntülemek için soldaki içerik listesinden bir sayfa seçin${canWriteWiki?", ya da soldaki 'Yeni sayfa oluştur' ile başlayın.":"."}</p></div>`;
   }
-  return head((currentSpace||{}).name||spaceKey,"Wiki · "+totalPages+" sayfa"+(LIVE_BACKEND?" · live backend":""),spaceSelector)+
+  return head((currentSpace||{}).name||spaceKey,"Wiki · "+totalPages+" sayfa"+(LIVE_BACKEND?" · live backend":""),"")+
    `<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
-    <div style="flex:1;min-width:220px">${sidebar}</div>
+    <div style="flex:1;min-width:240px">${spaceSidebar}</div>
     <div style="flex:2.5;min-width:320px">${mainPanel}</div></div>`;}
 
  /* ---- admin ---- */
@@ -5341,10 +5335,18 @@ function dialogView(){
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b p" data-a="wikiRestrictSave:${d.id}">Kaydet</button></div>`);}
  if(d.type==="wikiNewSpace"){
+  const templates=wikiTemplatesOf();
+  const selectedTpl=S.f.wikiTemplateId;
+  const tplCard=(id,name)=>`<div data-a="wikiTemplatePick:${id}" style="cursor:pointer;padding:9px 11px;border-radius:8px;border:1.5px solid ${String(selectedTpl||"")===String(id)?"var(--navy)":"var(--bd)"};${String(selectedTpl||"")===String(id)?"background:var(--ba)":""};margin-bottom:6px">
+    <span style="font-size:12.5px;font-weight:${String(selectedTpl||"")===String(id)?"600":"500"}">${esc(name)}</span></div>`;
   return wrap(`<div style="font-size:15px">Yeni alan (space) oluştur</div>
    <p class="m" style="color:var(--tm);margin-top:4px">Herhangi bir konu için (bir proje ile ilişkilendirmeden) yeni bir alan
     açabilirsiniz — ör. bir departman, bir süreç, ya da genel bir bilgi konusu.</p>
    <input id="fWikiNewSpaceName" placeholder="Alan adı… (ör. İK Süreçleri)" style="margin-top:10px" autofocus>
+   <div class="lbl" style="margin-top:12px">İLK SAYFA İÇİN ŞABLON</div>
+   <div style="max-height:220px;overflow:auto;margin-top:4px">
+    ${tplCard("","Boş (şablonsuz)")}
+    ${templates.map(t=>tplCard(t.id,t.name)).join("")}</div>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b p" data-a="wikiNewSpaceCreate">Oluştur</button></div>`);}
@@ -5355,14 +5357,17 @@ function dialogView(){
   const pages=LIVE_BACKEND?(WIKI_PAGES_LIVE[spaceKey]||[]):(WIKI_PAGES_DEMO[spaceKey]||[]);
   const parentPage=d.parentId?pages.find(pg=>pg.id===d.parentId):null;
   const templates=wikiTemplatesOf();
+  const selectedTpl=S.f.wikiTemplateId;
+  const tplCard=(id,name)=>`<div data-a="wikiTemplatePick:${id}" style="cursor:pointer;padding:9px 11px;border-radius:8px;border:1.5px solid ${String(selectedTpl||"")===String(id)?"var(--navy)":"var(--bd)"};${String(selectedTpl||"")===String(id)?"background:var(--ba)":""};margin-bottom:6px">
+    <span style="font-size:12.5px;font-weight:${String(selectedTpl||"")===String(id)?"600":"500"}">${esc(name)}</span></div>`;
   return wrap(`<div style="font-size:15px">Yeni sayfa</div>
    <p class="m" style="color:var(--tm);margin-top:4px">
     <b style="color:var(--t1)">${esc(spaceName)}</b> alanına${parentPage?` — <b style="color:var(--t1)">${esc(parentPage.title)}</b> sayfasının ALTINA (alt sayfa olarak)`:" üst düzey (space kökünde) bir sayfa olarak"} eklenecek.</p>
    <input id="fWikiNewTitle" placeholder="Sayfa başlığı…" style="margin-top:10px" autofocus>
-   <div class="lbl" style="margin-top:11px">ŞABLON</div>
-   <select id="fWikiNewTemplate" style="width:100%;padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12.5px">
-    <option value="">Boş (şablonsuz)</option>
-    ${templates.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join("")}</select>
+   <div class="lbl" style="margin-top:12px">ŞABLON</div>
+   <div style="max-height:220px;overflow:auto;margin-top:4px">
+    ${tplCard("","Boş (şablonsuz)")}
+    ${templates.map(t=>tplCard(t.id,t.name)).join("")}</div>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b p" data-a="wikiNewPageCreate">Oluştur</button></div>`);}
@@ -5966,8 +5971,6 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="k")clickIf('[data-a="scr:d.backlog"]');
   return;}});
 app.addEventListener("change",async e=>{
- if(e.target.id==="fWikiSpace"){
-  S.wikiSpace=e.target.value;S.wikiPageId=null;S.wikiEditing=false;render();return;}
  if(e.target.id==="fCustomFieldType"){
   S.customFieldType=e.target.value;render();return;}
  if(e.target.id==="todoNewCategory"){
@@ -6917,14 +6920,23 @@ app.addEventListener("click",async ev=>{
   ISSUE_CUSTOM_VALUES_DEMO[k2]=ISSUE_CUSTOM_VALUES_DEMO[k2]||{};
   ISSUE_CUSTOM_VALUES_DEMO[k2][fieldId]=value||null;
   toast("Kaydedildi.");render();return;}
- if(k==="wikiNewSpaceOpen"){S.dlg={type:"wikiNewSpace"};render();return;}
+ if(k==="wikiSwitchSpace"){S.wikiSpace=p[1];S.wikiPageId=null;S.wikiEditing=false;render();return;}
+ if(k==="wikiTemplatePick"){S.f.wikiTemplateId=p[1]||"";render();return;}
+ if(k==="wikiNewSpaceOpen"){S.f={wikiTemplateId:""};S.dlg={type:"wikiNewSpace"};render();return;}
  if(k==="wikiNewSpaceCreate"){
   const name=(document.getElementById("fWikiNewSpaceName")||{}).value||"";
+  const templateId=S.f.wikiTemplateId||"";
+  const template=templateId?wikiTemplatesOf().find(t=>String(t.id)===String(templateId)):null;
+  const initialContent=template?template.content:"";
   if(!name.trim()){toast("Alan adı zorunlu.",1);return;}
   if(LIVE_BACKEND){
    try{const res=await api("POST","/api/wiki/spaces",{name});
     WIKI_SPACES_LIVE=[...(WIKI_SPACES_LIVE||[]),res.item];
-    S.wikiSpace=res.item.space_key;S.wikiPageId=null;S.dlg=null;
+    // Yeni space'in ilk sayfası ("Ana Sayfa") seçilen şablonla oluşturulur.
+    const pageRes=await api("POST","/api/wiki/spaces/"+encodeURIComponent(res.item.space_key)+"/pages",{title:"Ana Sayfa",content:initialContent});
+    WIKI_PAGES_LIVE[res.item.space_key]=[pageRes.item];
+    WIKI_PAGE_LIVE[pageRes.item.id]=pageRes.item;
+    S.wikiSpace=res.item.space_key;S.wikiPageId=pageRes.item.id;S.dlg=null;
     toast(res.item.name+" alanı oluşturuldu ve seçildi.");render();}
    catch(e){toast(e.message,1);}
    return;}
@@ -6933,8 +6945,11 @@ app.addEventListener("click",async ev=>{
    .replace(/[^A-Z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,40)||("SPACE"+nextWikiSpaceId);
   if(WIKI_SPACES_DEMO.some(s=>s.space_key===spaceKey)){toast("Bu anahtarda bir alan zaten var, farklı bir isim deneyin.",1);return;}
   WIKI_SPACES_DEMO.push({id:nextWikiSpaceId++,space_key:spaceKey,name:name.trim(),project_k:null});
-  WIKI_PAGES_DEMO[spaceKey]=[];
-  S.wikiSpace=spaceKey;S.wikiPageId=null;S.dlg=null;
+  const pageId=nextWikiPageId++;
+  const homePage={id:pageId,space_id:0,parent_id:null,title:"Ana Sayfa",content:initialContent,created_by:S.me.u,updated_by:S.me.u,updated_at:now()};
+  WIKI_PAGES_DEMO[spaceKey]=[homePage];
+  WIKI_PAGE_DEMO[pageId]=homePage;
+  S.wikiSpace=spaceKey;S.wikiPageId=pageId;S.dlg=null;
   toast(name.trim()+" alanı oluşturuldu ve seçildi.");render();return;}
  if(k==="wikiCommentAdd"){const pageId=+p[1];
   const inputId="fWikiCommentBody"+pageId;
@@ -6987,12 +7002,12 @@ app.addEventListener("click",async ev=>{
   S.wikiSpace=projectK;S.wikiPageId=null;toast(projectK+" alanı oluşturuldu ve seçildi.");render();return;}
  if(k==="wikiOpenPage"){S.wikiPageId=p[1]?+p[1]:null;S.wikiEditing=false;render();return;}
  if(k==="wikiNewPage"){
-  S.dlg={type:"wikiNewPage",parentId:p[1]?+p[1]:null};render();return;}
+  S.f={wikiTemplateId:""};S.dlg={type:"wikiNewPage",parentId:p[1]?+p[1]:null};render();return;}
  if(k==="wikiNewPageCreate"){
   const spaceKey=S.wikiSpace||"GENEL";
   const parentId=(S.dlg&&S.dlg.parentId)||null;
   const title=(document.getElementById("fWikiNewTitle")||{}).value||"";
-  const templateId=(document.getElementById("fWikiNewTemplate")||{}).value||"";
+  const templateId=S.f.wikiTemplateId||"";
   const template=templateId?wikiTemplatesOf().find(t=>String(t.id)===String(templateId)):null;
   const initialContent=template?template.content:"";
   if(!title.trim()){toast("Başlık zorunlu.",1);return;}

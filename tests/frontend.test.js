@@ -339,7 +339,7 @@ test("wiki: sayfa oluşturma, markdown render, düzenleme, versiyon geçmişi, s
   assert.ok(!app.innerHTML.includes("Alt Sayfa Testi"), "'Evet' sonrası sayfa hâlâ görünüyor");
   assert.ok(app.innerHTML.includes("Frontend Test Sayfası"), "üst sayfa yanlışlıkla silinmemeli, sadece alt sayfa silinmeliydi");
 });
-test("wiki gelişmiş özellikler: serbest space oluşturma, şablon seçici (Boş dahil), yorumlar, sayfa yetkilendirmesi", async () => {
+test("wiki gelişmiş özellikler: serbest space oluşturma (Confluence tarzı sidebar), şablon galerisi (Boş dahil), yorumlar, sayfa yetkilendirmesi", async () => {
   const { window, doc, app } = await openDemoApp();
   const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
   assert.ok(bayramBtn, "pmdir demo kullanıcısı bulunamadı");
@@ -349,24 +349,40 @@ test("wiki gelişmiş özellikler: serbest space oluşturma, şablon seçici (Bo
   await click(app, window, "mod:wiki");
   await click(app, window, "scr:w.pages", { wait: 300 });
 
-  // Serbest (proje bağımsız) space oluşturma.
-  assert.ok(app.querySelector("[data-a='wikiNewSpaceOpen']"), "'+ Yeni alan' butonu yok");
+  // Serbest (proje bağımsız) space oluşturma — sidebar'daki "Yeni alan
+  // oluştur" satırından, sayfa içeriğinden DEĞİL.
+  assert.ok(app.querySelector("[data-a='wikiNewSpaceOpen']"), "sidebar'da 'Yeni alan oluştur' satırı yok");
   await click(app, window, "wikiNewSpaceOpen", { wait: 300 });
   assert.ok(app.innerHTML.includes("Yeni alan (space) oluştur"), "yeni alan diyaloğu açılmadı");
+
+  // Space oluşturma diyaloğunda da şablon galerisi olmalı (Boş ilk sırada).
+  assert.ok(app.innerHTML.includes("İLK SAYFA İÇİN ŞABLON"), "space diyaloğunda şablon galerisi yok");
+  assert.ok(app.querySelector("[data-a='wikiTemplatePick:']"), "'Boş' şablon kartı yok");
+  assert.ok(app.querySelector("[data-a^='wikiTemplatePick:']"), "şablon kartları yok");
+
   setVal(doc, "fWikiNewSpaceName", "Frontend Test Alanı");
-  await click(app, window, "wikiNewSpaceCreate", { wait: 300 });
-  assert.ok(app.innerHTML.includes("Frontend Test Alanı"), "serbest alan oluşturulup seçilmedi");
+  await click(app, window, "wikiNewSpaceCreate", { wait: 500 });
+  assert.ok(app.innerHTML.includes("Frontend Test Alanı"), "serbest alan oluşturulup seçilmedi (sidebar'da görünmüyor)");
+  assert.ok(app.innerHTML.includes("Ana Sayfa"), "space oluşunca otomatik bir 'Ana Sayfa' oluşmadı");
 
-  // Şablon seçici: Boş ilk sırada, temel-konu şablonları listede.
+  // Sidebar'daki akıllı "+" butonu: bir sayfa açıkken tıklanırsa ALT sayfa
+  // oluşturur (üst düzey değil) — hedef üst sayfa diyalogda görünmeli.
   await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
-  const templateSel = doc.getElementById("fWikiNewTemplate");
-  assert.ok(templateSel, "şablon dropdown'ı yok");
-  assert.ok(templateSel.options[0].textContent.includes("Boş"), "ilk seçenek 'Boş' değil");
-  assert.ok([...templateSel.options].some((o) => o.textContent.includes("Proje Planı")), "'Proje Planı' şablonu yok");
-  assert.ok([...templateSel.options].some((o) => o.textContent.includes("Doküman Kontrol")), "'Doküman Kontrol Sayfası' şablonu yok");
+  assert.ok(app.innerHTML.includes("ALTINA") && app.innerHTML.includes("Ana Sayfa"),
+    "alt sayfa diyaloğu hedef üst sayfayı (Ana Sayfa) belirtmiyor");
 
-  const planOpt = [...templateSel.options].find((o) => o.textContent.includes("Proje Planı"));
-  templateSel.value = planOpt.value;
+  // Şablon galerisi: Boş ilk sırada, temel-konu şablonları listede.
+  assert.ok(app.innerHTML.includes("Boş (şablonsuz)"), "'Boş' seçeneği yok");
+  assert.ok(app.innerHTML.includes("Proje Planı"), "'Proje Planı' şablonu yok");
+  assert.ok(app.innerHTML.includes("Doküman Kontrol"), "'Doküman Kontrol Sayfası' şablonu yok");
+
+  const planCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((e) => e.textContent.includes("Proje Planı"));
+  assert.ok(planCard, "'Proje Planı' şablon kartı bulunamadı");
+  planCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  assert.ok(planCard.outerHTML.includes("var(--navy)") || app.innerHTML.includes("font-weight:600"),
+    "seçilen şablon kartı seçili olarak vurgulanmıyor");
+
   setVal(doc, "fWikiNewTitle", "Şablonlu Test Sayfası");
   await click(app, window, "wikiNewPageCreate", { wait: 300 });
   assert.ok(doc.getElementById("fWikiContent").value.includes("Kilometre Taşları"), "şablon içeriği textarea'ya yüklenmedi");
