@@ -339,3 +339,52 @@ test("wiki: sayfa oluşturma, markdown render, düzenleme, versiyon geçmişi, s
   assert.ok(!app.innerHTML.includes("Alt Sayfa Testi"), "'Evet' sonrası sayfa hâlâ görünüyor");
   assert.ok(app.innerHTML.includes("Frontend Test Sayfası"), "üst sayfa yanlışlıkla silinmemeli, sadece alt sayfa silinmeliydi");
 });
+test("wiki gelişmiş özellikler: serbest space oluşturma, şablon seçici (Boş dahil), yorumlar, sayfa yetkilendirmesi", async () => {
+  const { window, doc, app } = await openDemoApp();
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  assert.ok(bayramBtn, "pmdir demo kullanıcısı bulunamadı");
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:wiki");
+  await click(app, window, "scr:w.pages", { wait: 300 });
+
+  // Serbest (proje bağımsız) space oluşturma.
+  assert.ok(app.querySelector("[data-a='wikiNewSpaceOpen']"), "'+ Yeni alan' butonu yok");
+  await click(app, window, "wikiNewSpaceOpen", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Yeni alan (space) oluştur"), "yeni alan diyaloğu açılmadı");
+  setVal(doc, "fWikiNewSpaceName", "Frontend Test Alanı");
+  await click(app, window, "wikiNewSpaceCreate", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Frontend Test Alanı"), "serbest alan oluşturulup seçilmedi");
+
+  // Şablon seçici: Boş ilk sırada, temel-konu şablonları listede.
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+  const templateSel = doc.getElementById("fWikiNewTemplate");
+  assert.ok(templateSel, "şablon dropdown'ı yok");
+  assert.ok(templateSel.options[0].textContent.includes("Boş"), "ilk seçenek 'Boş' değil");
+  assert.ok([...templateSel.options].some((o) => o.textContent.includes("Proje Planı")), "'Proje Planı' şablonu yok");
+  assert.ok([...templateSel.options].some((o) => o.textContent.includes("Doküman Kontrol")), "'Doküman Kontrol Sayfası' şablonu yok");
+
+  const planOpt = [...templateSel.options].find((o) => o.textContent.includes("Proje Planı"));
+  templateSel.value = planOpt.value;
+  setVal(doc, "fWikiNewTitle", "Şablonlu Test Sayfası");
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+  assert.ok(doc.getElementById("fWikiContent").value.includes("Kilometre Taşları"), "şablon içeriği textarea'ya yüklenmedi");
+  await click(app, window, "wikiEditCancel", { wait: 300 });
+
+  // Yorum ekleme.
+  assert.ok(app.innerHTML.includes("YORUMLAR"), "yorumlar bölümü görünmüyor");
+  const commentInput = [...doc.querySelectorAll("input")].find((el) => el.id.startsWith("fWikiCommentBody"));
+  assert.ok(commentInput, "yorum input'u yok");
+  commentInput.value = "@mert.balkan bakar mısın?";
+  await clickPrefix(app, window, "wikiCommentAdd:", { wait: 300 });
+  assert.ok(app.innerHTML.includes("bakar mısın"), "yorum eklenmedi");
+  assert.ok(app.innerHTML.includes("Bayram Elmas"), "yorum yazarı görünmüyor");
+
+  // Sayfa yetkilendirmesi.
+  await clickPrefix(app, window, "wikiRestrictOpen:", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Sayfa yetkilendirmesi"), "yetkilendirme diyaloğu açılmadı");
+  await click(app, window, "wikiRestrictToggleRole:pmdir", { wait: 300 });
+  await clickPrefix(app, window, "wikiRestrictSave:", { wait: 300 });
+  assert.ok(app.innerHTML.includes("kısıtlaması güncellendi"), "yetkilendirme kaydedilmedi");
+});

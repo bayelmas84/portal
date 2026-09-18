@@ -1725,6 +1725,36 @@ async function ensureProjectWikiSpaceLive(projectK){
  try{await api("POST","/api/wiki/spaces/ensure-project/"+encodeURIComponent(projectK));
   loadWikiSpacesLive();}
  catch(e){/* sessiz geç — kullanıcı yetkisizse zaten space listesinde görünmez */}}
+/* Şablonlar (Confluence'taki "create from template"): sistem şablonları
+   (Toplantı Notu, Proje Planı, Doküman Kontrol Sayfası vb.) + kullanıcı
+   tanımlı olanlar. "Boş" seçeneği HER ZAMAN listenin başındadır ve
+   herhangi bir template_id'ye karşılık gelmez (frontend'de üretilir,
+   backend'e hiç gitmez). */
+let WIKI_TEMPLATES_LIVE=null;
+const WIKI_TEMPLATES_DEMO=[
+ {id:-1,name:"Toplantı Notu",content:"# Toplantı Notu\n\n**Tarih:** \n**Katılımcılar:** \n\n## Gündem\n- \n\n## Kararlar\n- \n\n## Aksiyon Maddeleri\n- [ ] "},
+ {id:-2,name:"Nasıl Yapılır (How-to)",content:"# Nasıl Yapılır: \n\n## Ön koşullar\n- \n\n## Adımlar\n1. \n2. \n3. \n\n## Sorun Giderme\n- "},
+ {id:-3,name:"Karar Kaydı",content:"# Karar Kaydı\n\n**Tarih:** \n**Karar Sahibi:** \n\n## Bağlam\n\n\n## Karar\n\n\n## Gerekçe\n"},
+ {id:-4,name:"Proje Planı",content:"# Proje Planı: \n\n**Proje Yöneticisi:** \n**Başlangıç / Bitiş:** \n\n## Amaç ve Kapsam\n\n\n## Kilometre Taşları\n- [ ] \n\n## Riskler\n| Risk | Olasılık | Etki | Önlem |\n|---|---|---|---|\n| | | | |\n\n## Paydaşlar\n- "},
+ {id:-5,name:"Doküman Kontrol Sayfası",content:"# Doküman Kontrol Sayfası\n\n**Doküman No:** \n**Versiyon:** \n**Sahip:** \n**Onay Tarihi:** \n**Gözden Geçirme Sıklığı:** \n\n## Amaç\n\n\n## Kapsam\n\n\n## Değişiklik Geçmişi\n| Versiyon | Tarih | Değişiklik | Yapan |\n|---|---|---|---|\n| | | | |"}];
+async function loadWikiTemplatesLive(){
+ try{const data=await api("GET","/api/wiki/templates");WIKI_TEMPLATES_LIVE=data.items;render();}
+ catch(e){WIKI_TEMPLATES_LIVE=[];}}
+function wikiTemplatesOf(){
+ if(LIVE_BACKEND){if(WIKI_TEMPLATES_LIVE===null)loadWikiTemplatesLive();return WIKI_TEMPLATES_LIVE||[];}
+ return WIKI_TEMPLATES_DEMO;}
+/* Sayfa yorumları — issue yorumlarıyla AYNI mantık (bkz. ISSUE_COMMENTS_LIVE):
+   @kullanici.adi ile etiketleme, backend'de mention bildirimi üretir. */
+let WIKI_COMMENTS_LIVE={};
+const WIKI_COMMENTS_DEMO={};
+let nextWikiCommentId=1;
+async function loadWikiCommentsLive(pageId){
+ try{const data=await api("GET","/api/wiki/pages/"+pageId+"/comments");WIKI_COMMENTS_LIVE[pageId]=data.items;render();}
+ catch(e){WIKI_COMMENTS_LIVE[pageId]=[];}}
+function wikiCommentsOf(pageId){
+ if(LIVE_BACKEND){if(WIKI_COMMENTS_LIVE[pageId]===undefined)loadWikiCommentsLive(pageId);return WIKI_COMMENTS_LIVE[pageId]||[];}
+ return WIKI_COMMENTS_DEMO[pageId]||[];}
+
 /* Çok küçük bir Markdown alt kümesi render eder: # başlıklar, **kalın**,
    *italik*, `kod`, ```blok kod```, - liste, [metin](url) link, paragraf
    boşlukları. Tam bir Markdown kütüphanesi değildir — CDN'siz, tek
@@ -3875,6 +3905,7 @@ function screenView(){
   const spaceSelector=`<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
    <select id="fWikiSpace" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px;font-weight:600">
     ${spaces.map(sp=>`<option value="${esc(sp.space_key)}" ${spaceKey===sp.space_key?"selected":""}>${sp.project_k?"📁 ":"🏠 "}${esc(sp.name)}</option>`).join("")}</select>
+   ${canWriteWiki?`<button class="b s p" data-a="wikiNewSpaceOpen">+ Yeni alan</button>`:""}
    ${cw("d.board")&&projectSpaces.length?`<select id="fWikiEnsureProject" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
      <option value="">+ Proje alanı ekle…</option>
      ${projectSpaces.map(pr=>`<option value="${esc(pr.k)}">${esc(pr.k)} — ${esc(pr.n)}</option>`).join("")}</select>
@@ -3911,10 +3942,24 @@ function screenView(){
       <span style="font-size:16px;font-weight:600;flex:1">${esc(currentPage.title)}</span>
       ${canWriteWiki?`<button class="b s" data-a="wikiNewPage:${currentPage.id}" title="Bu sayfanın altına yeni bir sayfa ekler">+ Alt sayfa</button>
        <button class="b s" data-a="wikiEditStart">Düzenle</button>
+       <button class="b s" data-a="wikiRestrictOpen:${currentPage.id}">Yetkilendirme</button>
        <button class="b s" data-a="wikiVersionsOpen:${currentPage.id}">Geçmiş</button>
        <button class="b s d" data-a="wikiDeletePage:${currentPage.id}">Sil</button>`:""}</div>
      <p class="m" style="color:var(--tm);margin-top:4px">Son güncelleyen: ${esc(currentPage.updated_by||"")} · ${esc(String(currentPage.updated_at||"").slice(0,16).replace("T"," "))}</p>
-     <div style="margin-top:12px;font-size:13px;line-height:1.5">${renderWikiMarkdown(currentPage.content)}</div></div>`;
+     <div style="margin-top:12px;font-size:13px;line-height:1.5">${renderWikiMarkdown(currentPage.content)}</div>
+     <div class="lbl" style="margin-top:18px;border-top:1px solid var(--bd);padding-top:12px">YORUMLAR (${wikiCommentsOf(currentPage.id).length})</div>
+     ${wikiCommentsOf(currentPage.id).map(c=>`<div style="padding:8px 0;border-bottom:0.5px solid var(--bd)">
+       <div style="display:flex;align-items:center;gap:7px">
+        <span style="font-size:12px;font-weight:600">${esc(c.author_name||c.author_username)}</span>
+        <span class="m" style="color:var(--tm)">${esc(String(c.created_at||"").slice(0,16).replace("T"," "))}</span>
+        <span style="flex:1"></span>
+        ${(c.author_username===S.me.u||canWriteWiki)?`<span data-a="wikiCommentDelete:${currentPage.id}:${c.id}" style="cursor:pointer">${ic("scissors",12,"color:var(--tm)")}</span>`:""}</div>
+       <div style="font-size:12.5px;margin-top:3px;white-space:pre-wrap">${esc(c.body)}</div></div>`).join("")
+      ||`<p class="m" style="color:var(--tm)">Henüz yorum yok.</p>`}
+     <div style="display:flex;gap:6px;margin-top:10px">
+      <input id="fWikiCommentBody${currentPage.id}" placeholder="Yorum ekle… (@kullanici.adi ile etiketleyebilirsiniz)" style="flex:1;padding:7px 9px;font-size:12.5px">
+      <button class="b s p" data-a="wikiCommentAdd:${currentPage.id}">Gönder</button></div>
+    </div>`;
   }else{
    mainPanel=`<div class="card"><p class="m" style="color:var(--tm)">
      Şu an <b style="color:var(--t1)">${esc((currentSpace||{}).name||spaceKey)}</b> alanındasınız.
@@ -5250,16 +5295,41 @@ function dialogView(){
     <button class="b s" data-a="releaseNotesCopy">Copy</button>
     <button class="b s" data-a="releaseNotesDownload:${d.pi}:${encodeURIComponent(d.versionName)}">Download .md</button>
     <button class="b p" data-a="dlgClose">Close</button></div>`);}
+ if(d.type==="wikiRestrict"){
+  const roles=[["pmdir","PM Director"],["pm","Project Manager"],["dev","Developer"],["inspection","Teftiş"],["infosec","Bilgi Güvenliği"],["control","İç Kontrol"],["gmy","Genel Müdür Yrd."],["opsdir","Operasyon Direktörü"],["staff","Personel"]];
+  const allowed=S.f.wikiAllowedRoles||[];
+  return wrap(`<div style="font-size:15px">Sayfa yetkilendirmesi</div>
+   <p class="m" style="color:var(--tm);margin-top:4px">Hiçbir rol seçilmezse sayfa, alanın (space) genel görünürlük kuralını
+    kullanır (Genel alan → herkes, proje alanı → o projeyi görebilenler). Seçim yaparsanız YALNIZCA seçilen roller
+    (ve her zaman pm/pmdir) bu sayfayı görebilir.</p>
+   <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+    ${roles.map(([key,label])=>`<span class="pl" style="cursor:pointer;${allowed.includes(key)?"background:var(--navy);color:#fff":""}" data-a="wikiRestrictToggleRole:${key}">${label}</span>`).join("")}</div>
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button class="b p" data-a="wikiRestrictSave:${d.id}">Kaydet</button></div>`);}
+ if(d.type==="wikiNewSpace"){
+  return wrap(`<div style="font-size:15px">Yeni alan (space) oluştur</div>
+   <p class="m" style="color:var(--tm);margin-top:4px">Herhangi bir konu için (bir proje ile ilişkilendirmeden) yeni bir alan
+    açabilirsiniz — ör. bir departman, bir süreç, ya da genel bir bilgi konusu.</p>
+   <input id="fWikiNewSpaceName" placeholder="Alan adı… (ör. İK Süreçleri)" style="margin-top:10px" autofocus>
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button class="b p" data-a="wikiNewSpaceCreate">Oluştur</button></div>`);}
  if(d.type==="wikiNewPage"){
   const spaceKey=S.wikiSpace||"GENEL";
   const spaces=LIVE_BACKEND?(WIKI_SPACES_LIVE||[]):WIKI_SPACES_DEMO;
   const spaceName=(spaces.find(s=>s.space_key===spaceKey)||{}).name||spaceKey;
   const pages=LIVE_BACKEND?(WIKI_PAGES_LIVE[spaceKey]||[]):(WIKI_PAGES_DEMO[spaceKey]||[]);
   const parentPage=d.parentId?pages.find(pg=>pg.id===d.parentId):null;
+  const templates=wikiTemplatesOf();
   return wrap(`<div style="font-size:15px">Yeni sayfa</div>
    <p class="m" style="color:var(--tm);margin-top:4px">
     <b style="color:var(--t1)">${esc(spaceName)}</b> alanına${parentPage?` — <b style="color:var(--t1)">${esc(parentPage.title)}</b> sayfasının ALTINA (alt sayfa olarak)`:" üst düzey (space kökünde) bir sayfa olarak"} eklenecek.</p>
    <input id="fWikiNewTitle" placeholder="Sayfa başlığı…" style="margin-top:10px" autofocus>
+   <div class="lbl" style="margin-top:11px">ŞABLON</div>
+   <select id="fWikiNewTemplate" style="width:100%;padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12.5px">
+    <option value="">Boş (şablonsuz)</option>
+    ${templates.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join("")}</select>
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b p" data-a="wikiNewPageCreate">Oluştur</button></div>`);}
@@ -6814,6 +6884,65 @@ app.addEventListener("click",async ev=>{
   ISSUE_CUSTOM_VALUES_DEMO[k2]=ISSUE_CUSTOM_VALUES_DEMO[k2]||{};
   ISSUE_CUSTOM_VALUES_DEMO[k2][fieldId]=value||null;
   toast("Kaydedildi.");render();return;}
+ if(k==="wikiNewSpaceOpen"){S.dlg={type:"wikiNewSpace"};render();return;}
+ if(k==="wikiNewSpaceCreate"){
+  const name=(document.getElementById("fWikiNewSpaceName")||{}).value||"";
+  if(!name.trim()){toast("Alan adı zorunlu.",1);return;}
+  if(LIVE_BACKEND){
+   try{const res=await api("POST","/api/wiki/spaces",{name});
+    WIKI_SPACES_LIVE=[...(WIKI_SPACES_LIVE||[]),res.item];
+    S.wikiSpace=res.item.space_key;S.wikiPageId=null;S.dlg=null;
+    toast(res.item.name+" alanı oluşturuldu ve seçildi.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  const spaceKey=name.trim().toUpperCase()
+   .replace(/İ/g,"I").replace(/Ğ/g,"G").replace(/Ü/g,"U").replace(/Ş/g,"S").replace(/Ö/g,"O").replace(/Ç/g,"C")
+   .replace(/[^A-Z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,40)||("SPACE"+nextWikiSpaceId);
+  if(WIKI_SPACES_DEMO.some(s=>s.space_key===spaceKey)){toast("Bu anahtarda bir alan zaten var, farklı bir isim deneyin.",1);return;}
+  WIKI_SPACES_DEMO.push({id:nextWikiSpaceId++,space_key:spaceKey,name:name.trim(),project_k:null});
+  WIKI_PAGES_DEMO[spaceKey]=[];
+  S.wikiSpace=spaceKey;S.wikiPageId=null;S.dlg=null;
+  toast(name.trim()+" alanı oluşturuldu ve seçildi.");render();return;}
+ if(k==="wikiCommentAdd"){const pageId=+p[1];
+  const inputId="fWikiCommentBody"+pageId;
+  const body=(document.getElementById(inputId)||{}).value||"";
+  if(!body.trim()){toast("Yorum boş olamaz.",1);return;}
+  if(LIVE_BACKEND){
+   try{const res=await api("POST","/api/wiki/pages/"+pageId+"/comments",{body});
+    WIKI_COMMENTS_LIVE[pageId]=[...(WIKI_COMMENTS_LIVE[pageId]||[]),res.item];render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  WIKI_COMMENTS_DEMO[pageId]=WIKI_COMMENTS_DEMO[pageId]||[];
+  WIKI_COMMENTS_DEMO[pageId].push({id:nextWikiCommentId++,page_id:pageId,author_username:S.me.u,author_name:S.me.n,body:body.trim(),created_at:now()});
+  render();return;}
+ if(k==="wikiCommentDelete"){const pageId=+p[1],commentId=+p[2];
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/wiki/pages/"+pageId+"/comments/"+commentId);
+    WIKI_COMMENTS_LIVE[pageId]=(WIKI_COMMENTS_LIVE[pageId]||[]).filter(c=>c.id!==commentId);render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  WIKI_COMMENTS_DEMO[pageId]=(WIKI_COMMENTS_DEMO[pageId]||[]).filter(c=>c.id!==commentId);render();return;}
+ if(k==="wikiRestrictOpen"){const pageId=+p[1];
+  S.dlg={type:"wikiRestrict",id:pageId};
+  if(LIVE_BACKEND){
+   try{const res=await api("GET","/api/wiki/pages/"+pageId+"/restrictions");S.f={wikiAllowedRoles:res.allowedRoles||[]};render();}
+   catch(e){S.f={wikiAllowedRoles:[]};render();}
+   return;}
+  S.f={wikiAllowedRoles:(WIKI_PAGE_DEMO[pageId]||{}).allowedRoles||[]};render();return;}
+ if(k==="wikiRestrictToggleRole"){const role=p[1];
+  S.f.wikiAllowedRoles=S.f.wikiAllowedRoles||[];
+  const idx=S.f.wikiAllowedRoles.indexOf(role);
+  if(idx>=0)S.f.wikiAllowedRoles.splice(idx,1);else S.f.wikiAllowedRoles.push(role);
+  render();return;}
+ if(k==="wikiRestrictSave"){const pageId=+p[1];
+  const allowedRoles=S.f.wikiAllowedRoles||[];
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/wiki/pages/"+pageId+"/restrictions",{allowedRoles});
+    S.dlg=null;toast(allowedRoles.length?"Sayfa kısıtlaması güncellendi.":"Kısıtlama kaldırıldı, sayfa alanın genel kuralına döndü.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  const page=WIKI_PAGE_DEMO[pageId];if(page)page.allowedRoles=allowedRoles;
+  S.dlg=null;toast(allowedRoles.length?"Sayfa kısıtlaması güncellendi.":"Kısıtlama kaldırıldı, sayfa alanın genel kuralına döndü.");render();return;}
  if(k==="wikiEnsureProjectSpace"){
   const projectK=(document.getElementById("fWikiEnsureProject")||{}).value;
   if(!projectK){toast("Bir proje seçin.",1);return;}
@@ -6830,16 +6959,19 @@ app.addEventListener("click",async ev=>{
   const spaceKey=S.wikiSpace||"GENEL";
   const parentId=(S.dlg&&S.dlg.parentId)||null;
   const title=(document.getElementById("fWikiNewTitle")||{}).value||"";
+  const templateId=(document.getElementById("fWikiNewTemplate")||{}).value||"";
+  const template=templateId?wikiTemplatesOf().find(t=>String(t.id)===String(templateId)):null;
+  const initialContent=template?template.content:"";
   if(!title.trim()){toast("Başlık zorunlu.",1);return;}
   if(LIVE_BACKEND){
-   try{const res=await api("POST","/api/wiki/spaces/"+encodeURIComponent(spaceKey)+"/pages",{title,content:"",parentId});
+   try{const res=await api("POST","/api/wiki/spaces/"+encodeURIComponent(spaceKey)+"/pages",{title,content:initialContent,parentId});
     WIKI_PAGES_LIVE[spaceKey]=[...(WIKI_PAGES_LIVE[spaceKey]||[]),res.item];
     WIKI_PAGE_LIVE[res.item.id]=res.item;
     S.wikiPageId=res.item.id;S.wikiEditing=true;S.dlg=null;toast("Sayfa oluşturuldu.");render();}
    catch(e){toast(e.message,1);}
    return;}
   const id=nextWikiPageId++;
-  const page={id,space_id:0,parent_id:parentId,title:title.trim(),content:"",created_by:S.me.u,updated_by:S.me.u,updated_at:now()};
+  const page={id,space_id:0,parent_id:parentId,title:title.trim(),content:initialContent,created_by:S.me.u,updated_by:S.me.u,updated_at:now()};
   WIKI_PAGES_DEMO[spaceKey]=[...(WIKI_PAGES_DEMO[spaceKey]||[]),page];
   WIKI_PAGE_DEMO[id]=page;
   S.wikiPageId=id;S.wikiEditing=true;S.dlg=null;toast("Sayfa oluşturuldu.");render();return;}

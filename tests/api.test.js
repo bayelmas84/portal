@@ -1320,6 +1320,103 @@ test("Wiki: Genel space hazır gelir, proje space'i oluşturma, sayfa CRUD, vers
   assert.equal(pmDelete.status, 200);
 });
 
+test("Wiki genişletmeleri: serbest space oluşturma, şablonlar, sayfa yetkilendirme, issue-wiki linki, versiyon geri yükleme", async () => {
+  const pm = await login("tolga.firat");
+  const dev = await login("mert.balkan");
+
+  // Serbest (proje bağımsız) space: Türkçe karakterli isimden anahtar türetilir.
+  const uniqueSuffix = Date.now();
+  const space = await request(app).post("/api/wiki/spaces").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ name: `İK Test Süreçleri ${uniqueSuffix}` });
+  assert.equal(space.status, 201);
+  assert.ok(space.body.item.space_key.startsWith("IK_TEST_SURECLERI_"));
+  assert.equal(space.body.item.project_k, null);
+
+  const dupe = await request(app).post("/api/wiki/spaces").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ name: `İK Test Süreçleri ${uniqueSuffix}` });
+  assert.equal(dupe.status, 400);
+
+  // Sistem şablonları migration ile hazır gelir.
+  const templates = await request(app).get("/api/wiki/templates").set("Cookie", pm.cookie);
+  assert.ok(templates.body.items.some((t) => t.name === "Toplantı Notu"));
+
+  // Sayfa oluştur, dar bir yetki listesine kısıtla.
+  const page = await request(app).post(`/api/wiki/spaces/${space.body.item.space_key}/pages`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ title: "Bütçe Notu", content: "Gizli içerik" });
+  assert.equal(page.status, 201);
+  const pageId = page.body.item.id;
+
+  const restrict = await request(app).put(`/api/wiki/pages/${pageId}/restrictions`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ allowedRoles: ["pmdir"] });
+  assert.equal(restrict.status, 200);
+
+  // dev (kısıtlı role dahil değil, pm/pmdir de değil) okuyamaz.
+  const devRead = await request(app).get(`/api/wiki/pages/${pageId}`).set("Cookie", dev.cookie);
+  assert.equal(devRead.status, 403);
+  // pm, düzenleme yetkisi olduğu için (CAN_WRITE_ROLES) kısıtlamadan muaftır.
+  const pmRead = await request(app).get(`/api/wiki/pages/${pageId}`).set("Cookie", pm.cookie);
+  assert.equal(pmRead.status, 200);
+
+  // Kısıtlamayı kaldır (boş liste) -> dev artık okuyabilmeli.
+  await request(app).put(`/api/wiki/pages/${pageId}/restrictions`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ allowedRoles: [] });
+  const devReadAfter = await request(app).get(`/api/wiki/pages/${pageId}`).set("Cookie", dev.cookie);
+  assert.equal(devReadAfter.status, 200);
+
+  // Issue'ya wiki linki ekleme/listeleme/silme.
+  const link = await request(app).post("/api/projects/TRADE/issues/TRADE-1/wiki-links").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ wikiPageId: pageId });
+  assert.equal(link.status, 201);
+  const links = await request(app).get("/api/projects/TRADE/issues/TRADE-1/wiki-links").set("Cookie", pm.cookie);
+  assert.ok(links.body.items.some((l) => l.wiki_page_id === pageId));
+  const dupLink = await request(app).post("/api/projects/TRADE/issues/TRADE-1/wiki-links").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ wikiPageId: pageId });
+  assert.equal(dupLink.status, 400); // aynı sayfa iki kez bağlanamaz
+  const unlink = await request(app).delete(`/api/projects/TRADE/issues/TRADE-1/wiki-links/${link.body.item.id}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(unlink.status, 200);
+
+  // Versiyon geri yükleme: içeriği değiştir, sonra ilk versiyona (orijinal
+  // içerik) dön — sayfa gerçekten eski haline dönmeli.
+  await request(app).put(`/api/wiki/pages/${pageId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ content: "Yeni içerik" });
+  const versions = await request(app).get(`/api/wiki/pages/${pageId}/versions`).set("Cookie", pm.cookie);
+  assert.equal(versions.body.items.length, 1);
+  const restore = await request(app).put(`/api/wiki/pages/${pageId}/restore/${versions.body.items[0].id}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(restore.status, 200);
+  assert.equal(restore.body.item.content, "Gizli içerik");
+  // Geri yükleme de kendi versiyonunu bırakır (geri alınabilir olmalı).
+  const versionsAfter = await request(app).get(`/api/wiki/pages/${pageId}/versions`).set("Cookie", pm.cookie);
+  assert.equal(versionsAfter.body.items.length, 2);
+});
+
+test("Wiki yorumları: ekleme, @mention bildirimi, boş yorum reddi, silme yetkisi", async () => {
+  const pm = await login("bayram.elmas");
+  const dev = await login("mert.balkan");
+
+  const page = await request(app).post("/api/wiki/spaces/GENEL/pages").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ title: "Yorum Testi Sayfası " + Date.now(), content: "içerik" });
+  const pageId = page.body.item.id;
+
+  const empty = await request(app).post(`/api/wiki/pages/${pageId}/comments`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf).send({ body: "" });
+  assert.equal(empty.status, 400);
+
+  const comment = await request(app).post(`/api/wiki/pages/${pageId}/comments`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ body: "@mert.balkan bir bakar mısın?" });
+  assert.equal(comment.status, 201);
+  assert.equal(comment.body.item.author_name, "Bayram Elmas");
+
+  const list = await request(app).get(`/api/wiki/pages/${pageId}/comments`).set("Cookie", pm.cookie);
+  assert.equal(list.body.items.length, 1);
+
+  const devInbox = await request(app).get("/api/notifications/inbox").set("Cookie", dev.cookie);
+  const mentionNotif = devInbox.body.items.find((n) => n.wiki_page_id === pageId && n.kind === "wiki_mention");
+  assert.ok(mentionNotif, "mention bildirimi dev'in gelen kutusunda görünmüyor");
+
+  // dev kendi yorumu olmayan bir yorumu silemez; pm silebilir.
+  const devDelete = await request(app).delete(`/api/wiki/pages/${pageId}/comments/${comment.body.item.id}`).set("Cookie", dev.cookie).set("X-CSRF-Token", dev.csrf);
+  assert.equal(devDelete.status, 403);
+  const pmDelete = await request(app).delete(`/api/wiki/pages/${pageId}/comments/${comment.body.item.id}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(pmDelete.status, 200);
+});
+
 test.after(async () => {
   await pool.end();
 });

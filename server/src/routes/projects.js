@@ -964,6 +964,53 @@ router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, nex
   } catch (e) { next(e); }
 });
 
+// Wiki sayfalarının issue'lara link olarak eklenmesi: bir issue, ilgili
+// wiki sayfalarına (dokümantasyon, karar kaydı, toplantı notu vb.) referans
+// verebilir. Backend burada yalnızca linki tutar; wiki sayfasının kendi
+// erişim kontrolü (space/sayfa bazlı) wiki.js route'unda ayrıca uygulanır —
+// yani bir link burada görünse bile, tıklayan kişi wiki tarafında yetkisiz
+// çıkabilir (bu normal ve beklenen bir davranıştır).
+router.get("/:k/issues/:issueKey/wiki-links", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT l.id, l.wiki_page_id, wp.title, ws.space_key, ws.name AS space_name
+         FROM issue_wiki_links l
+         JOIN wiki_pages wp ON wp.id=l.wiki_page_id
+         JOIN wiki_spaces ws ON ws.id=wp.space_id
+        WHERE l.project_k=$1 AND l.issue_key=$2 ORDER BY l.created_at`,
+      [req.params.k, req.params.issueKey]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/issues/:issueKey/wiki-links", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { wikiPageId } = req.body || {};
+    if (!wikiPageId) return res.status(400).json({ error: "wikiPageId zorunlu." });
+    const page = await query("SELECT id FROM wiki_pages WHERE id=$1", [wikiPageId]);
+    if (!page.rowCount) return res.status(404).json({ error: "Wiki sayfası bulunamadı." });
+    const { rows } = await query(
+      `INSERT INTO issue_wiki_links (project_k, issue_key, wiki_page_id, created_by)
+       VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING *`,
+      [req.params.k, req.params.issueKey, wikiPageId, req.user.username]
+    );
+    if (!rows.length) return res.status(400).json({ error: "Bu sayfa zaten bağlı." });
+    res.status(201).json({ item: rows[0] });
+  } catch (e) { next(e); }
+});
+
+router.delete("/:k/issues/:issueKey/wiki-links/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { rowCount } = await query(
+      "DELETE FROM issue_wiki_links WHERE id=$1 AND project_k=$2 AND issue_key=$3",
+      [req.params.id, req.params.k, req.params.issueKey]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Link bulunamadı." });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 router.get("/:k/issues/:issueKey/attachments", requireRead("d.board"), async (req, res, next) => {
   try {
     const { rows } = await query(
