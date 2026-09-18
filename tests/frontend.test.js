@@ -317,7 +317,7 @@ test("wiki: sayfa oluşturma, markdown render, düzenleme, versiyon geçmişi, s
   assert.ok(childLink, "alt sayfaya tıklanabilir link yok");
   childLink.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   await sleep(300);
-  assert.ok(app.innerHTML.includes("›") && app.innerHTML.includes("Frontend Test Sayfası"),
+  assert.ok(app.innerHTML.includes(" / ") && app.innerHTML.includes("Frontend Test Sayfası"),
     "breadcrumb'da üst sayfa görünmüyor");
 
   await click(app, window, "wikiEditStart", { wait: 300 });
