@@ -523,3 +523,21 @@ test("wiki toplantı notu formu: proje seçilmezse manuel katılımcı eklenir v
   await click(app, window, "wikiMeetingSave", { wait: 1200 });
   assert.ok(app.innerHTML.includes("yalnızca burada kaldı"), "proje seçilmeyince doğru bildirim gösterilmedi");
 });
+test("proje modülü toplantı formu: proje seçilince aktif ekip üyeleri otomatik katılımcı olarak eklenir", async () => {
+  const { window, doc, app } = await openDemoApp();
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:delivery");
+  await click(app, window, "scr:d.meeting", { wait: 300 });
+  await click(app, window, "mtAdd", { wait: 300 });
+  assert.ok(doc.getElementById("fMtProjSel"), "toplantı formu (Project seçici) açılmadı");
+
+  const projSel = doc.getElementById("fMtProjSel");
+  projSel.value = "TRADE";
+  projSel.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await sleep(300);
+  assert.ok(app.innerHTML.includes("Tolga Fırat"), "proje seçilince TRADE ekip üyesi (Tolga Fırat) otomatik eklenmedi");
+  assert.ok(app.innerHTML.includes("Mert Balkan"), "proje seçilince TRADE ekip üyesi (Mert Balkan) otomatik eklenmedi");
+});

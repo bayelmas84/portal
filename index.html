@@ -5940,7 +5940,15 @@ function afterRender(){
  const swimSel=document.getElementById("fSwimlaneBy");
  if(swimSel)swimSel.onchange=e=>{S.swimlaneBy=e.target.value;render();};
  const mtProjSel=document.getElementById("fMtProjSel");
- if(mtProjSel)mtProjSel.onchange=e=>{S.f.projKey=e.target.value||null;render();};
+ if(mtProjSel)mtProjSel.onchange=e=>{
+  S.f.projKey=e.target.value||null;
+  // Proje seçilince o projenin AKTİF ekip üyeleri otomatik katılımcı
+  // (Attendees) olarak eklenir — pasif kullanıcılar hiçbir zaman
+  // eklenmez/listelenmez. İstemeyen kişiler mtRemPart ile çıkarılabilir.
+  if(S.f.projKey&&S.f.projKey!=="OTHER"){
+   const teamNames=teamOf(S.f.projKey).filter(m=>{const u=USERS.find(x=>x.n===m.n);return u&&u.on;}).map(m=>m.n);
+   S.f.parts=[...new Set([...(S.f.parts||[]),...teamNames])];}
+  render();};
  const mtPartSel=document.getElementById("fMtPartSel");
  if(mtPartSel)mtPartSel.onchange=e=>{const n=e.target.value;if(!n)return;
   S.f.parts=[...(S.f.parts||[]),n];render();};
