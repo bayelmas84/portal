@@ -4036,12 +4036,9 @@ function screenView(){
        <input id="fWikiMtgNewItemDue" type="date" value="${esc(f.wikiMtgNewItemDue||"")}" style="width:140px">
        <button class="b s" data-a="wikiMtgAddItem">Ekle</button></div></div>`;
     const rightPanel=`<div class="card">
-      <p class="m" style="color:var(--tm)">Bu not <b style="color:var(--t1)">${esc((spaces2.find(s=>s.space_key===spKey)||{}).name||spKey)}</b> alanında bir sayfa olarak
-       kalıcı biçimde saklanır. Bir proje seçerseniz gündem maddeleri o projenin backlog'una Task olarak da düşer;
-       seçmezseniz yalnızca burada, wiki'de kalan tek seferlik bir toplantı notu olur.</p>
-      <div class="lbl" style="margin-top:13px">Proje (opsiyonel)</div>
+      <div class="lbl">Proje (opsiyonel)</div>
       <select id="fWikiMtgProject">
-       <option value="" ${!f.wikiMtgProject?"selected":""}>Proje seçmeyin (yalnızca wiki'de kalsın)</option>
+       <option value="" ${!f.wikiMtgProject?"selected":""}></option>
        ${projsAlpha().map(p=>`<option value="${p.k}" ${f.wikiMtgProject===p.k?"selected":""}>${p.k} — ${esc(p.n)}</option>`).join("")}</select>
       <div class="lbl" style="margin-top:13px">Toplantı tarihi ve saati <span style="color:var(--er-fg)">*</span></div>
       <div style="display:flex;gap:8px">
