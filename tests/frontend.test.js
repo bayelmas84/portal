@@ -541,3 +541,38 @@ test("proje modülü toplantı formu: proje seçilince aktif ekip üyeleri otoma
   assert.ok(app.innerHTML.includes("Tolga Fırat"), "proje seçilince TRADE ekip üyesi (Tolga Fırat) otomatik eklenmedi");
   assert.ok(app.innerHTML.includes("Mert Balkan"), "proje seçilince TRADE ekip üyesi (Mert Balkan) otomatik eklenmedi");
 });
+test("wiki oluşturma akışları (sayfa/space/toplantı) popup değil, ana içerikte inline açılır", async () => {
+  const { window, doc, app } = await openDemoApp();
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:wiki");
+  await click(app, window, "scr:w.pages", { wait: 300 });
+
+  // Yeni sayfa: popup/dialog overlay OLMAMALI, sidebar (.sub) hâlâ görünür kalmalı.
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+  assert.ok(!app.querySelector(".dlgwrap"), "yeni sayfa formu popup olarak açıldı");
+  assert.ok(app.innerHTML.includes("Yeni sayfa"), "yeni sayfa formu ana içerikte görünmüyor");
+  assert.ok(app.innerHTML.includes("ALANLAR (SPACES)"), "sidebar arka planda kapanmış (popup değilmiş gibi davranmıyor)");
+
+  await click(app, window, "wikiCreateCancel", { wait: 300 });
+  assert.ok(!app.innerHTML.includes("ŞABLON"), "Vazgeç sonrası oluşturma formu kapanmadı");
+
+  // Yeni alan (space): aynı şekilde inline.
+  await click(app, window, "wikiNewSpaceOpen", { wait: 300 });
+  assert.ok(!app.querySelector(".dlgwrap"), "yeni alan formu popup olarak açıldı");
+  assert.ok(app.innerHTML.includes("Yeni alan (space) oluştur"), "yeni alan formu ana içerikte görünmüyor");
+  await click(app, window, "wikiCreateCancel", { wait: 300 });
+
+  // Toplantı Notu: aynı şekilde inline.
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+  const meetingCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.trim() === "Toplantı Notu");
+  meetingCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  setVal(doc, "fWikiNewTitle", "Inline Toplantı Testi");
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+  assert.ok(!app.querySelector(".dlgwrap"), "toplantı formu popup olarak açıldı");
+  assert.ok(app.innerHTML.includes("Toplantı tarihi ve saati"), "toplantı formu ana içerikte görünmüyor");
+  assert.ok(app.innerHTML.includes("ALANLAR (SPACES)"), "sidebar toplantı formu açıkken kapanmış");
+});

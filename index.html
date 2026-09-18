@@ -3975,7 +3975,103 @@ function screenView(){
   // render ediliyor — burada yalnızca seçili sayfanın içeriği kalır.
   const totalPages=pages.length;
   let mainPanel;
-  if(S.wikiEditing&&currentPage){
+  // Kullanıcı isteği: "sayfa oluşturma, toplantı oluşturma vs popup
+  // açılmasın; direkt sayfada template açılsın, vazgeç/kaydet olsun."
+  // Confluence'ta olduğu gibi, S.wikiCreate doluysa (sidebar'daki "+"
+  // tetikledi) oluşturma formu ANA İÇERİK ALANININ KENDİSİNDE render
+  // edilir — ayrı bir popup/dialog DEĞİL.
+  if(S.wikiCreate){
+   const wc=S.wikiCreate,f=S.f;
+   const spKey=wc.spaceKey,spaces2=LIVE_BACKEND?(WIKI_SPACES_LIVE||[]):WIKI_SPACES_DEMO;
+   const tplCard=(id,name)=>`<div data-a="wikiTemplatePick:${id}" style="cursor:pointer;padding:9px 11px;border-radius:8px;border:1.5px solid ${String(f.wikiTemplateId||"")===String(id)?"var(--navy)":"var(--bd)"};${String(f.wikiTemplateId||"")===String(id)?"background:var(--ba)":""};margin-bottom:6px">
+     <span style="font-size:12.5px;font-weight:${String(f.wikiTemplateId||"")===String(id)?"600":"500"}">${esc(name)}</span></div>`;
+   if(wc.kind==="space"){
+    const templates=wikiTemplatesOf();
+    mainPanel=`<div class="card">
+      <div style="font-size:16px;font-weight:700">Yeni alan (space) oluştur</div>
+      <p class="m" style="color:var(--tm);margin-top:4px">Herhangi bir konu için (bir proje ile ilişkilendirmeden) yeni bir alan
+       açabilirsiniz — ör. bir departman, bir süreç, ya da genel bir bilgi konusu.</p>
+      <input id="fWikiNewSpaceName" placeholder="Alan adı… (ör. İK Süreçleri)" style="margin-top:10px" autofocus>
+      <div class="lbl" style="margin-top:12px">İLK SAYFA İÇİN ŞABLON</div>
+      <div style="max-height:280px;overflow:auto;margin-top:4px">
+       ${tplCard("","Boş (şablonsuz)")}
+       ${templates.map(t=>tplCard(t.id,t.name)).join("")}</div>
+      <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+       <button class="b" data-a="wikiCreateCancel">Vazgeç</button>
+       <button class="b p" data-a="wikiNewSpaceCreate">Oluştur</button></div></div>`;
+   }else if(wc.kind==="meeting"){
+    const parts=f.wikiMtgParts||[],items=f.wikiMtgItems||[];
+    const attempted=f.wikiMtgAttempted;
+    const errS=bad=>bad?"border-color:var(--er-fg)":"";
+    const freeUsers=USERS.filter(u=>u.on&&!parts.includes(u.n)); // pasif kullanıcılar hiç listelenmez
+    mainPanel=`<div class="card">
+      <div style="font-size:16px;font-weight:700">Toplantı Notu</div>
+      <p class="m" style="color:var(--tm);margin-top:4px">Bu not <b style="color:var(--t1)">${esc((spaces2.find(s=>s.space_key===spKey)||{}).name||spKey)}</b> alanında bir sayfa olarak
+       kalıcı biçimde saklanır. Bir proje seçerseniz gündem maddeleri o projenin backlog'una Task olarak da düşer;
+       seçmezseniz yalnızca burada, wiki'de kalan tek seferlik bir toplantı notu olur.</p>
+      <input id="fWikiMtgTitle" value="${esc(f.wikiMtgTitle||"")}" placeholder="Toplantı başlığı" style="margin-top:10px;font-weight:600">
+
+      <div class="lbl" style="margin-top:13px">Proje (opsiyonel)</div>
+      <select id="fWikiMtgProject">
+       <option value="" ${!f.wikiMtgProject?"selected":""}>Proje seçmeyin (yalnızca wiki'de kalsın)</option>
+       ${projsAlpha().map(p=>`<option value="${p.k}" ${f.wikiMtgProject===p.k?"selected":""}>${p.k} — ${esc(p.n)}</option>`).join("")}</select>
+
+      <div class="lbl" style="margin-top:13px">Toplantı tarihi ve saati <span style="color:var(--er-fg)">*</span></div>
+      <div style="display:flex;gap:8px">
+       <input id="fWikiMtgDate" type="date" value="${esc(f.wikiMtgDate||"")}" style="width:170px;flex:none;${errS(attempted&&!f.wikiMtgDate)}">
+       <select id="fWikiMtgTime" style="width:120px">
+        <option value="" ${!f.wikiMtgTime?"selected":""}>Saat belirtme</option>
+        ${TIME_SLOTS_15MIN.map(t=>`<option value="${t}" ${f.wikiMtgTime===t?"selected":""}>${t}</option>`).join("")}</select></div>
+
+      <div class="lbl" style="margin-top:13px">Katılımcılar <span style="color:var(--er-fg)">*</span></div>
+      <p class="m" style="color:var(--tm);margin:2px 0 6px">${f.wikiMtgProject?"Proje seçildiği için ekip üyeleri otomatik eklendi — istemediklerinizi çıkarabilirsiniz.":"Proje seçmediğiniz için katılımcıları manuel eklemelisiniz."}</p>
+      ${parts.length?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
+       ${parts.map(n=>`<span class="pl ok" style="cursor:pointer" data-a="wikiMtgRemPart:${encodeURIComponent(n)}">${esc(n)} ✕</span>`).join("")}</div>`:""}
+      <select id="fWikiMtgPartSel" style="${errS(attempted&&!parts.length)}">
+       <option value="" selected>Katılımcı ekle…</option>
+       ${namesAlpha(freeUsers,u=>u.n).map(u=>`<option value="${esc(u.n)}">${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
+
+      <div class="lbl" style="margin-top:14px">Gündem maddeleri</div>
+      ${items.length?items.map((it,i)=>`<div class="card" style="padding:8px 9px;margin-bottom:6px">
+        <div style="display:flex;gap:8px;align-items:center">
+         <span style="flex:1;font-size:12.5px">${esc(it.text)}</span>
+         <span style="cursor:pointer;color:var(--tm)" data-a="wikiMtgRemItem:${i}">✕</span></div>
+        <div class="m" style="color:var(--tm);margin-top:3px">Sorumlu: ${esc(it.assignee)}${it.due?" · Bitiş: "+esc(it.due):""}</div></div>`).join("")
+       :`<p class="m" style="color:var(--tm)">Henüz gündem maddesi yok.</p>`}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+       <input id="fWikiMtgNewItem" value="${esc(f.wikiMtgNewItem||"")}" placeholder="Yeni gündem maddesi…" style="flex:2;min-width:140px">
+       <select id="fWikiMtgNewItemAssignee" style="flex:1;min-width:130px">
+        <option value="" ${!f.wikiMtgNewItemAssignee?"selected":""}>Sorumlu…</option>
+        ${namesAlpha(USERS.filter(u=>u.on),u=>u.n).map(u=>`<option value="${esc(u.n)}" ${f.wikiMtgNewItemAssignee===u.n?"selected":""}>${esc(u.n)}</option>`).join("")}</select>
+       <input id="fWikiMtgNewItemDue" type="date" value="${esc(f.wikiMtgNewItemDue||"")}" style="width:140px">
+       <button class="b s" data-a="wikiMtgAddItem">Ekle</button></div>
+
+      <div class="lbl" style="margin-top:13px">Notlar</div>
+      <textarea id="fWikiMtgNotes" placeholder="Serbest metin notlar…" style="min-height:80px">${esc(f.wikiMtgNotes||"")}</textarea>
+
+      <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px">
+       <button class="b" data-a="wikiCreateCancel">Vazgeç</button>
+       <button class="b p" data-a="wikiMeetingSave">Oluştur ve bildir</button></div></div>`;
+   }else{
+    // kind==="page"
+    const spaceName=(spaces2.find(s=>s.space_key===spKey)||{}).name||spKey;
+    const pagesInSpace=LIVE_BACKEND?(WIKI_PAGES_LIVE[spKey]||[]):(WIKI_PAGES_DEMO[spKey]||[]);
+    const parentPage=wc.parentId?pagesInSpace.find(pg=>pg.id===wc.parentId):null;
+    const templates=wikiTemplatesOf();
+    mainPanel=`<div class="card">
+      <div style="font-size:16px;font-weight:700">Yeni sayfa</div>
+      <p class="m" style="color:var(--tm);margin-top:4px">
+       <b style="color:var(--t1)">${esc(spaceName)}</b> alanına${parentPage?` — <b style="color:var(--t1)">${esc(parentPage.title)}</b> sayfasının ALTINA (alt sayfa olarak)`:" üst düzey (space kökünde) bir sayfa olarak"} eklenecek.</p>
+      <input id="fWikiNewTitle" placeholder="Sayfa başlığı…" style="margin-top:10px" autofocus>
+      <div class="lbl" style="margin-top:12px">ŞABLON</div>
+      <div style="max-height:280px;overflow:auto;margin-top:4px">
+       ${tplCard("","Boş (şablonsuz)")}
+       ${templates.map(t=>tplCard(t.id,t.name)).join("")}</div>
+      <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+       <button class="b" data-a="wikiCreateCancel">Vazgeç</button>
+       <button class="b p" data-a="wikiNewPageCreate">Oluştur</button></div></div>`;
+   }
+  }else if(S.wikiEditing&&currentPage){
    mainPanel=`<div class="card">
      <input id="fWikiTitle" value="${esc(currentPage.title)}" placeholder="Sayfa başlığı" style="font-size:14px;font-weight:600;margin-bottom:8px">
      <textarea id="fWikiContent" style="min-height:320px;font-family:monospace;font-size:12.5px">${esc(currentPage.content||"")}</textarea>
@@ -5374,95 +5470,6 @@ function dialogView(){
    <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
     <button class="b" data-a="dlgClose">Vazgeç</button>
     <button class="b p" data-a="wikiRestrictSave:${d.id}">Kaydet</button></div>`);}
- if(d.type==="wikiNewSpace"){
-  const templates=wikiTemplatesOf();
-  const selectedTpl=S.f.wikiTemplateId;
-  const tplCard=(id,name)=>`<div data-a="wikiTemplatePick:${id}" style="cursor:pointer;padding:9px 11px;border-radius:8px;border:1.5px solid ${String(selectedTpl||"")===String(id)?"var(--navy)":"var(--bd)"};${String(selectedTpl||"")===String(id)?"background:var(--ba)":""};margin-bottom:6px">
-    <span style="font-size:12.5px;font-weight:${String(selectedTpl||"")===String(id)?"600":"500"}">${esc(name)}</span></div>`;
-  return wrap(`<div style="font-size:15px">Yeni alan (space) oluştur</div>
-   <p class="m" style="color:var(--tm);margin-top:4px">Herhangi bir konu için (bir proje ile ilişkilendirmeden) yeni bir alan
-    açabilirsiniz — ör. bir departman, bir süreç, ya da genel bir bilgi konusu.</p>
-   <input id="fWikiNewSpaceName" placeholder="Alan adı… (ör. İK Süreçleri)" style="margin-top:10px" autofocus>
-   <div class="lbl" style="margin-top:12px">İLK SAYFA İÇİN ŞABLON</div>
-   <div style="max-height:220px;overflow:auto;margin-top:4px">
-    ${tplCard("","Boş (şablonsuz)")}
-    ${templates.map(t=>tplCard(t.id,t.name)).join("")}</div>
-   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
-    <button class="b" data-a="dlgClose">Vazgeç</button>
-    <button class="b p" data-a="wikiNewSpaceCreate">Oluştur</button></div>`);}
- if(d.type==="wikiMeetingForm"){
-  const f=S.f,parts=f.wikiMtgParts||[],items=f.wikiMtgItems||[];
-  const attempted=f.wikiMtgAttempted;
-  const errS=bad=>bad?"border-color:var(--er-fg)":"";
-  const freeUsers=USERS.filter(u=>u.on&&!parts.includes(u.n)); // pasif kullanıcılar hiç listelenmez
-  return wrap(`<div style="font-size:15px">Toplantı Notu</div>
-   <p class="m" style="color:var(--tm);margin-top:4px">Bu not <b style="color:var(--t1)">${esc(d.spaceKey)}</b> alanında bir sayfa olarak
-    kalıcı biçimde saklanır. Bir proje seçerseniz gündem maddeleri o projenin backlog'una Task olarak da düşer;
-    seçmezseniz yalnızca burada, wiki'de kalan tek seferlik bir toplantı notu olur.</p>
-   <input id="fWikiMtgTitle" value="${esc(f.wikiMtgTitle||"")}" placeholder="Toplantı başlığı" style="margin-top:10px;font-weight:600">
-
-   <div class="lbl" style="margin-top:13px">Proje (opsiyonel)</div>
-   <select id="fWikiMtgProject">
-    <option value="" ${!f.wikiMtgProject?"selected":""}>Proje seçmeyin (yalnızca wiki'de kalsın)</option>
-    ${projsAlpha().map(p=>`<option value="${p.k}" ${f.wikiMtgProject===p.k?"selected":""}>${p.k} — ${esc(p.n)}</option>`).join("")}</select>
-
-   <div class="lbl" style="margin-top:13px">Toplantı tarihi ve saati <span style="color:var(--er-fg)">*</span></div>
-   <div style="display:flex;gap:8px">
-    <input id="fWikiMtgDate" type="date" value="${esc(f.wikiMtgDate||"")}" style="width:170px;flex:none;${errS(attempted&&!f.wikiMtgDate)}">
-    <select id="fWikiMtgTime" style="width:120px">
-     <option value="" ${!f.wikiMtgTime?"selected":""}>Saat belirtme</option>
-     ${TIME_SLOTS_15MIN.map(t=>`<option value="${t}" ${f.wikiMtgTime===t?"selected":""}>${t}</option>`).join("")}</select></div>
-
-   <div class="lbl" style="margin-top:13px">Katılımcılar <span style="color:var(--er-fg)">*</span></div>
-   <p class="m" style="color:var(--tm);margin:2px 0 6px">${f.wikiMtgProject?"Proje seçildiği için ekip üyeleri otomatik eklendi — istemediklerinizi çıkarabilirsiniz.":"Proje seçmediğiniz için katılımcıları manuel eklemelisiniz."}</p>
-   ${parts.length?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
-    ${parts.map(n=>`<span class="pl ok" style="cursor:pointer" data-a="wikiMtgRemPart:${encodeURIComponent(n)}">${esc(n)} ✕</span>`).join("")}</div>`:""}
-   <select id="fWikiMtgPartSel" style="${errS(attempted&&!parts.length)}">
-    <option value="" selected>Katılımcı ekle…</option>
-    ${namesAlpha(freeUsers,u=>u.n).map(u=>`<option value="${esc(u.n)}">${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
-
-   <div class="lbl" style="margin-top:14px">Gündem maddeleri</div>
-   ${items.length?items.map((it,i)=>`<div class="card" style="padding:8px 9px;margin-bottom:6px">
-     <div style="display:flex;gap:8px;align-items:center">
-      <span style="flex:1;font-size:12.5px">${esc(it.text)}</span>
-      <span style="cursor:pointer;color:var(--tm)" data-a="wikiMtgRemItem:${i}">✕</span></div>
-     <div class="m" style="color:var(--tm);margin-top:3px">Sorumlu: ${esc(it.assignee)}${it.due?" · Bitiş: "+esc(it.due):""}</div></div>`).join("")
-    :`<p class="m" style="color:var(--tm)">Henüz gündem maddesi yok.</p>`}
-   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-    <input id="fWikiMtgNewItem" value="${esc(f.wikiMtgNewItem||"")}" placeholder="Yeni gündem maddesi…" style="flex:2;min-width:140px">
-    <select id="fWikiMtgNewItemAssignee" style="flex:1;min-width:130px">
-     <option value="" ${!f.wikiMtgNewItemAssignee?"selected":""}>Sorumlu…</option>
-     ${namesAlpha(USERS.filter(u=>u.on),u=>u.n).map(u=>`<option value="${esc(u.n)}" ${f.wikiMtgNewItemAssignee===u.n?"selected":""}>${esc(u.n)}</option>`).join("")}</select>
-    <input id="fWikiMtgNewItemDue" type="date" value="${esc(f.wikiMtgNewItemDue||"")}" style="width:140px">
-    <button class="b s" data-a="wikiMtgAddItem">Ekle</button></div>
-
-   <div class="lbl" style="margin-top:13px">Notlar</div>
-   <textarea id="fWikiMtgNotes" placeholder="Serbest metin notlar…" style="min-height:80px">${esc(f.wikiMtgNotes||"")}</textarea>
-
-   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px">
-    <button class="b" data-a="dlgClose">Vazgeç</button>
-    <button class="b p" data-a="wikiMeetingSave">Oluştur ve bildir</button></div>`);}
- if(d.type==="wikiNewPage"){
-  const spaceKey=S.wikiSpace||"GENEL";
-  const spaces=LIVE_BACKEND?(WIKI_SPACES_LIVE||[]):WIKI_SPACES_DEMO;
-  const spaceName=(spaces.find(s=>s.space_key===spaceKey)||{}).name||spaceKey;
-  const pages=LIVE_BACKEND?(WIKI_PAGES_LIVE[spaceKey]||[]):(WIKI_PAGES_DEMO[spaceKey]||[]);
-  const parentPage=d.parentId?pages.find(pg=>pg.id===d.parentId):null;
-  const templates=wikiTemplatesOf();
-  const selectedTpl=S.f.wikiTemplateId;
-  const tplCard=(id,name)=>`<div data-a="wikiTemplatePick:${id}" style="cursor:pointer;padding:9px 11px;border-radius:8px;border:1.5px solid ${String(selectedTpl||"")===String(id)?"var(--navy)":"var(--bd)"};${String(selectedTpl||"")===String(id)?"background:var(--ba)":""};margin-bottom:6px">
-    <span style="font-size:12.5px;font-weight:${String(selectedTpl||"")===String(id)?"600":"500"}">${esc(name)}</span></div>`;
-  return wrap(`<div style="font-size:15px">Yeni sayfa</div>
-   <p class="m" style="color:var(--tm);margin-top:4px">
-    <b style="color:var(--t1)">${esc(spaceName)}</b> alanına${parentPage?` — <b style="color:var(--t1)">${esc(parentPage.title)}</b> sayfasının ALTINA (alt sayfa olarak)`:" üst düzey (space kökünde) bir sayfa olarak"} eklenecek.</p>
-   <input id="fWikiNewTitle" placeholder="Sayfa başlığı…" style="margin-top:10px" autofocus>
-   <div class="lbl" style="margin-top:12px">ŞABLON</div>
-   <div style="max-height:220px;overflow:auto;margin-top:4px">
-    ${tplCard("","Boş (şablonsuz)")}
-    ${templates.map(t=>tplCard(t.id,t.name)).join("")}</div>
-   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
-    <button class="b" data-a="dlgClose">Vazgeç</button>
-    <button class="b p" data-a="wikiNewPageCreate">Oluştur</button></div>`);}
  if(d.type==="wikiDeleteConfirm"){
   return wrap(`<div style="font-size:15px">Sayfayı sil</div>
    <p class="m" style="color:var(--tm);margin-top:8px">Bu sayfa ve tüm versiyon geçmişi silinecektir. Emin misiniz?</p>
@@ -7046,7 +7053,7 @@ app.addEventListener("click",async ev=>{
   ISSUE_CUSTOM_VALUES_DEMO[k2]=ISSUE_CUSTOM_VALUES_DEMO[k2]||{};
   ISSUE_CUSTOM_VALUES_DEMO[k2][fieldId]=value||null;
   toast("Kaydedildi.");render();return;}
- if(k==="wikiSwitchSpace"){S.wikiSpace=p[1];S.wikiPageId=null;S.wikiEditing=false;render();return;}
+ if(k==="wikiSwitchSpace"){S.wikiSpace=p[1];S.wikiPageId=null;S.wikiEditing=false;S.wikiCreate=null;render();return;}
  if(k==="wikiTemplatePick"){S.f.wikiTemplateId=p[1]||"";render();return;}
  if(k==="wikiMtgRemPart"){const n=dec(p[1]);S.f.wikiMtgParts=(S.f.wikiMtgParts||[]).filter(x=>x!==n);render();return;}
  if(k==="wikiMtgAddItem"){const t=(document.getElementById("fWikiMtgNewItem")||{}).value||"";
@@ -7059,7 +7066,7 @@ app.addEventListener("click",async ev=>{
   S.f.wikiMtgNewItem="";S.f.wikiMtgNewItemAssignee="";S.f.wikiMtgNewItemDue="";render();return;}
  if(k==="wikiMtgRemItem"){S.f.wikiMtgItems=(S.f.wikiMtgItems||[]).filter((_,i)=>i!==+p[1]);render();return;}
  if(k==="wikiMeetingSave"){
-  const f=S.f,d=S.dlg;
+  const f=S.f,wc=S.wikiCreate||{};
   const title=(document.getElementById("fWikiMtgTitle")||{}).value||"";
   const date=(document.getElementById("fWikiMtgDate")||{}).value||"";
   const time=(document.getElementById("fWikiMtgTime")||{}).value||"";
@@ -7072,7 +7079,7 @@ app.addEventListener("click",async ev=>{
   // bilgileri zaten görünür olsun diye.
   const projName=f.wikiMtgProject?((PROJ.find(p=>p.k===f.wikiMtgProject)||{}).n||f.wikiMtgProject):null;
   const pageContent=`# ${title.trim()||"Toplantı Notu"}\n\n**Tarih:** ${date}${time?" "+time:""}\n**Proje:** ${projName?esc(projName)+" ("+f.wikiMtgProject+")":"— (yalnızca wiki'de kalan tek seferlik toplantı)"}\n**Katılımcılar:** ${parts.map(esc).join(", ")}\n\n## Gündem ve Aksiyon Maddeleri\n${items.length?items.map(it=>`- ${esc(it.text)} — Sorumlu: ${esc(it.assignee)}${it.due?" (Bitiş: "+it.due+")":""}`).join("\n"):"- (gündem maddesi eklenmedi)"}\n\n## Notlar\n${notes.trim()||"—"}`;
-  const spaceKey=d.spaceKey,parentId=d.parentId;
+  const spaceKey=wc.spaceKey,parentId=wc.parentId;
   if(LIVE_BACKEND){
    try{
     const pageRes=await api("POST","/api/wiki/spaces/"+encodeURIComponent(spaceKey)+"/pages",{title:title.trim()||"Toplantı Notu",content:pageContent,parentId});
@@ -7084,7 +7091,7 @@ app.addEventListener("click",async ev=>{
      date,time:time||undefined,notes:notes.trim()||undefined,
      participants:usernamesOf(parts),
      items:items.map(it=>({text:it.text,assigneeUsername:usernamesOf([it.assignee])[0],dueDate:it.due||null}))});
-    S.dlg=null;S.f={};S.wikiSpace=spaceKey;S.wikiPageId=wikiPageId;
+    S.wikiCreate=null;S.f={};S.wikiSpace=spaceKey;S.wikiPageId=wikiPageId;
     toast(f.wikiMtgProject
      ?"Toplantı notu oluşturuldu, gündem maddeleri "+projName+" projesinin backlog'una Task olarak düşürüldü."
      :"Toplantı notu oluşturuldu; proje seçilmediği için yalnızca bu wiki sayfasında kaldı, backlog'a task açılmadı.");
@@ -7097,10 +7104,11 @@ app.addEventListener("click",async ev=>{
   const page={id,space_id:0,parent_id:parentId,title:title.trim()||"Toplantı Notu",content:pageContent,created_by:S.me.u,updated_by:S.me.u,updated_at:now()};
   WIKI_PAGES_DEMO[spaceKey]=[...(WIKI_PAGES_DEMO[spaceKey]||[]),page];
   WIKI_PAGE_DEMO[id]=page;
-  S.dlg=null;S.f={};S.wikiSpace=spaceKey;S.wikiPageId=id;
+  S.wikiCreate=null;S.f={};S.wikiSpace=spaceKey;S.wikiPageId=id;
   toast(f.wikiMtgProject?"Toplantı notu oluşturuldu (demo mod), gündem maddeleri "+projName+" projesine düşürülmüş kabul edilir.":"Toplantı notu oluşturuldu (demo mod); proje seçilmediği için yalnızca burada kaldı.");
   render();return;}
- if(k==="wikiNewSpaceOpen"){S.f={wikiTemplateId:""};S.dlg={type:"wikiNewSpace"};render();return;}
+ if(k==="wikiCreateCancel"){S.wikiCreate=null;S.f={};render();return;}
+ if(k==="wikiNewSpaceOpen"){S.f={wikiTemplateId:""};S.wikiCreate={kind:"space"};S.wikiPageId=null;render();return;}
  if(k==="wikiNewSpaceCreate"){
   const name=(document.getElementById("fWikiNewSpaceName")||{}).value||"";
   const templateId=S.f.wikiTemplateId||"";
@@ -7114,7 +7122,7 @@ app.addEventListener("click",async ev=>{
     const pageRes=await api("POST","/api/wiki/spaces/"+encodeURIComponent(res.item.space_key)+"/pages",{title:"Ana Sayfa",content:initialContent});
     WIKI_PAGES_LIVE[res.item.space_key]=[pageRes.item];
     WIKI_PAGE_LIVE[pageRes.item.id]=pageRes.item;
-    S.wikiSpace=res.item.space_key;S.wikiPageId=pageRes.item.id;S.dlg=null;
+    S.wikiSpace=res.item.space_key;S.wikiPageId=pageRes.item.id;S.wikiCreate=null;
     toast(res.item.name+" alanı oluşturuldu ve seçildi.");render();}
    catch(e){toast(e.message,1);}
    return;}
@@ -7127,7 +7135,7 @@ app.addEventListener("click",async ev=>{
   const homePage={id:pageId,space_id:0,parent_id:null,title:"Ana Sayfa",content:initialContent,created_by:S.me.u,updated_by:S.me.u,updated_at:now()};
   WIKI_PAGES_DEMO[spaceKey]=[homePage];
   WIKI_PAGE_DEMO[pageId]=homePage;
-  S.wikiSpace=spaceKey;S.wikiPageId=pageId;S.dlg=null;
+  S.wikiSpace=spaceKey;S.wikiPageId=pageId;S.wikiCreate=null;
   toast(name.trim()+" alanı oluşturuldu ve seçildi.");render();return;}
  if(k==="wikiCommentAdd"){const pageId=+p[1];
   const inputId="fWikiCommentBody"+pageId;
@@ -7178,12 +7186,13 @@ app.addEventListener("click",async ev=>{
    WIKI_SPACES_DEMO.push({id:nextWikiSpaceId++,space_key:projectK,name:(pr?pr.n:projectK)+" Wiki",project_k:projectK});
    WIKI_PAGES_DEMO[projectK]=[];}
   S.wikiSpace=projectK;S.wikiPageId=null;toast(projectK+" alanı oluşturuldu ve seçildi.");render();return;}
- if(k==="wikiOpenPage"){S.wikiPageId=p[1]?+p[1]:null;S.wikiEditing=false;render();return;}
+ if(k==="wikiOpenPage"){S.wikiPageId=p[1]?+p[1]:null;S.wikiEditing=false;S.wikiCreate=null;render();return;}
  if(k==="wikiNewPage"){
-  S.f={wikiTemplateId:""};S.dlg={type:"wikiNewPage",parentId:p[1]?+p[1]:null};render();return;}
+  S.f={wikiTemplateId:""};S.wikiCreate={kind:"page",parentId:p[1]?+p[1]:null,spaceKey:S.wikiSpace||"GENEL"};render();return;}
  if(k==="wikiNewPageCreate"){
-  const spaceKey=S.wikiSpace||"GENEL";
-  const parentId=(S.dlg&&S.dlg.parentId)||null;
+  const wc=S.wikiCreate||{};
+  const spaceKey=wc.spaceKey||S.wikiSpace||"GENEL";
+  const parentId=wc.parentId||null;
   const title=(document.getElementById("fWikiNewTitle")||{}).value||"";
   const templateId=S.f.wikiTemplateId||"";
   const template=templateId?wikiTemplatesOf().find(t=>String(t.id)===String(templateId)):null;
@@ -7195,20 +7204,20 @@ app.addEventListener("click",async ev=>{
   // OPSİYONELDİR (mevcut Proje modülü akışından tek farkı budur).
   if(template&&template.name==="Toplantı Notu"){
    S.f={wikiMtgTitle:title.trim(),wikiMtgParts:[],wikiMtgItems:[]};
-   S.dlg={type:"wikiMeetingForm",parentId,spaceKey};render();return;}
+   S.wikiCreate={kind:"meeting",parentId,spaceKey};render();return;}
   const initialContent=template?template.content:"";
   if(LIVE_BACKEND){
    try{const res=await api("POST","/api/wiki/spaces/"+encodeURIComponent(spaceKey)+"/pages",{title,content:initialContent,parentId});
     WIKI_PAGES_LIVE[spaceKey]=[...(WIKI_PAGES_LIVE[spaceKey]||[]),res.item];
     WIKI_PAGE_LIVE[res.item.id]=res.item;
-    S.wikiPageId=res.item.id;S.wikiEditing=true;S.dlg=null;toast("Sayfa oluşturuldu.");render();}
+    S.wikiPageId=res.item.id;S.wikiEditing=true;S.wikiCreate=null;toast("Sayfa oluşturuldu.");render();}
    catch(e){toast(e.message,1);}
    return;}
   const id=nextWikiPageId++;
   const page={id,space_id:0,parent_id:parentId,title:title.trim(),content:initialContent,created_by:S.me.u,updated_by:S.me.u,updated_at:now()};
   WIKI_PAGES_DEMO[spaceKey]=[...(WIKI_PAGES_DEMO[spaceKey]||[]),page];
   WIKI_PAGE_DEMO[id]=page;
-  S.wikiPageId=id;S.wikiEditing=true;S.dlg=null;toast("Sayfa oluşturuldu.");render();return;}
+  S.wikiPageId=id;S.wikiEditing=true;S.wikiCreate=null;toast("Sayfa oluşturuldu.");render();return;}
  if(k==="wikiEditStart"){S.wikiEditing=true;render();return;}
  if(k==="wikiEditCancel"){S.wikiEditing=false;render();return;}
  if(k==="wikiSavePage"){const id=+p[1];
