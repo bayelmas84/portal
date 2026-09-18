@@ -1736,24 +1736,24 @@ async function ensureProjectWikiSpaceLive(projectK){
    backend'e hiç gitmez). */
 let WIKI_TEMPLATES_LIVE=null;
 const WIKI_TEMPLATES_DEMO=[
- {id:-18,name:"Proje Analizi",content:"# Proje Analizi\n\n**Proje:** \n**Analiz Tarihi:** \n**Analiz Eden:** \n\n## Mevcut Durum Özeti\n\n\n## Kapsam ve Hedeflere Uygunluk\n\n\n## Zaman Çizelgesi Değerlendirmesi\n\n\n## Bütçe Değerlendirmesi\n\n\n## Riskler ve Sorunlar\n| Risk/Sorun | Etki | Öneri |\n|---|---|---|\n| | | |\n\n## Genel Değerlendirme ve Tavsiyeler\n"},
- {id:-6,name:"Retrospective (4L)",content:"# Retrospective\n\n**Sprint/Dönem:** \n**Tarih:** \n\n## Beğendiklerim (Loved)\n- \n\n## Öğrendiklerim (Learned)\n- \n\n## Eksik Kalanlar (Lacked)\n- \n\n## Özlediklerim (Longed for)\n- \n\n## Aksiyon Maddeleri\n- [ ] "},
- {id:-4,name:"Proje Planı",content:"# Proje Planı: \n\n**Proje Yöneticisi:** \n**Başlangıç / Bitiş:** \n\n## Amaç ve Kapsam\n\n\n## Kilometre Taşları\n- [ ] \n\n## Riskler\n| Risk | Olasılık | Etki | Önlem |\n|---|---|---|---|\n| | | | |\n\n## Paydaşlar\n- "},
- {id:-9,name:"Proje Poster",content:"# Proje Poster\n\n**Proje Adı:** \n**Proje Yöneticisi:** \n\n## Neden Bu Proje?\n\n\n## Hedefler\n- \n\n## Kilometre Taşları\n| Tarih | Kilometre Taşı |\n|---|---|\n| | |\n\n## Ekip\n- \n\n## Riskler ve Varsayımlar\n- "},
- {id:-8,name:"Proje Açılış (Kickoff) Toplantısı",content:"# Proje Açılış Toplantısı\n\n**Proje:** \n**Tarih:** \n**Sponsor:** \n\n## Proje Amacı\n\n\n## Kapsam (Var / Yok)\n**Kapsamda:**\n- \n**Kapsam Dışı:**\n- \n\n## Ekip ve Roller\n| Rol | Kişi |\n|---|---|\n| | |\n\n## Zaman Çizelgesi\n\n\n## Başarı Kriterleri\n- "},
- {id:-10,name:"Proje Durum Raporu",content:"# Proje Durum Raporu\n\n**Proje:** \n**Tarih:** \n**Genel Durum:** 🟢 Yolunda / 🟡 Riskli / 🔴 Sorunlu\n\n## Bu Dönem Tamamlananlar\n- \n\n## Sıradaki Adımlar\n- \n\n## Riskler / Engeller\n- \n\n## Bütçe / Zaman Durumu\n"},
- {id:-17,name:"SWOT Analizi",content:"# SWOT Analizi\n\n**Konu:** \n\n## Güçlü Yönler (Strengths)\n- \n\n## Zayıf Yönler (Weaknesses)\n- \n\n## Fırsatlar (Opportunities)\n- \n\n## Tehditler (Threats)\n- \n\n## Sonuç ve Öneriler\n"},
- {id:-12,name:"Risk Kaydı (Risk Register)",content:"# Risk Kaydı\n\n**Proje:** \n**Güncelleme Tarihi:** \n\n| # | Risk | Olasılık | Etki | Önlem | Sahibi | Durum |\n|---|---|---|---|---|---|---|\n| 1 | | | | | | Açık |\n"},
- {id:-11,name:"Karar Kaydı (DACI)",content:"# Karar Kaydı\n\n**Konu:** \n**Tarih:** \n\n## DACI\n**Driver (Sürükleyici):** \n**Approver (Onaylayan):** \n**Contributors (Katkı Sağlayanlar):** \n**Informed (Bilgilendirilenler):** \n\n## Bağlam\n\n\n## Değerlendirilen Seçenekler\n- \n\n## Alınan Karar\n\n\n## Gerekçe\n"},
- {id:-13,name:"Ürün Gereksinimleri (PRD)",content:"# Ürün Gereksinimleri Dokümanı\n\n**Özellik/Ürün:** \n**Sahip:** \n**Durum:** Taslak\n\n## Problem Tanımı\n\n\n## Hedef Kullanıcı\n\n\n## Gereksinimler\n- [ ] \n\n## Kabul Kriterleri\n- \n\n## Kapsam Dışı\n- "},
- {id:-14,name:"Olay Sonrası İnceleme (Postmortem)",content:"# Olay Sonrası İnceleme (Postmortem)\n\n**Olay Tarihi:** \n**Etki Süresi:** \n**Ciddiyet:** \n\n## Özet\n\n\n## Zaman Çizelgesi\n| Saat | Olay |\n|---|---|\n| | |\n\n## Kök Neden\n\n\n## Etkilenen Sistemler/Kullanıcılar\n\n\n## Alınan Aksiyonlar\n- [ ] \n\n## Öğrenilen Dersler (suçlamasız)\n- "},
- {id:-15,name:"5 Neden Analizi (5 Whys)",content:"# 5 Neden Analizi\n\n**Problem:** \n\n1. Neden? \n2. Neden? \n3. Neden? \n4. Neden? \n5. Neden? \n\n## Kök Neden\n\n\n## Önerilen Aksiyon\n"},
- {id:-16,name:"Beyin Fırtınası (Brainstorming)",content:"# Beyin Fırtınası\n\n**Konu/Problem:** \n**Katılımcılar:** \n\n## Fikirler\n- \n\n## Gruplama / Temalar\n\n\n## Oylama Sonucu (öncelikli fikirler)\n1. \n2. \n3. \n\n## Sonraki Adımlar\n- [ ] "},
- {id:-7,name:"1:1 Toplantısı",content:"# 1:1 Toplantısı\n\n**Katılımcılar:** \n**Tarih:** \n\n## Gündem\n- \n\n## Geri Bildirim\n\n\n## Kariyer/Gelişim Notları\n\n\n## Aksiyon Maddeleri\n- [ ] "},
- {id:-1,name:"Toplantı Notu",content:"# Toplantı Notu\n\n**Tarih:** \n**Katılımcılar:** \n\n## Gündem\n- \n\n## Kararlar\n- \n\n## Aksiyon Maddeleri\n- [ ] "},
- {id:-2,name:"Nasıl Yapılır (How-to)",content:"# Nasıl Yapılır: \n\n## Ön koşullar\n- \n\n## Adımlar\n1. \n2. \n3. \n\n## Sorun Giderme\n- "},
- {id:-3,name:"Karar Kaydı",content:"# Karar Kaydı\n\n**Tarih:** \n**Karar Sahibi:** \n\n## Bağlam\n\n\n## Karar\n\n\n## Gerekçe\n"},
- {id:-5,name:"Doküman Kontrol Sayfası",content:"# Doküman Kontrol Sayfası\n\n**Doküman No:** \n**Versiyon:** \n**Sahip:** \n**Onay Tarihi:** \n**Gözden Geçirme Sıklığı:** \n\n## Amaç\n\n\n## Kapsam\n\n\n## Değişiklik Geçmişi\n| Versiyon | Tarih | Değişiklik | Yapan |\n|---|---|---|---|\n| | | | |"}];
+ {id:-18,name:"Proje Analizi",content:"# Proje Analizi: \n\n**Proje:** \n**Analiz Tarihi:** \n**Analiz Eden:** \n\n> Bu sayfa, devam eden bir projenin durumunu tarafsız bir gözle değerlendirmek için kullanılır. Amaç suçlamak değil, erken uyarı sinyallerini yakalamaktır.\n\n## Mevcut Durum Özeti\n_Proje şu anda nerede? Plana göre önde mi, geride mi?_\n\n\n## Kapsam ve Hedeflere Uygunluk\n_Başlangıçta belirlenen hedeflerden saptık mı? Kapsam kaydı (scope creep) var mı?_\n\n\n## Zaman Çizelgesi Değerlendirmesi\n| Kilometre Taşı | Planlanan | Gerçekleşen/Tahmini | Sapma |\n|---|---|---|---|\n| | | | |\n\n## Bütçe Değerlendirmesi\n_Harcanan / Kalan / Tahmini toplam._\n\n\n## Riskler ve Sorunlar\n| Risk/Sorun | Olasılık | Etki | Önerilen Aksiyon | Sahibi |\n|---|---|---|---|---|\n| | | | | |\n\n## Genel Değerlendirme ve Tavsiyeler\n_Projeye devam mı, yön değişikliği mi, yoksa durdurma mı önerilir? Gerekçesiyle birlikte yazın._\n"},
+ {id:-6,name:"Retrospective (4L)",content:"# Retrospective: \n\n**Sprint/Dönem:** \n**Tarih:** \n**Katılımcılar:** \n\n## Amaç\n_Bu retrospektifin amacını bir cümleyle özetleyin — ör. \"Son sprint'teki teslimat gecikmelerinin kök nedenini bulmak.\"_\n\n## Arka Plan\n_Bu dönemde neler teslim edildi/yaşandı? 2-3 cümlelik kısa bir özet, herkesin hafızasını tazelemesi için._\n\n## Beğendiklerim (Loved)\n_Bu dönem keyif aldığımız, tekrar etmek istediğimiz şeyler._\n- \n\n## Öğrendiklerim (Learned)\n_Yeni fark ettiğimiz, öğrendiğimiz şeyler._\n- \n\n## Eksik Kalanlar (Lacked)\n_İhtiyaç duyduğumuz ama sahip olmadığımız şeyler (araç, bilgi, zaman, destek)._\n- \n\n## Özlediklerim (Longed for)\n_Keşke olsaydı dediğimiz şeyler._\n- \n\n## Aksiyon Maddeleri\n| Aksiyon | Sorumlu | Hedef Tarih | Durum |\n|---|---|---|---|\n| | | | Açık |\n\n## Kapanış Notları\n_Bir sonraki dönemde neyi farklı yapacağız?_\n"},
+ {id:-4,name:"Proje Planı",content:"# Proje Planı: \n\n**Proje Yöneticisi:** \n**Başlangıç / Bitiş:** \n\n## Amaç ve Kapsam\n_Bu proje ne için yapılıyor, hangi iş sonucunu hedefliyor?_\n\n**Kapsamda (Must-have):**\n- \n\n**Olsa iyi olur (Nice-to-have):**\n- \n\n**Kapsam Dışı:**\n- \n\n## Kilometre Taşları\n| Kilometre Taşı | Sahibi | Hedef Tarih | Durum |\n|---|---|---|---|\n| | | | Planlandı |\n\n## Ekip ve Roller\n| Rol | Kişi |\n|---|---|\n| Proje Yöneticisi | |\n| Sponsor | |\n\n## Riskler\n| Risk | Olasılık | Etki | Önlem |\n|---|---|---|---|\n| | | | |\n\n## Paydaşlar\n_Bu projeden etkilenen ya da bilgilendirilmesi gereken kişi/ekipler._\n- \n\n## İletişim Planı\n_Durum güncellemeleri kime, ne sıklıkla, hangi kanaldan iletilecek?_\n"},
+ {id:-9,name:"Proje Poster",content:"# Proje Poster: \n\n**Durum:** 🟡 Planlama\n\n| | |\n|---|---|\n| **Proje Sahibi** | |\n| **Ekip Üyeleri** | |\n\n## Problem Alanı\n**Problem tanımı:** _Çözmeye çalıştığımız sorun ne?_\n\n**Bu sorunun etkisi:** _Çözülmezse ne olur?_\n\n**Bu proje daha geniş stratejiye nasıl uyuyor?**\n\n\n## Ne Zaten Biliyoruz?\n_Bu konuda elimizdeki mevcut veri, önceki denemeler, kullanıcı geri bildirimi._\n\n\n## Ne Yapıyoruz?\n_Kısa, net bir çözüm özeti._\n\n\n## Neden Bir Müşteri Bunu İstesin?\n\n\n## Doğrulama\n_Bu çözümün doğru olduğunu nasıl doğrulayacağız? (Kullanıcı testi, pilot, veri analizi vb.)_\n\n\n## Ölçek ve Kapsam\n_Gereken ekip büyüklüğü, süre, bütçe tahmini._\n\n\n## Neyi Cevaplamamız Gerekiyor?\n_Henüz cevaplanmamış açık sorular._\n- \n"},
+ {id:-8,name:"Proje Açılış (Kickoff) Toplantısı",content:"# Proje Açılış Toplantısı: \n\n**Proje:** \n**Tarih:** \n**Sponsor:** \n\n## Proje Amacı\n_Bu proje neden yapılıyor? Hangi iş problemini çözüyor?_\n\n## Kapsam\n**Kapsamda:**\n- \n\n**Kapsam Dışı:**\n- \n\n## Ekip ve Roller\n| Rol | Kişi | Sorumluluk |\n|---|---|---|\n| Proje Yöneticisi | | |\n| Sponsor | | |\n| Geliştirici(ler) | | |\n\n## Zaman Çizelgesi ve Kilometre Taşları\n| Kilometre Taşı | Hedef Tarih |\n|---|---|\n| | |\n\n## Başarı Kriterleri\n_Bu proje ne zaman \"başarılı\" sayılacak? Ölçülebilir kriterler yazın._\n- \n\n## Riskler ve Bağımlılıklar\n_Başlangıçta görülen riskler ve dış bağımlılıklar._\n- \n\n## Açık Sorular\n_Henüz netleşmemiş, takip edilmesi gereken konular._\n- \n"},
+ {id:-10,name:"Proje Durum Raporu",content:"# Proje Durum Raporu — \n\n**Proje:** \n**Rapor Tarihi:** \n**Genel Durum:** 🟢 Yolunda\n\n## Yönetici Özeti\n_1-2 cümlede: bu dönem neler oldu, en önemli nokta ne?_\n\n## Bu Dönem Tamamlananlar\n- \n\n## Sıradaki Adımlar\n- \n\n## Riskler / Engeller\n| Risk/Engel | Etki | Öneri | Sahibi |\n|---|---|---|---|\n| | | | |\n\n## Bütçe / Zaman Durumu\n| Metrik | Planlanan | Gerçekleşen | Durum |\n|---|---|---|---|\n| Bütçe | | | |\n| Zaman | | | |\n\n## Karar Gerektiren Konular\n_Yönetimden onay/karar bekleyen maddeler._\n- \n"},
+ {id:-17,name:"SWOT Analizi",content:"# SWOT Analizi: \n\n**Konu:** \n**Tarih:** \n**Katılımcılar:** \n\n> İç kaynaklı faktörler (Güçlü/Zayıf Yönler) kontrolümüzde olanlardır; dış kaynaklı faktörler (Fırsat/Tehdit) pazardan, rekabetten, regülasyondan gelir.\n\n## Güçlü Yönler (Strengths) — İç, Yardımcı\n_Rakiplere göre avantajımız, iyi yaptığımız şeyler._\n- \n\n## Zayıf Yönler (Weaknesses) — İç, Zararlı\n_İyileştirilmesi gereken, rakiplerin bizden iyi olduğu alanlar._\n- \n\n## Fırsatlar (Opportunities) — Dış, Yardımcı\n_Pazardaki, teknolojideki, düzenlemelerdeki lehimize gelişmeler._\n- \n\n## Tehditler (Threats) — Dış, Zararlı\n_Dışarıdan gelebilecek riskler (rekabet, pazar değişimi, regülasyon)._\n- \n\n## Sonuç ve Öneriler\n_Bu analizden çıkan somut aksiyon önerileri neler?_\n"},
+ {id:-12,name:"Risk Kaydı (Risk Register)",content:"# Risk Kaydı (Risk Register)\n\n**Proje:** \n**Güncelleme Tarihi:** \n\n> Olasılık ve Etki için 1 (Düşük) - 5 (Çok Yüksek) arası bir puanlama önerilir; Skor = Olasılık × Etki.\n\n| # | Risk Tanımı | Kategori | Olasılık (1-5) | Etki (1-5) | Skor | Önlem/Aksiyon | Sahibi | Durum |\n|---|---|---|---|---|---|---|---|---|\n| 1 | | Teknik / Zaman / Bütçe / Kaynak | | | | | | Açık |\n\n## Yüksek Öncelikli Riskler (Skor ≥ 15)\n_Yukarıdaki tablodan en kritik olanları buraya taşıyıp detaylandırın._\n\n\n## Kapatılan Riskler\n_Artık geçerli olmayan ya da gerçekleşmeyen riskler, ne zaman ve neden kapatıldığıyla birlikte._\n"},
+ {id:-11,name:"Karar Kaydı (DACI)",content:"# DACI: [Karar vermeye çalıştığımız soru]?\n\n| | |\n|---|---|\n| **Durum** | Taslak |\n| **Son Karar Tarihi** | |\n| **Sonuç** | _(karar verilince doldurulur)_ |\n\n## DACI Rolleri\n| Rol | Kişi | Açıklama |\n|---|---|---|\n| **D**river | | Süreci yürüten, bilgiyi toplayan kişi |\n| **A**pprover | | Son kararı veren kişi |\n| **C**ontributors | | Görüş bildiren ama oy hakkı olmayanlar |\n| **I**nformed | | Yalnızca sonuçtan haberdar edilecekler |\n\n## Bağlam (Background)\n_Bu kararın neden gerekli olduğunu ve önemini 1-2 cümlede açıklayın._\n\n\n## Mevcut Durum\n_Şu anda neredeyiz?_\n\n\n## Destekleyici Veri\n_Kararı etkileyecek araştırma, veri, kullanıcı geri bildirimi._\n\n\n## Karar Faktörleri\n_Seçenekleri değerlendirirken neye bakacağız? (maliyet, süre, ölçeklenebilirlik, risk...)_\n- \n\n## Değerlendirilen Seçenekler\n| Seçenek | Artıları | Eksileri | Tahmini Maliyet/Efor |\n|---|---|---|---|\n| Hiçbir şey yapma | | | |\n| Seçenek 2 | | | |\n| Seçenek 3 | | | |\n\n## Öneriler\n_Contributors'dan gelen görüşler._\n\n\n## Alınan Karar\n\n\n## Aksiyon Maddeleri\n| Aksiyon | Sorumlu | Tarih |\n|---|---|---|\n| | | |\n"},
+ {id:-13,name:"Ürün Gereksinimleri (PRD)",content:"# Ürün Gereksinimleri Dokümanı (PRD): \n\n**Özellik/Ürün:** \n**Sahip:** \n**Durum:** Taslak\n**Son Güncelleme:** \n\n## Problem Tanımı\n_Kullanıcı hangi sorunu yaşıyor? Bu sorunun kanıtı ne (veri, geri bildirim, destek talebi sayısı)?_\n\n## Hedef Kullanıcı / Persona\n_Bu özellik kimin için? Birincil ve ikincil kullanıcı grupları._\n\n## Hedefler ve Başarı Metrikleri\n_Bu özellik başarılı olursa hangi metrik nasıl değişecek?_\n| Metrik | Mevcut | Hedef |\n|---|---|---|\n| | | |\n\n## Kullanıcı Hikayeleri\n_\"[Kullanıcı tipi] olarak, [ihtiyaç] istiyorum, çünkü [fayda].\"_\n- \n\n## Gereksinimler\n### Zorunlu (Must have)\n- [ ] \n### Olsa iyi olur (Nice to have)\n- [ ] \n\n## Kabul Kriterleri\n_Bu özelliğin \"bitti\" sayılması için karşılanması gereken somut koşullar._\n- \n\n## Kapsam Dışı\n_Bilinçli olarak bu sürümde YAPILMAYACAK olanlar (beklenti yönetimi için önemli)._\n- \n\n## Açık Sorular\n- \n"},
+ {id:-14,name:"Olay Sonrası İnceleme (Postmortem)",content:"# Olay Sonrası İnceleme (Postmortem): \n\n**Olay Tarihi:** \n**Tespit Zamanı:** \n**Çözüm Zamanı:** \n**Etki Süresi:** \n**Ciddiyet:** SEV-\n\n> Bu belge suçlamasız (blameless) bir kültürle yazılır: amaç \"kim hata yaptı\" değil \"sistem neden buna izin verdi\"dir.\n\n## Özet\n_2-3 cümlede: ne oldu, kim/ne etkilendi, nasıl çözüldü._\n\n## Etkilenen Sistemler / Kullanıcılar\n\n\n## Zaman Çizelgesi\n| Saat (UTC) | Olay |\n|---|---|\n| | İlk belirti fark edildi |\n| | Olay bildirildi/eskalasyon |\n| | Kök neden bulundu |\n| | Çözüm uygulandı |\n| | Doğrulandı, olay kapatıldı |\n\n## Kök Neden\n_Teknik kök neden. Mümkünse \"5 Neden\" analizi ile derinleştirin._\n\n## Ne İyi Gitti?\n_Müdahale sırasında işe yarayan şeyler (izleme, runbook, iletişim vb.)._\n- \n\n## Ne Kötü Gitti?\n- \n\n## Alınan Aksiyonlar\n| Aksiyon | Tür (Önleyici/İzleme/Süreç) | Sorumlu | Hedef Tarih |\n|---|---|---|---|\n| | | | |\n\n## Öğrenilen Dersler\n_Bu olaydan takım/organizasyon olarak çıkardığımız genel dersler._\n"},
+ {id:-15,name:"5 Neden Analizi (5 Whys)",content:"# 5 Neden Analizi (5 Whys)\n\n**Problem:** _Gözlemlenen belirtiyi net bir cümleyle yazın._\n\n> Her \"Neden?\" sorusunun cevabı bir öncekinin kök nedenine inmelidir. 5 bir kural değil, kılavuzdur — kök nedene 3 soruda da ulaşabilirsiniz, 7 soru da gerekebilir.\n\n1. **Neden oldu?** \n2. **Peki bu neden oldu?** \n3. **Peki bu neden oldu?** \n4. **Peki bu neden oldu?** \n5. **Peki bu neden oldu?** \n\n## Kök Neden\n_Zincirin sonundaki, gerçekten çözülmesi gereken temel sebep._\n\n## Bu Kök Nedeni Doğrulayan Kanıt\n_Varsayım değil, veri/gözlem._\n\n## Önerilen Aksiyon\n_Kök nedeni ortadan kaldıracak somut adım(lar)._\n- \n"},
+ {id:-16,name:"Beyin Fırtınası (Brainstorming)",content:"# Beyin Fırtınası: \n\n**Konu/Problem:** _Ne için fikir üretiyoruz? Net bir soru cümlesi yazın._\n\n**Katılımcılar:** \n**Süre:** \n\n> Bu aşamada eleştiri yok — miktar, kaliteden önce gelir. Her fikir, ne kadar \"saçma\" görünse de yazılır.\n\n## Fikirler\n_Herkes serbestçe ekleyebilir._\n- \n\n## Gruplama / Temalar\n_Benzer fikirleri birlikte kümeleyin._\n\n\n## Değerlendirme Kriterleri\n_Fikirleri neye göre önceliklendireceğiz? (Etki, Uygulanabilirlik, Maliyet vb.)_\n\n\n## Oylama Sonucu (öncelikli fikirler)\n1. \n2. \n3. \n\n## Sonraki Adımlar\n| Aksiyon | Sorumlu | Tarih |\n|---|---|---|\n| | | |\n"},
+ {id:-7,name:"1:1 Toplantısı",content:"# 1:1 Toplantısı\n\n**Katılımcılar:** \n**Tarih:** \n\n## Gündem\n_Her iki taraf da toplantıdan önce madde ekleyebilir._\n- \n\n## Geri Bildirim\n_Karşılıklı, yapıcı geri bildirim — hem takdir hem gelişim alanları._\n\n\n## Kariyer/Gelişim Notları\n_Uzun vadeli hedefler, öğrenme planı, ilerleme._\n\n\n## Önceki Aksiyonların Takibi\n_Bir önceki 1:1'de kararlaştırılan maddeler ne durumda?_\n- \n\n## Aksiyon Maddeleri\n| Aksiyon | Sorumlu | Hedef Tarih |\n|---|---|---|\n| | | |\n"},
+ {id:-1,name:"Toplantı Notu",content:"# Toplantı Notu: \n\n**Tarih:** \n**Katılımcılar:** \n\n## Gündem\n_Toplantı öncesi belirlenen konu başlıkları._\n- \n\n## Notlar\n_Görüşme sırasında alınan notlar, tartışılan konular._\n\n\n## Kararlar\n_Bu toplantıda netleşen kararlar._\n- \n\n## Aksiyon Maddeleri\n| Aksiyon | Sorumlu | Hedef Tarih |\n|---|---|---|\n| | | |\n"},
+ {id:-2,name:"Nasıl Yapılır (How-to)",content:"# Nasıl Yapılır: \n\n**Son güncelleme:** \n**Sahip:** \n\n## Bu Rehber Ne İçin?\n_Bu adımları kimin, hangi durumda izleyeceğini kısaca açıklayın._\n\n## Ön Koşullar\n_Başlamadan önce gerekli erişim, araç veya bilgi._\n- \n\n## Adımlar\n1. \n2. \n3. \n\n## Beklenen Sonuç\n_Adımlar doğru uygulandığında ne görmeliyiz?_\n\n## Sorun Giderme\n| Belirti | Olası Neden | Çözüm |\n|---|---|---|\n| | | |\n\n## İlgili Kaynaklar\n- "},
+ {id:-3,name:"Karar Kaydı",content:"# Karar Kaydı: \n\n**Tarih:** \n**Karar Sahibi:** \n**Katılımcılar:** \n\n## Bağlam\n_Bu kararın alınmasını gerektiren durum neydi?_\n\n## Değerlendirilen Seçenekler\n- \n\n## Alınan Karar\n\n\n## Gerekçe\n_Bu seçenek neden diğerlerine tercih edildi?_\n\n## Etkilenen Taraflar\n_Bu karardan kimler/hangi ekipler etkilenecek?_\n- \n"},
+ {id:-5,name:"Doküman Kontrol Sayfası",content:"# Doküman Kontrol Sayfası: \n\n**Doküman No:** \n**Versiyon:** \n**Sahip:** \n**Onay Tarihi:** \n**Gözden Geçirme Sıklığı:** \n\n## Amaç\n_Bu doküman ne için var, kim için yazıldı?_\n\n## Kapsam\n_Bu dokümanın kapsadığı ve KAPSAMADIĞI alanlar._\n\n## Onay Zinciri\n| Rol | İsim | Tarih | Durum |\n|---|---|---|---|\n| Hazırlayan | | | |\n| Kontrol Eden | | | |\n| Onaylayan | | | |\n\n## Değişiklik Geçmişi\n| Versiyon | Tarih | Değişiklik | Yapan |\n|---|---|---|---|\n| 1.0 | | İlk yayın | |\n"}];
 async function loadWikiTemplatesLive(){
  try{const data=await api("GET","/api/wiki/templates");WIKI_TEMPLATES_LIVE=data.items;render();}
  catch(e){WIKI_TEMPLATES_LIVE=[];}}
@@ -1793,11 +1793,16 @@ function renderWikiMarkdown(md){
   return `<div style="overflow-x:auto;margin:10px 0"><table style="border-collapse:collapse;width:100%;font-size:12.5px">
    <thead><tr>${headers.map(h=>`<th style="border:1px solid var(--bd);padding:6px 9px;text-align:left;background:var(--s1)">${h}</th>`).join("")}</tr></thead>
    <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td style="border:1px solid var(--bd);padding:6px 9px">${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>\n`;});
+ // Blockquote ("> metin"): şablonlardaki kısa rehber notları için.
+ html=html.replace(/^&gt; (.*)$/gm,'<div style="border-left:3px solid var(--ta);padding:6px 12px;margin:8px 0;background:var(--ba);border-radius:0 6px 6px 0;font-size:12.5px;color:var(--t2)">$1</div>');
  html=html.replace(/^### (.*)$/gm,'<h4 style="margin:14px 0 6px">$1</h4>');
  html=html.replace(/^## (.*)$/gm,'<h3 style="margin:16px 0 7px">$1</h3>');
  html=html.replace(/^# (.*)$/gm,'<h2 style="margin:18px 0 8px">$1</h2>');
  html=html.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
  html=html.replace(/\*(.+?)\*/g,'<i>$1</i>');
+ // "_metin_" ile italik: şablonlardaki rehber/açıklama cümleleri
+ // (ör. "_Kullanıcı hangi sorunu yaşıyor?_") bu sözdizimini kullanıyor.
+ html=html.replace(/(^|[^\w])_([^_\n]+)_(?!\w)/g,'$1<i style="color:var(--tm)">$2</i>');
  html=html.replace(/`([^`]+?)`/g,'<code style="background:var(--s1);padding:1px 5px;border-radius:4px;font-size:12px">$1</code>');
  html=html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" style="color:var(--ta)">$1</a>');
  // Onay kutulu liste: "- [ ] madde" / "- [x] madde" (checkbox'lar salt
@@ -4004,54 +4009,58 @@ function screenView(){
     const attempted=f.wikiMtgAttempted;
     const errS=bad=>bad?"border-color:var(--er-fg)":"";
     const freeUsers=USERS.filter(u=>u.on&&!parts.includes(u.n)); // pasif kullanıcılar hiç listelenmez
-    mainPanel=`<div class="card">
-      <div style="font-size:16px;font-weight:700">Toplantı Notu</div>
-      <p class="m" style="color:var(--tm);margin-top:4px">Bu not <b style="color:var(--t1)">${esc((spaces2.find(s=>s.space_key===spKey)||{}).name||spKey)}</b> alanında bir sayfa olarak
+    const notesInvalid=false; // wiki toplantısında notlar zorunlu değil (mevcut Proje modülünden farkı)
+    // Proje Yönetimi > New meeting note ekranıyla AYNI iki panelli düzen:
+    // SOL = başlık + birleşik "Toplantı Notları" paneli (serbest metin +
+    // kompakt gündem listesi), SAĞ = Proje/Tarih-Saat/Katılımcılar.
+    const itemRowsCompact=items.length?items.map((it,i)=>
+      `<div style="display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--bd);font-size:12px">
+       <span style="flex:1;min-width:0;overflow-wrap:break-word">${esc(it.text)}</span>
+       <span class="m" style="color:var(--tm);white-space:nowrap;flex-shrink:0">${esc(it.assignee)}</span>
+       ${it.due?`<span class="m" style="color:var(--tm);white-space:nowrap;flex-shrink:0">${esc(it.due)}</span>`:""}
+       <span style="cursor:pointer;color:var(--tm);flex-shrink:0" data-a="wikiMtgRemItem:${i}">✕</span></div>`).join("")
+      :`<p class="m" style="color:var(--tm);padding:10px">Henüz gündem maddesi yok.</p>`;
+    const meetingNotesPanel=`<div class="card" style="display:flex;flex-direction:column;min-height:60vh">
+      <div class="lbl">Toplantı başlığı</div>
+      <input id="fWikiMtgTitle" value="${esc(f.wikiMtgTitle||"")}" placeholder="Toplantı başlığı" style="font-weight:600">
+      <div class="lbl" style="margin-top:14px">Toplantı Notları</div>
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0;border:1px solid var(--bd);border-radius:8px;overflow:hidden">
+       <textarea id="fWikiMtgNotes" placeholder="Serbest metin notlar…" style="flex:1;min-height:110px;border:none;border-radius:0;margin:0;resize:none">${esc(f.wikiMtgNotes||"")}</textarea>
+       <div class="lbl" style="margin:0;padding:8px 10px 4px;border-top:1px solid var(--bd)">Gündem maddeleri</div>
+       <div id="wikiMtgItemsScroll" style="max-height:175px;overflow-y:auto;flex-shrink:0">${itemRowsCompact}</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+       <input id="fWikiMtgNewItem" value="${esc(f.wikiMtgNewItem||"")}" placeholder="Yeni gündem maddesi…" style="flex:2;min-width:140px">
+       <select id="fWikiMtgNewItemAssignee" style="flex:1;min-width:130px">
+        <option value="" ${!f.wikiMtgNewItemAssignee?"selected":""}>Sorumlu…</option>
+        ${namesAlpha(USERS.filter(u=>u.on),u=>u.n).map(u=>`<option value="${esc(u.n)}" ${f.wikiMtgNewItemAssignee===u.n?"selected":""}>${esc(u.n)}</option>`).join("")}</select>
+       <input id="fWikiMtgNewItemDue" type="date" value="${esc(f.wikiMtgNewItemDue||"")}" style="width:140px">
+       <button class="b s" data-a="wikiMtgAddItem">Ekle</button></div></div>`;
+    const rightPanel=`<div class="card">
+      <p class="m" style="color:var(--tm)">Bu not <b style="color:var(--t1)">${esc((spaces2.find(s=>s.space_key===spKey)||{}).name||spKey)}</b> alanında bir sayfa olarak
        kalıcı biçimde saklanır. Bir proje seçerseniz gündem maddeleri o projenin backlog'una Task olarak da düşer;
        seçmezseniz yalnızca burada, wiki'de kalan tek seferlik bir toplantı notu olur.</p>
-      <input id="fWikiMtgTitle" value="${esc(f.wikiMtgTitle||"")}" placeholder="Toplantı başlığı" style="margin-top:10px;font-weight:600">
-
       <div class="lbl" style="margin-top:13px">Proje (opsiyonel)</div>
       <select id="fWikiMtgProject">
        <option value="" ${!f.wikiMtgProject?"selected":""}>Proje seçmeyin (yalnızca wiki'de kalsın)</option>
        ${projsAlpha().map(p=>`<option value="${p.k}" ${f.wikiMtgProject===p.k?"selected":""}>${p.k} — ${esc(p.n)}</option>`).join("")}</select>
-
       <div class="lbl" style="margin-top:13px">Toplantı tarihi ve saati <span style="color:var(--er-fg)">*</span></div>
       <div style="display:flex;gap:8px">
        <input id="fWikiMtgDate" type="date" value="${esc(f.wikiMtgDate||"")}" style="width:170px;flex:none;${errS(attempted&&!f.wikiMtgDate)}">
        <select id="fWikiMtgTime" style="width:120px">
         <option value="" ${!f.wikiMtgTime?"selected":""}>Saat belirtme</option>
         ${TIME_SLOTS_15MIN.map(t=>`<option value="${t}" ${f.wikiMtgTime===t?"selected":""}>${t}</option>`).join("")}</select></div>
-
       <div class="lbl" style="margin-top:13px">Katılımcılar <span style="color:var(--er-fg)">*</span></div>
       <p class="m" style="color:var(--tm);margin:2px 0 6px">${f.wikiMtgProject?"Proje seçildiği için ekip üyeleri otomatik eklendi — istemediklerinizi çıkarabilirsiniz.":"Proje seçmediğiniz için katılımcıları manuel eklemelisiniz."}</p>
       ${parts.length?`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
        ${parts.map(n=>`<span class="pl ok" style="cursor:pointer" data-a="wikiMtgRemPart:${encodeURIComponent(n)}">${esc(n)} ✕</span>`).join("")}</div>`:""}
       <select id="fWikiMtgPartSel" style="${errS(attempted&&!parts.length)}">
        <option value="" selected>Katılımcı ekle…</option>
-       ${namesAlpha(freeUsers,u=>u.n).map(u=>`<option value="${esc(u.n)}">${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select>
-
-      <div class="lbl" style="margin-top:14px">Gündem maddeleri</div>
-      ${items.length?items.map((it,i)=>`<div class="card" style="padding:8px 9px;margin-bottom:6px">
-        <div style="display:flex;gap:8px;align-items:center">
-         <span style="flex:1;font-size:12.5px">${esc(it.text)}</span>
-         <span style="cursor:pointer;color:var(--tm)" data-a="wikiMtgRemItem:${i}">✕</span></div>
-        <div class="m" style="color:var(--tm);margin-top:3px">Sorumlu: ${esc(it.assignee)}${it.due?" · Bitiş: "+esc(it.due):""}</div></div>`).join("")
-       :`<p class="m" style="color:var(--tm)">Henüz gündem maddesi yok.</p>`}
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-       <input id="fWikiMtgNewItem" value="${esc(f.wikiMtgNewItem||"")}" placeholder="Yeni gündem maddesi…" style="flex:2;min-width:140px">
-       <select id="fWikiMtgNewItemAssignee" style="flex:1;min-width:130px">
-        <option value="" ${!f.wikiMtgNewItemAssignee?"selected":""}>Sorumlu…</option>
-        ${namesAlpha(USERS.filter(u=>u.on),u=>u.n).map(u=>`<option value="${esc(u.n)}" ${f.wikiMtgNewItemAssignee===u.n?"selected":""}>${esc(u.n)}</option>`).join("")}</select>
-       <input id="fWikiMtgNewItemDue" type="date" value="${esc(f.wikiMtgNewItemDue||"")}" style="width:140px">
-       <button class="b s" data-a="wikiMtgAddItem">Ekle</button></div>
-
-      <div class="lbl" style="margin-top:13px">Notlar</div>
-      <textarea id="fWikiMtgNotes" placeholder="Serbest metin notlar…" style="min-height:80px">${esc(f.wikiMtgNotes||"")}</textarea>
-
-      <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:16px">
-       <button class="b" data-a="wikiCreateCancel">Vazgeç</button>
-       <button class="b p" data-a="wikiMeetingSave">Oluştur ve bildir</button></div></div>`;
+       ${namesAlpha(freeUsers,u=>u.n).map(u=>`<option value="${esc(u.n)}">${esc(u.n)} · ${esc(u.unit)}</option>`).join("")}</select></div>`;
+    mainPanel=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;align-items:stretch">
+      ${meetingNotesPanel}${rightPanel}</div>
+     <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:14px">
+      <button class="b" data-a="wikiCreateCancel">Vazgeç</button>
+      <button class="b p" data-a="wikiMeetingSave">Oluştur ve bildir</button></div>`;
    }else{
     // kind==="page"
     const spaceName=(spaces2.find(s=>s.space_key===spKey)||{}).name||spKey;
@@ -4062,7 +4071,7 @@ function screenView(){
       <div style="font-size:16px;font-weight:700">Yeni sayfa</div>
       <p class="m" style="color:var(--tm);margin-top:4px">
        <b style="color:var(--t1)">${esc(spaceName)}</b> alanına${parentPage?` — <b style="color:var(--t1)">${esc(parentPage.title)}</b> sayfasının ALTINA (alt sayfa olarak)`:" üst düzey (space kökünde) bir sayfa olarak"} eklenecek.</p>
-      <input id="fWikiNewTitle" placeholder="Sayfa başlığı…" style="margin-top:10px" autofocus>
+      <input id="fWikiNewTitle" value="${esc(f.wikiNewTitle||"")}" placeholder="Sayfa başlığı…" style="margin-top:10px" autofocus>
       <div class="lbl" style="margin-top:12px">ŞABLON</div>
       <div style="max-height:280px;overflow:auto;margin-top:4px">
        ${tplCard("","Boş (şablonsuz)")}
@@ -5903,6 +5912,7 @@ function afterRender(){
   ["fA","a"],["fB","b"],["fC","c"],["fR","r"],["frej","rej"],
   ["fMtDate","date"],["fMtTime","time"],["fMtRecurrence","recurrence"],["fMtNewItem","newItem"],["fMtNotes","notes"],
   ["fMtOtherSubject","otherSubject"],
+  ["fWikiNewTitle","wikiNewTitle"],
   ["fWikiMtgTitle","wikiMtgTitle"],["fWikiMtgDate","wikiMtgDate"],["fWikiMtgTime","wikiMtgTime"],
   ["fWikiMtgNewItem","wikiMtgNewItem"],["fWikiMtgNotes","wikiMtgNotes"],
   ["fGName","name"],["fGStart","start"],["fGEnd","end"],

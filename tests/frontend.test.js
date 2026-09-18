@@ -576,3 +576,48 @@ test("wiki oluşturma akışları (sayfa/space/toplantı) popup değil, ana içe
   assert.ok(app.innerHTML.includes("Toplantı tarihi ve saati"), "toplantı formu ana içerikte görünmüyor");
   assert.ok(app.innerHTML.includes("ALANLAR (SPACES)"), "sidebar toplantı formu açıkken kapanmış");
 });
+test("wiki düzeltmeleri: şablon seçilince başlık kaybolmaz, toplantı formu iki panelli düzende, şablon içerikleri gerçek tablo/blockquote render eder", async () => {
+  const { window, doc, app } = await openDemoApp();
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:wiki");
+  await click(app, window, "scr:w.pages", { wait: 300 });
+
+  // 1) Başlık girip sonra şablon seçince başlık KORUNMALI (regresyon testi).
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+  setVal(doc, "fWikiNewTitle", "Kalıcı Başlık Testi");
+  const planCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.includes("Proje Planı"));
+  planCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  assert.equal(doc.getElementById("fWikiNewTitle").value, "Kalıcı Başlık Testi", "şablon seçilince başlık kayboldu");
+  await click(app, window, "wikiCreateCancel", { wait: 300 });
+
+  // 2) Toplantı formu artık Proje Yönetimi'ndeki gibi İKİ panelli grid düzeninde.
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+  const meetingCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.trim() === "Toplantı Notu");
+  meetingCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  setVal(doc, "fWikiNewTitle", "İki Panel Testi");
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Toplantı Notları"), "birleşik notlar+gündem paneli yok");
+  assert.ok(app.innerHTML.includes("grid-template-columns:repeat(auto-fit,minmax(340px"), "iki panelli grid düzeni yok");
+  assert.ok(app.innerHTML.includes("Proje (opsiyonel)"), "sağ panelde proje seçimi yok");
+  await click(app, window, "wikiCreateCancel", { wait: 300 });
+
+  // 3) Şablon içerikleri artık gerçek tablo + blockquote üretiyor (Risk Kaydı).
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+  setVal(doc, "fWikiNewTitle", "Risk Kaydı Testi");
+  const riskCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.includes("Risk Kaydı (Risk Register)"));
+  riskCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+  const saveBtn = [...app.querySelectorAll("[data-a^='wikiSavePage:']")][0];
+  saveBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  const mainCard = [...app.querySelectorAll(".card")].find((c) => c.innerHTML.includes("Sahibi:"));
+  assert.ok(mainCard.innerHTML.includes("border-left:3px solid"), "blockquote (rehber notu) render edilmedi");
+  assert.ok(mainCard.innerHTML.includes("<table"), "şablon tablosu render edilmedi");
+  assert.ok(mainCard.innerHTML.includes("Yüksek Öncelikli Riskler"), "zengin şablon içeriği eksik görünüyor");
+});
