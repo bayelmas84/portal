@@ -376,6 +376,7 @@ const MODULES=[
  ["compliance","Uyum ve Teftiş","ti-shield","#8E0D4D"],
  ["audit","Denetim Kaydı","ti-list-search","#5A1F3D"],
  ["admin","Admin Panel","ti-cog","#33405C"],
+ ["wiki","Wiki","ti-book","#0B5FA5"],
  ["shortcuts","Kısayollar","ti-link","#8A6A2F"]];
 const SCREENS={
  delivery:[["d.my","My Work","ti-user-check"],["d.projects","Projects","ti-layout-grid"],
@@ -400,6 +401,7 @@ const SCREENS={
  compliance:[["c.read","Okuma raporu","ti-list-details"],["c.rem","Hatırlatma planı","ti-clock"]],
  audit:[["c.audit","Denetim Kaydı","ti-list-search"]],
  shortcuts:[["s.all","Tüm kısayollar","ti-link"]],
+ wiki:[["w.pages","Wiki","ti-book"]],
  admin:[["m.ann","Duyuru yönetimi","ti-speakerphone"],["m.users","Kullanıcılar","ti-users"],
    ["m.units","Birimler","ti-building"],["m.titles","Ünvanlar","ti-id-badge"],
    ["m.roles","Roller ve yetkiler","ti-shield"],["m.access","Ekran yetkileri","ti-checkbox"],
@@ -413,7 +415,7 @@ const SCREENS={
 
 /* Admin: her ekranda okuma; yazma yalnızca Duyurular ve Admin Panel */
 const ACC={
- admin:{delivery:R,documents:R,announce:W,training:R,reports:R,approvals:W,admin:W,
+ admin:{delivery:R,wiki:R,"w.pages":R,documents:R,announce:W,training:R,reports:R,approvals:W,admin:W,
   "d.my":R,"d.projects":R,"d.board":R,"d.backlog":R,"d.allissues":R,"d.gate":R,"d.charts":R,"d.exec":R,
   "d.team":R,"d.docs":R,"d.docview":R,"d.appr":R,"d.cr":R,"k.docs":R,
   /* a.del verilmez: silme talebini duyuruyu giren kişi açar, Teftiş karara bağlar. */
@@ -424,7 +426,7 @@ const ACC={
     kapı imzasında tek imza yeterlidir. Diğer modüllerde okuma düzeyindedir. */
  /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (okuma, yazma, ekleme, silme),
     faz kapısını tek imzayla onaylayabilir. Diğer modüllerde okuma düzeyindedir. */
- pmdir:{delivery:W,"d.my":W,"d.projects":W,"d.board":W,"d.backlog":W,"d.allissues":W,"d.sprint":W,
+ pmdir:{delivery:W,wiki:R,"w.pages":R,"d.my":W,"d.projects":W,"d.board":W,"d.backlog":W,"d.allissues":W,"d.sprint":W,
   "d.gate":W,"d.gate.approve":W,"d.delete":W,"d.projadmin":W,
   "d.charts":W,"d.exec":W,"d.team":W,"d.docs":W,"d.docview":W,"d.appr":W,"d.cr":W,
   documents:R,"k.docs":R,announce:R,"a.list":R,training:R,"t.un":W,"t.done":W,
@@ -437,7 +439,7 @@ const ACC={
  /* Teftiş: kendi görev alanının (Duyurular/Eğitim/Onaylar/Uyum onayı/Denetim)
     DIŞINDA kalan HER ekranı da görebilir (read) — örn. Proje Yönetimi'ndeki
     tüm menüler açıktır, yalnızca değişiklik yapamaz. Admin panel de dahildir. */
- inspection:{delivery:R,"d.docs":R,"d.docview":R,"d.appr":R,
+ inspection:{delivery:R,wiki:R,"w.pages":R,"d.docs":R,"d.docview":R,"d.appr":R,
   documents:W,announce:W,training:R,reports:R,approvals:W,compliance:W,
   "k.docs":W,"k.new":W,"k.queue":W,"k.mail":W,
   "a.list":W,"a.new":W,"a.edit":W,"a.del":W,
@@ -452,7 +454,7 @@ const ACC={
  /* Bilgi Güvenliği: proje yönetiminde işi yok; yalnızca proje dokümanlarını görür. */
  /* Bilgi Güvenliği (IT İç Kontrol): kendi görev alanının DIŞINDA kalan HER
     ekranı da görebilir (read) — Proje Yönetimi dahil tüm menüler açıktır. */
- infosec:{delivery:R,documents:W,announce:W,training:R,reports:R,approvals:W,
+ infosec:{delivery:R,wiki:R,"w.pages":R,documents:W,announce:W,training:R,reports:R,approvals:W,
   "d.docs":R,"d.docview":R,
   "k.docs":W,"k.new":W,"a.list":W,"a.new":W,"a.del":W,"t.un":W,"t.done":W,
   "r.list":R,"r.view":R,"p.in":W,"p.my":W,"p.done":W,"k.mail":R,
@@ -463,7 +465,7 @@ const ACC={
   "m.mailtpl":R,"m.settings":R,"m.approvalrules":R,"m.dir":R,"m.smtp":R,"m.brand":R,"m.avail":R,"m.short":R},
  /* İç Kontrol / Kurumsal Risk: kendi görev alanının DIŞINDA kalan HER ekranı
     da görebilir (read) — Proje Yönetimi dahil tüm menüler açıktır. */
- control:{delivery:R,documents:W,announce:W,training:R,reports:R,approvals:W,
+ control:{delivery:R,wiki:R,"w.pages":R,documents:W,announce:W,training:R,reports:R,approvals:W,
   "d.docs":R,"d.docview":R,"d.appr":R,
   "k.docs":W,"k.new":W,"a.list":W,"a.new":W,"a.del":W,"t.un":W,"t.done":W,"r.list":R,"r.view":R,
   "p.in":W,"p.my":W,"p.done":W,"compliance":W,"c.read":W,"c.rem":W,"c.audit":W,audit:R,"k.mail":R,
@@ -472,29 +474,29 @@ const ACC={
   "t.author":R,"t.readlive":R,"r.dev":R,"r.usage":R,"k.queue":R,
   admin:R,"m.ann":R,"m.users":R,"m.units":R,"m.titles":R,"m.roles":R,"m.access":R,"m.notif":R,
   "m.mailtpl":R,"m.settings":R,"m.approvalrules":R,"m.dir":R,"m.smtp":R,"m.brand":R,"m.avail":R,"m.short":R},
- gmy:{delivery:R,documents:R,announce:R,training:R,reports:R,approvals:W,
+ gmy:{delivery:R,wiki:R,"w.pages":R,documents:R,announce:R,training:R,reports:R,approvals:W,
   "d.my":R,"d.projects":R,"d.board":R,"d.sprint":R,"d.gate":W,"d.charts":R,"d.exec":R,"r.usage":R,"k.docs":R,"a.list":R,"t.un":W,"t.done":W,
   "r.list":R,"r.view":R,"p.in":W,"p.my":W,"p.done":W},
- opsdir:{delivery:R,documents:R,announce:R,training:R,reports:R,approvals:W,
+ opsdir:{delivery:R,wiki:R,"w.pages":R,documents:R,announce:R,training:R,reports:R,approvals:W,
   "d.my":R,"d.projects":R,"d.charts":R,"d.exec":R,"r.usage":R,"k.docs":R,"a.list":R,"t.un":W,"t.done":W,"r.list":R,"r.view":R,
   "p.in":W,"p.my":W,"p.done":W},
  /* Proje Yönetim Direktörü: Proje Yönetimi modülünün tamamında tam yetki (okuma, ekleme,
     değiştirme, silme) ve faz kapısında tek imzayla ilerletme. Admin Panel'e dahil değildir:
     kullanıcı ve yetki yönetimi ayrı görevdir. */
- pm:{delivery:W,documents:R,announce:R,training:R,reports:R,approvals:W,
+ pm:{delivery:W,wiki:R,"w.pages":R,documents:R,announce:R,training:R,reports:R,approvals:W,
   "d.my":W,"d.projects":W,"d.board":W,"d.backlog":W,"d.allissues":W,"d.sprint":W,"d.gate":W,"d.charts":W,"d.exec":R,
   "d.team":W,"d.docs":W,"d.docview":W,"d.appr":R,"d.cr":W,
   "k.docs":R,"a.list":R,"r.dev":W,"r.usage":R,
   "t.un":W,"t.done":W,"r.list":R,"r.view":R,"p.in":W,"p.my":W,"p.done":W},
  /* Proje Yönetim Direktörü: Proje Yönetimi'nde tam yetki (ekleme, değiştirme, silme)
     ve faz kapısı onay yetkisi. Diğer modüllerde okuma. */
- dev:{delivery:R,documents:R,announce:R,training:R,approvals:W,
+ dev:{delivery:R,wiki:R,"w.pages":R,documents:R,announce:R,training:R,approvals:W,
   "d.my":W,"d.board":W,"d.backlog":R,"d.allissues":R,"d.projects":R,"d.charts":R,"d.team":R,"d.docs":R,"d.docview":R,"d.cr":R,"k.docs":R,"a.list":R,"t.un":W,"t.done":W,
   "p.in":W,"p.my":W,"p.done":W},
  /* Personel: proje yönetiminde yalnızca proje dokümanlarını görür.
     Proje ekibine atanmışsa board, sprint, backlog, kapı ve CR ekranları
     salt okunur olarak açılır (aşağıdaki teamView kuralı). */
- staff:{delivery:R,"d.docs":R,"d.docview":R,documents:R,announce:R,training:W,approvals:W,
+ staff:{delivery:R,wiki:R,"w.pages":R,"d.docs":R,"d.docview":R,documents:R,announce:R,training:W,approvals:W,
   "k.docs":R,"a.list":R,"t.un":W,"t.done":W,"p.in":W,"p.my":W,"p.done":W}};
 /* Meeting Notes ve Gantt Chart: hazırlama (ekleme/durum değiştirme) yetkisi yalnızca
    proje yönetimi rolündedir (Proje Yöneticisi, Proje Yönetim Direktörü) — onlar aynı
@@ -771,7 +773,7 @@ const ACC_DEFAULT=JSON.parse(JSON.stringify(ACC));
 /* Ekran yönetimi — rolden bağımsız açık / bakımda / kapalı durumu */
 /* Varsayılan durum: yalnızca Proje Yönetimi, Admin Panel ve Kısayollar açık.
    Diğer modüller kapalı gelir; Admin Panel > Ekran yönetimi'nden açılır. */
-const DEFAULT_OPEN=["delivery","admin","approvals","shortcuts"];
+const DEFAULT_OPEN=["delivery","admin","approvals","shortcuts","wiki"];
 let AVAIL=(function(){const a={};
  MODULES.forEach(m=>{if(!DEFAULT_OPEN.includes(m[0]))a[m[0]]="kapali";});
  Object.keys(SCREENS).forEach(mk=>{if(!DEFAULT_OPEN.includes(mk))
@@ -1698,6 +1700,52 @@ const DEFAULT_WORKFLOW=[["backlog","todo"],["todo","prog"],["prog","review"],["p
 const WORKFLOW_ROLES_CLIENT=["pmdir","pm","dev"];
 const WORKFLOW_ROLE_LABEL={pmdir:"PM Director",pm:"Project Manager",dev:"Developer"};
 let PROJECT_WORKFLOW_LIVE={},PROJECT_WORKFLOW_DEMO={};
+/* Wiki (Confluence tarzı): Genel (şirket geneli) + proje bazlı space'ler,
+   hiyerarşik sayfalar. Onay akışı YOK — yalnızca pm/pmdir düzenleyebilir,
+   herkes (o space'i görebiliyorsa) okuyabilir. */
+let WIKI_SPACES_LIVE=null,WIKI_SPACES_DEMO=[{id:1,space_key:"GENEL",name:"Genel Bilgi Tabanı",project_k:null}];
+let WIKI_PAGES_LIVE={},WIKI_PAGES_DEMO={GENEL:[]};
+let WIKI_PAGE_LIVE={},WIKI_PAGE_DEMO={};
+let WIKI_VERSIONS_LIVE={};
+let nextWikiPageId=1,nextWikiSpaceId=2;
+async function loadWikiSpacesLive(){
+ try{const data=await api("GET","/api/wiki/spaces");WIKI_SPACES_LIVE=data.items;render();}
+ catch(e){WIKI_SPACES_LIVE=[];}}
+async function loadWikiPagesLive(spaceKey){
+ try{const data=await api("GET","/api/wiki/spaces/"+encodeURIComponent(spaceKey)+"/pages");
+  WIKI_PAGES_LIVE[spaceKey]=data.items;render();}
+ catch(e){WIKI_PAGES_LIVE[spaceKey]=[];}}
+async function loadWikiPageLive(id){
+ try{const data=await api("GET","/api/wiki/pages/"+id);WIKI_PAGE_LIVE[id]=data.item;render();}
+ catch(e){toast(e.message,1);}}
+async function loadWikiVersionsLive(id){
+ try{const data=await api("GET","/api/wiki/pages/"+id+"/versions");WIKI_VERSIONS_LIVE[id]=data.items;render();}
+ catch(e){WIKI_VERSIONS_LIVE[id]=[];}}
+async function ensureProjectWikiSpaceLive(projectK){
+ try{await api("POST","/api/wiki/spaces/ensure-project/"+encodeURIComponent(projectK));
+  loadWikiSpacesLive();}
+ catch(e){/* sessiz geç — kullanıcı yetkisizse zaten space listesinde görünmez */}}
+/* Çok küçük bir Markdown alt kümesi render eder: # başlıklar, **kalın**,
+   *italik*, `kod`, ```blok kod```, - liste, [metin](url) link, paragraf
+   boşlukları. Tam bir Markdown kütüphanesi değildir — CDN'siz, tek
+   dosyalık uygulama felsefesine uygun, en sık kullanılan biçimler için
+   yeterli bir alt küme. */
+function renderWikiMarkdown(md){
+ if(!md)return "";
+ let html=esc(md);
+ html=html.replace(/```([\s\S]*?)```/g,(_,code)=>`<pre class="card" style="overflow:auto;font-family:monospace;font-size:12px">${code}</pre>`);
+ html=html.replace(/^### (.*)$/gm,'<h4 style="margin:14px 0 6px">$1</h4>');
+ html=html.replace(/^## (.*)$/gm,'<h3 style="margin:16px 0 7px">$1</h3>');
+ html=html.replace(/^# (.*)$/gm,'<h2 style="margin:18px 0 8px">$1</h2>');
+ html=html.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+ html=html.replace(/\*(.+?)\*/g,'<i>$1</i>');
+ html=html.replace(/`([^`]+?)`/g,'<code style="background:var(--s1);padding:1px 5px;border-radius:4px;font-size:12px">$1</code>');
+ html=html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" style="color:var(--ta)">$1</a>');
+ html=html.replace(/^- (.*)$/gm,'<li>$1</li>');
+ html=html.replace(/(<li>.*<\/li>\n?)+/g,m=>`<ul style="margin:6px 0;padding-left:20px">${m}</ul>`);
+ html=html.split(/\n{2,}/).map(p=>p.trim().startsWith("<")?p:`<p style="margin:8px 0">${p.replace(/\n/g,"<br>")}</p>`).join("");
+ return html;}
+
 /* Özel alanlar (custom fields) — proje bazlı ek metadata. Tanım (alan
    ekleme/silme) yalnızca pm/pmdir; değer girme herkese (d.board write). */
 let CUSTOM_FIELDS_LIVE={},CUSTOM_FIELDS_DEMO={};
@@ -3808,6 +3856,57 @@ function screenView(){
     <div class="m" style="color:var(--tm);margin-top:9px">${s.url}</div></div>`).join("")}</div>
    <p style="font-size:11.5px;color:var(--tm);margin-top:13px">Kurumsal uygulamalar iframe içine alınmaya izin vermediği için yeni sekmede açılır.</p>`;
 
+ if(v==="w.pages"){
+  if(LIVE_BACKEND&&WIKI_SPACES_LIVE===null)loadWikiSpacesLive();
+  const spaces=LIVE_BACKEND?(WIKI_SPACES_LIVE||[]):WIKI_SPACES_DEMO;
+  const spaceKey=S.wikiSpace||"GENEL";
+  if(LIVE_BACKEND&&WIKI_PAGES_LIVE[spaceKey]===undefined)loadWikiPagesLive(spaceKey);
+  const pages=LIVE_BACKEND?(WIKI_PAGES_LIVE[spaceKey]||[]):(WIKI_PAGES_DEMO[spaceKey]||[]);
+  const canWriteWiki=["pmdir","pm"].includes(S.me.r);
+  const currentPageId=S.wikiPageId;
+  const currentPage=currentPageId?(LIVE_BACKEND?WIKI_PAGE_LIVE[currentPageId]:WIKI_PAGE_DEMO[currentPageId]):null;
+  if(LIVE_BACKEND&&currentPageId&&WIKI_PAGE_LIVE[currentPageId]===undefined)loadWikiPageLive(currentPageId);
+  const projectSpaces=projsAlpha().filter(pr=>!spaces.some(sp=>sp.space_key===pr.k));
+  const spaceSelector=`<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+   <select id="fWikiSpace" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+    ${spaces.map(sp=>`<option value="${esc(sp.space_key)}" ${spaceKey===sp.space_key?"selected":""}>${esc(sp.name)}</option>`).join("")}</select>
+   ${cw("d.board")&&projectSpaces.length?`<select id="fWikiEnsureProject" style="padding:7px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+     <option value="">+ Proje alanı ekle…</option>
+     ${projectSpaces.map(pr=>`<option value="${esc(pr.k)}">${esc(pr.k)} — ${esc(pr.n)}</option>`).join("")}</select>
+    <button class="b s" data-a="wikiEnsureProjectSpace">Ekle</button>`:""}</div>`;
+  const pageTree=(parentId)=>pages.filter(p=>(p.parent_id||null)===(parentId||null)).map(p=>
+    `<div style="padding:5px 0 5px ${parentId?"16px":"0"}">
+      <span data-a="wikiOpenPage:${p.id}" style="cursor:pointer;font-size:12.5px;${currentPageId===p.id?"font-weight:600;color:var(--ta)":""}">${esc(p.title)}</span>
+      ${pageTree(p.id)}</div>`).join("");
+  const sidebar=`<div class="card" style="min-width:220px">
+    <div class="lbl" style="margin-bottom:6px">SAYFALAR</div>
+    ${pageTree(null)||`<p class="m" style="color:var(--tm)">Henüz sayfa yok.</p>`}
+    ${canWriteWiki?`<button class="b s" style="margin-top:10px;width:100%" data-a="wikiNewPage">+ Yeni sayfa</button>`:""}</div>`;
+  let mainPanel;
+  if(S.wikiEditing&&currentPage){
+   mainPanel=`<div class="card">
+     <input id="fWikiTitle" value="${esc(currentPage.title)}" placeholder="Sayfa başlığı" style="font-size:14px;font-weight:600;margin-bottom:8px">
+     <textarea id="fWikiContent" style="min-height:320px;font-family:monospace;font-size:12.5px">${esc(currentPage.content||"")}</textarea>
+     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+      <button class="b s" data-a="wikiEditCancel">Vazgeç</button>
+      <button class="b p" data-a="wikiSavePage:${currentPage.id}">Kaydet</button></div></div>`;
+  }else if(currentPage){
+   mainPanel=`<div class="card">
+     <div style="display:flex;align-items:center;gap:9px">
+      <span style="font-size:16px;font-weight:600;flex:1">${esc(currentPage.title)}</span>
+      ${canWriteWiki?`<button class="b s" data-a="wikiEditStart">Düzenle</button>
+       <button class="b s" data-a="wikiVersionsOpen:${currentPage.id}">Geçmiş</button>
+       <button class="b s d" data-a="wikiDeletePage:${currentPage.id}">Sil</button>`:""}</div>
+     <p class="m" style="color:var(--tm);margin-top:4px">Son güncelleyen: ${esc(currentPage.updated_by||"")} · ${esc(String(currentPage.updated_at||"").slice(0,16).replace("T"," "))}</p>
+     <div style="margin-top:12px;font-size:13px;line-height:1.5">${renderWikiMarkdown(currentPage.content)}</div></div>`;
+  }else{
+   mainPanel=`<div class="card"><p class="m" style="color:var(--tm)">Görüntülemek için soldan bir sayfa seçin${canWriteWiki?", ya da yeni bir sayfa oluşturun.":"."}</p></div>`;
+  }
+  return head("Wiki",(spaces.find(s=>s.space_key===spaceKey)||{}).name||spaceKey,spaceSelector)+
+   `<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:220px">${sidebar}</div>
+    <div style="flex:2.5;min-width:320px">${mainPanel}</div></div>`;}
+
  /* ---- admin ---- */
  if(v==="m.ann")return head("Duyuru yönetimi","Yasal → Teftiş onayı, Genel → yönetici onayı",
    cw("a.new")?`<button class="b p" data-a="annNew">Duyuru gir</button>`:"")+
@@ -5133,6 +5232,27 @@ function dialogView(){
     <button class="b s" data-a="releaseNotesCopy">Copy</button>
     <button class="b s" data-a="releaseNotesDownload:${d.pi}:${encodeURIComponent(d.versionName)}">Download .md</button>
     <button class="b p" data-a="dlgClose">Close</button></div>`);}
+ if(d.type==="wikiNewPage"){
+  return wrap(`<div style="font-size:15px">Yeni sayfa</div>
+   <input id="fWikiNewTitle" placeholder="Sayfa başlığı…" style="margin-top:10px" autofocus>
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Vazgeç</button>
+    <button class="b p" data-a="wikiNewPageCreate">Oluştur</button></div>`);}
+ if(d.type==="wikiDeleteConfirm"){
+  return wrap(`<div style="font-size:15px">Sayfayı sil</div>
+   <p class="m" style="color:var(--tm);margin-top:8px">Bu sayfa ve tüm versiyon geçmişi silinecektir. Emin misiniz?</p>
+   <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:15px">
+    <button class="b" data-a="dlgClose">Hayır</button>
+    <button class="b p d" data-a="wikiDeletePageConfirmed:${d.id}">Evet, sil</button></div>`);}
+ if(d.type==="wikiVersions"){
+  const items=WIKI_VERSIONS_LIVE[d.id]||[];
+  return wrap(`<div style="font-size:15px">Versiyon geçmişi</div>
+   <div style="max-height:320px;overflow:auto;margin-top:10px">
+    ${items.length?items.map(v=>`<div class="card" style="margin-bottom:6px;padding:9px 12px">
+      <div style="font-size:12.5px">${esc(v.title)}</div>
+      <div class="m" style="color:var(--tm)">${esc(v.edited_by)} · ${esc(String(v.edited_at).slice(0,16).replace("T"," "))}</div></div>`).join("")
+     :`<p class="m" style="color:var(--tm)">Bu sayfada henüz eski bir versiyon yok.</p>`}</div>
+   <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="b" data-a="dlgClose">Kapat</button></div>`);}
  if(d.type==="todoDeleteConfirm"){
   return wrap(`<div style="font-size:15px">Kaydı sil</div>
    <p class="m" style="color:var(--tm);margin-top:8px">Bu kayıt silinecektir. Emin misiniz?</p>
@@ -5718,6 +5838,8 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="k")clickIf('[data-a="scr:d.backlog"]');
   return;}});
 app.addEventListener("change",async e=>{
+ if(e.target.id==="fWikiSpace"){
+  S.wikiSpace=e.target.value;S.wikiPageId=null;S.wikiEditing=false;render();return;}
  if(e.target.id==="fCustomFieldType"){
   S.customFieldType=e.target.value;render();return;}
  if(e.target.id==="todoNewCategory"){
@@ -6667,6 +6789,70 @@ app.addEventListener("click",async ev=>{
   ISSUE_CUSTOM_VALUES_DEMO[k2]=ISSUE_CUSTOM_VALUES_DEMO[k2]||{};
   ISSUE_CUSTOM_VALUES_DEMO[k2][fieldId]=value||null;
   toast("Kaydedildi.");render();return;}
+ if(k==="wikiEnsureProjectSpace"){
+  const projectK=(document.getElementById("fWikiEnsureProject")||{}).value;
+  if(!projectK){toast("Bir proje seçin.",1);return;}
+  if(LIVE_BACKEND){await ensureProjectWikiSpaceLive(projectK);S.wikiSpace=projectK;render();return;}
+  if(!WIKI_SPACES_DEMO.some(s=>s.space_key===projectK)){
+   const pr=PROJ.find(p=>p.k===projectK);
+   WIKI_SPACES_DEMO.push({id:nextWikiSpaceId++,space_key:projectK,name:(pr?pr.n:projectK)+" Wiki",project_k:projectK});
+   WIKI_PAGES_DEMO[projectK]=[];}
+  S.wikiSpace=projectK;render();return;}
+ if(k==="wikiOpenPage"){S.wikiPageId=+p[1];S.wikiEditing=false;render();return;}
+ if(k==="wikiNewPage"){
+  S.dlg={type:"wikiNewPage"};render();return;}
+ if(k==="wikiNewPageCreate"){
+  const spaceKey=S.wikiSpace||"GENEL";
+  const title=(document.getElementById("fWikiNewTitle")||{}).value||"";
+  if(!title.trim()){toast("Başlık zorunlu.",1);return;}
+  if(LIVE_BACKEND){
+   try{const res=await api("POST","/api/wiki/spaces/"+encodeURIComponent(spaceKey)+"/pages",{title,content:""});
+    WIKI_PAGES_LIVE[spaceKey]=[...(WIKI_PAGES_LIVE[spaceKey]||[]),res.item];
+    WIKI_PAGE_LIVE[res.item.id]=res.item;
+    S.wikiPageId=res.item.id;S.wikiEditing=true;S.dlg=null;toast("Sayfa oluşturuldu.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  const id=nextWikiPageId++;
+  const page={id,space_id:0,parent_id:null,title:title.trim(),content:"",created_by:S.me.u,updated_by:S.me.u,updated_at:now()};
+  WIKI_PAGES_DEMO[spaceKey]=[...(WIKI_PAGES_DEMO[spaceKey]||[]),page];
+  WIKI_PAGE_DEMO[id]=page;
+  S.wikiPageId=id;S.wikiEditing=true;S.dlg=null;toast("Sayfa oluşturuldu.");render();return;}
+ if(k==="wikiEditStart"){S.wikiEditing=true;render();return;}
+ if(k==="wikiEditCancel"){S.wikiEditing=false;render();return;}
+ if(k==="wikiSavePage"){const id=+p[1];
+  const title=(document.getElementById("fWikiTitle")||{}).value||"";
+  const content=(document.getElementById("fWikiContent")||{}).value||"";
+  if(!title.trim()){toast("Başlık boş olamaz.",1);return;}
+  if(LIVE_BACKEND){
+   try{const res=await api("PUT","/api/wiki/pages/"+id,{title,content});
+    WIKI_PAGE_LIVE[id]=res.item;
+    const spaceKey=S.wikiSpace||"GENEL";
+    WIKI_PAGES_LIVE[spaceKey]=(WIKI_PAGES_LIVE[spaceKey]||[]).map(pg=>pg.id===id?{...pg,title:res.item.title}:pg);
+    S.wikiEditing=false;toast("Kaydedildi.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  const page=WIKI_PAGE_DEMO[id];
+  if(page){page.title=title.trim();page.content=content;page.updated_by=S.me.u;page.updated_at=now();}
+  const spaceKey=S.wikiSpace||"GENEL";
+  WIKI_PAGES_DEMO[spaceKey]=(WIKI_PAGES_DEMO[spaceKey]||[]).map(pg=>pg.id===id?{...pg,title:page.title}:pg);
+  S.wikiEditing=false;toast("Kaydedildi.");render();return;}
+ if(k==="wikiDeletePage"){const id=+p[1];
+  S.dlg={type:"wikiDeleteConfirm",id};render();return;}
+ if(k==="wikiDeletePageConfirmed"){const id=+p[1];
+  const spaceKey=S.wikiSpace||"GENEL";
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/wiki/pages/"+id);
+    WIKI_PAGES_LIVE[spaceKey]=(WIKI_PAGES_LIVE[spaceKey]||[]).filter(pg=>pg.id!==id);
+    delete WIKI_PAGE_LIVE[id];
+    S.wikiPageId=null;S.dlg=null;toast("Sayfa silindi.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  WIKI_PAGES_DEMO[spaceKey]=(WIKI_PAGES_DEMO[spaceKey]||[]).filter(pg=>pg.id!==id);
+  delete WIKI_PAGE_DEMO[id];
+  S.wikiPageId=null;S.dlg=null;toast("Sayfa silindi.");render();return;}
+ if(k==="wikiVersionsOpen"){const id=+p[1];
+  if(LIVE_BACKEND)loadWikiVersionsLive(id);
+  S.dlg={type:"wikiVersions",id};render();return;}
  if(k==="customFieldAdd"){const pi=+p[1],pr=PROJ[pi];
   if(!["pmdir","pm"].includes(S.me.r)){toast("Özel alan tanımlamayı yalnızca Proje Yöneticisi/Direktörü yapabilir.",1);return;}
   const fieldName=(document.getElementById("fCustomFieldName")||{}).value||"";

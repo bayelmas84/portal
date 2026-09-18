@@ -274,3 +274,44 @@ test("özel alanlar (custom fields): tanımlama (pmdir), issue panelinde göster
   assert.ok(app.innerHTML.includes("Test Değeri 123"), "kaydedilen değer inputta kalıcı değil");
 });
 
+test("wiki: sayfa oluşturma, markdown render, düzenleme, versiyon geçmişi, silme onayı", async () => {
+  const { window, doc, app } = await openDemoApp();
+  // Wiki sayfalarını yalnızca pm/pmdir düzenleyebilir — Bayram Elmas (pmdir).
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  assert.ok(bayramBtn, "pmdir demo kullanıcısı bulunamadı");
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:wiki");
+  await click(app, window, "scr:w.pages", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Genel Bilgi Tabanı"), "Genel wiki space'i görünmüyor");
+
+  await click(app, window, "wikiNewPage", { wait: 300 });
+  setVal(doc, "fWikiNewTitle", "Frontend Test Sayfası");
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Frontend Test Sayfası"), "yeni sayfa sidebar'da görünmüyor");
+  assert.ok(doc.getElementById("fWikiContent"), "sayfa oluşturulunca düzenleme moduna geçilmedi");
+
+  setVal(doc, "fWikiContent", "# Başlık\nBu **kalın** metin içerir.\n\n- Madde 1\n- Madde 2");
+  await clickPrefix(app, window, "wikiSavePage:", { wait: 300 });
+  assert.ok(app.innerHTML.includes("<h2"), "markdown başlığı render edilmedi");
+  assert.ok(app.innerHTML.includes("<b>kalın</b>"), "markdown kalın metni render edilmedi");
+  assert.ok(app.innerHTML.includes("<li>Madde 1</li>"), "markdown liste öğesi render edilmedi");
+
+  await click(app, window, "wikiEditStart", { wait: 300 });
+  setVal(doc, "fWikiContent", "Güncellenmiş içerik");
+  await clickPrefix(app, window, "wikiSavePage:", { wait: 300 });
+  await clickPrefix(app, window, "wikiVersionsOpen:", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Versiyon geçmişi"), "versiyon geçmişi diyaloğu açılmadı");
+  await click(app, window, "dlgClose", { wait: 300 });
+
+  // Silme onayı: Hayır -> sayfa korunur; Evet -> sayfa silinir.
+  await clickPrefix(app, window, "wikiDeletePage:", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Sayfayı sil"), "silme onay diyaloğu açılmadı");
+  await click(app, window, "dlgClose", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Frontend Test Sayfası"), "'Hayır' sonrası sayfa yanlışlıkla silindi");
+
+  await clickPrefix(app, window, "wikiDeletePage:", { wait: 300 });
+  await clickPrefix(app, window, "wikiDeletePageConfirmed:", { wait: 300 });
+  assert.ok(!app.innerHTML.includes("Frontend Test Sayfası"), "'Evet' sonrası sayfa hâlâ görünüyor");
+});

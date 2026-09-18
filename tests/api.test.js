@@ -1272,6 +1272,54 @@ test("Özel alanlar: tanımlama (pm), yetki kontrolü (dev reddedilir), değer a
   await request(app).delete(`/api/projects/TRADE/custom-fields/${selectFieldId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
 });
 
+test("Wiki: Genel space hazır gelir, proje space'i oluşturma, sayfa CRUD, versiyon geçmişi, yetki kontrolü", async () => {
+  const pm = await login("tolga.firat"); // rol: pm
+  const dev = await login("mert.balkan"); // rol: dev
+
+  const spaces = await request(app).get("/api/wiki/spaces").set("Cookie", pm.cookie);
+  assert.equal(spaces.status, 200);
+  assert.ok(spaces.body.items.some((s) => s.space_key === "GENEL"), "Genel space migration ile hazır gelmiyor");
+
+  // dev sayfa oluşturamaz.
+  const devTry = await request(app).post("/api/wiki/spaces/GENEL/pages").set("Cookie", dev.cookie).set("X-CSRF-Token", dev.csrf)
+    .send({ title: "Yetkisiz Sayfa", content: "x" });
+  assert.equal(devTry.status, 403);
+
+  // pm Genel space'e sayfa ekler.
+  const created = await request(app).post("/api/wiki/spaces/GENEL/pages").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ title: "Test Sayfası", content: "İlk içerik" });
+  assert.equal(created.status, 201);
+  const pageId = created.body.item.id;
+
+  // dev okuyabilir (Genel space herkese açık okuma).
+  const devRead = await request(app).get(`/api/wiki/pages/${pageId}`).set("Cookie", dev.cookie);
+  assert.equal(devRead.status, 200);
+  assert.equal(devRead.body.item.content, "İlk içerik");
+
+  // pm günceller — eski hal versiyon geçmişine düşmeli.
+  const updated = await request(app).put(`/api/wiki/pages/${pageId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ content: "Güncellenmiş içerik" });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.item.content, "Güncellenmiş içerik");
+
+  const versions = await request(app).get(`/api/wiki/pages/${pageId}/versions`).set("Cookie", pm.cookie);
+  assert.equal(versions.status, 200);
+  assert.equal(versions.body.items.length, 1); // sadece eski hal kaydedildi
+
+  // Proje space'i (TRADE) idempotent şekilde oluşturulur.
+  const ensured1 = await request(app).post("/api/wiki/spaces/ensure-project/TRADE").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(ensured1.status, 200);
+  const ensured2 = await request(app).post("/api/wiki/spaces/ensure-project/TRADE").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(ensured2.status, 200);
+  assert.equal(ensured1.body.item.id, ensured2.body.item.id); // aynı space, tekrar oluşturulmadı
+
+  // dev sayfayı silemez, pm silebilir.
+  const devDelete = await request(app).delete(`/api/wiki/pages/${pageId}`).set("Cookie", dev.cookie).set("X-CSRF-Token", dev.csrf);
+  assert.equal(devDelete.status, 403);
+  const pmDelete = await request(app).delete(`/api/wiki/pages/${pageId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(pmDelete.status, 200);
+});
+
 test.after(async () => {
   await pool.end();
 });
