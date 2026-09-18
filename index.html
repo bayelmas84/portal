@@ -3947,27 +3947,33 @@ function screenView(){
       <button class="b p" data-a="wikiSavePage:${currentPage.id}">Kaydet</button></div></div>`;
   }else if(currentPage){
    const chain=ancestorsOf(currentPage.id);
-   const breadcrumb=`<div class="m" style="color:var(--tm);margin-bottom:10px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+   const breadcrumb=`<span style="color:var(--tm)">
      <span data-a="wikiOpenPage:" style="cursor:pointer">${esc((currentSpace||{}).name||spaceKey)}</span>
-     ${chain.map((pg,i)=>i<chain.length-1?` / <span data-a="wikiOpenPage:${pg.id}" style="cursor:pointer">${esc(pg.title)}</span>`:` / <span style="color:var(--t1)">${esc(pg.title)}</span>`).join("")}</div>`;
-   // Başlık satırı: Confluence'taki gibi büyük başlık + sağda İKON satırı
-   // (kalem/yorum/yetkilendirme/geçmiş) — metinli butonlar değil.
-   const toolbar=canWriteWiki?`<div style="display:flex;align-items:center;gap:2px">
-     ${iconBtn("wikiNewPage:"+currentPage.id,"plus","Bu sayfanın altına yeni bir alt sayfa ekle")}
-     ${iconBtn("wikiEditStart","writing","Sayfayı düzenle")}
-     ${iconBtn("wikiRestrictOpen:"+currentPage.id,"lock","Sayfa yetkilendirmesi")}
-     ${iconBtn("wikiVersionsOpen:"+currentPage.id,"clock","Versiyon geçmişi")}
-     ${iconBtn("wikiDeletePage:"+currentPage.id,"scissors","Sayfayı sil","color:var(--er-fg)")}</div>`:"";
+     ${chain.map((pg,i)=>i<chain.length-1?` / <span data-a="wikiOpenPage:${pg.id}" style="cursor:pointer">${esc(pg.title)}</span>`:` / <span style="color:var(--t1)">${esc(pg.title)}</span>`).join("")}</span>`;
+   // Confluence'ta işlem butonları (Edit / Save for later / Watching /
+   // Share) BAŞLIKLA AYNI satırda DEĞİL — breadcrumb ile aynı üst
+   // çubukta, metin etiketli olarak durur; başlık kendi satırında YALNIZ
+   // kalır. Aynı yerleşim burada da uygulanıyor (ikon-only değil, ikon+
+   // metin çiftleri — gerçek Confluence görselindeki gibi).
+   const actionLink=(action,icon,label,extraStyle)=>`<span data-a="${action}" class="icon-btn"
+     style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border-radius:6px;font-size:11.5px;${extraStyle||""}">
+     ${ic(icon,13,"color:currentColor")}${esc(label)}</span>`;
+   const toolbar=canWriteWiki?`<div style="display:flex;align-items:center;gap:2px;flex-wrap:wrap">
+     ${actionLink("wikiEditStart","writing","Düzenle")}
+     ${actionLink("wikiNewPage:"+currentPage.id,"plus","Alt sayfa ekle")}
+     ${actionLink("wikiRestrictOpen:"+currentPage.id,"lock","Yetkilendirme")}
+     ${actionLink("wikiVersionsOpen:"+currentPage.id,"clock","Geçmiş")}
+     ${actionLink("wikiDeletePage:"+currentPage.id,"scissors","Sil","color:var(--er-fg)")}</div>`:"";
    const ownerName=(USERS.find(u=>u.u===currentPage.created_by)||{}).n||currentPage.created_by||"—";
    const updaterName=(USERS.find(u=>u.u===currentPage.updated_by)||{}).n||currentPage.updated_by||"—";
    const avatarSpan=nm=>`<span style="width:20px;height:20px;border-radius:50%;background:var(--ba);color:var(--ta);
      display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;vertical-align:middle">${esc(initials(nm))}</span>`;
    mainPanel=`<div class="card">
-     ${breadcrumb}
-     <div style="display:flex;align-items:flex-start;gap:9px">
-      <span style="font-size:20px;font-weight:700;flex:1;line-height:1.3">${esc(currentPage.title)}</span>
+     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid var(--bd)">
+      <div class="m" style="font-size:11.5px">${breadcrumb}</div>
       ${toolbar}</div>
-     <div style="display:flex;align-items:center;gap:6px;margin-top:8px" class="m">
+     <div style="font-size:22px;font-weight:700;line-height:1.3">${esc(currentPage.title)}</div>
+     <div style="display:flex;align-items:center;gap:6px;margin-top:6px" class="m">
       ${avatarSpan(ownerName)}<span style="color:var(--tm)">Sahibi: <b style="color:var(--t2)">${esc(ownerName)}</b></span>
       <span style="color:var(--bd)">·</span>
       <span style="color:var(--tm)">Son güncelleyen: <b style="color:var(--t2)">${esc(updaterName)}</b> · ${esc(String(currentPage.updated_at||"").slice(0,16).replace("T"," "))}</span></div>
