@@ -60,6 +60,12 @@ function setVal(doc, id, value) {
   const el = doc.getElementById(id);
   if (!el) throw new Error("Element bulunamadı: #" + id);
   el.value = value;
+  // "input" event'i tetiklenmezse, uygulamanın genel oninput tabanlı
+  // state-bağlama mekanizması (S.f[key]=e.target.value) hiç çalışmaz —
+  // bir sonraki render()'da DOM yeniden kurulunca girilen değer sessizce
+  // kaybolur. Gerçek bir tarayıcıda kullanıcı yazarken bu event zaten
+  // tetiklenir; burada manuel olarak tetiklemek gerekiyor.
+  el.dispatchEvent(new el.ownerDocument.defaultView.Event("input", { bubbles: true }));
 }
 
 test("demo mod: giriş ekranı yükleniyor ve demo kullanıcıyla oturum açılabiliyor", async () => {
@@ -438,4 +444,82 @@ test("wiki markdown: gerçek tablo render edilir ve proje şablonları galeride 
   const mainCard = [...app.querySelectorAll(".card")].find((c) => c.innerHTML.includes("Sahibi:"));
   assert.ok(mainCard.innerHTML.includes("<table"), "markdown tablosu gerçek <table> olarak render edilmedi");
   assert.ok(mainCard.innerHTML.includes("<th"), "tablo başlık hücreleri (<th>) render edilmedi");
+});
+test("wiki toplantı notu formu: proje seçilince otomatik ekip ekleme, manuel katılımcı, gündem, tarih/katılımcı zorunluluğu", async () => {
+  const { window, doc, app } = await openDemoApp();
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  assert.ok(bayramBtn, "pmdir demo kullanıcısı bulunamadı");
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:wiki");
+  await click(app, window, "scr:w.pages", { wait: 300 });
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+
+  // "Toplantı Notu" seçilince düz metin editörü DEĞİL, yapılandırılmış
+  // bir form (Proje Yönetimi'ndeki toplantı formunun aynısı) açılmalı.
+  const meetingCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.trim() === "Toplantı Notu");
+  assert.ok(meetingCard, "'Toplantı Notu' şablon kartı bulunamadı");
+  meetingCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  setVal(doc, "fWikiNewTitle", "Ekip Toplantısı Test");
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Toplantı tarihi ve saati"), "yapılandırılmış toplantı formu açılmadı");
+  assert.ok(app.innerHTML.includes("Proje (opsiyonel)"), "proje seçimi opsiyonel olarak işaretlenmemiş");
+
+  // Tarih/katılımcı olmadan gönderim reddedilmeli.
+  await click(app, window, "wikiMeetingSave", { wait: 1200 });
+  assert.ok(app.innerHTML.includes("Tarih ve en az bir katılımcı zorunludur"), "zorunlu alan validasyonu çalışmıyor");
+
+  // Proje seçilince o projenin AKTİF ekip üyeleri otomatik katılımcı olmalı.
+  const projSel = doc.getElementById("fWikiMtgProject");
+  projSel.value = "TRADE";
+  projSel.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await sleep(300);
+  assert.ok(app.innerHTML.includes("Tolga Fırat"), "proje seçilince ekip otomatik eklenmedi");
+
+  setVal(doc, "fWikiMtgDate", "2026-09-20");
+
+  // Gündem maddesi ekleme.
+  setVal(doc, "fWikiMtgNewItem", "İlk madde");
+  const assigneeSel = doc.getElementById("fWikiMtgNewItemAssignee");
+  assigneeSel.value = "Tolga Fırat";
+  assigneeSel.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await click(app, window, "wikiMtgAddItem", { wait: 300 });
+  assert.ok(app.innerHTML.includes("İlk madde"), "gündem maddesi eklenmedi");
+
+  await click(app, window, "wikiMeetingSave", { wait: 1200 });
+  assert.ok(app.innerHTML.includes("backlog'una Task olarak düşürüldü") || app.innerHTML.includes("projesine düşürülmüş"),
+    "kayıt sonrası beklenen bildirim görünmedi");
+  assert.ok(app.innerHTML.includes("Ekip Toplantısı Test") && app.innerHTML.includes("İlk madde"),
+    "oluşan wiki sayfasında toplantı bilgileri görünmüyor");
+});
+
+test("wiki toplantı notu formu: proje seçilmezse manuel katılımcı eklenir ve 'yalnızca burada kaldı' bildirimi çıkar", async () => {
+  const { window, doc, app } = await openDemoApp();
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:wiki");
+  await click(app, window, "scr:w.pages", { wait: 300 });
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+  const meetingCard = [...app.querySelectorAll("[data-a^='wikiTemplatePick:']")].find((c) => c.textContent.trim() === "Toplantı Notu");
+  meetingCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  setVal(doc, "fWikiNewTitle", "Standalone Toplantı");
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+
+  // Proje SEÇMEDEN, manuel katılımcı ekle.
+  const partSel = doc.getElementById("fWikiMtgPartSel");
+  const bayramOpt = [...partSel.options].find((o) => o.value.includes("Bayram"));
+  assert.ok(bayramOpt, "manuel katılımcı seçeneği bulunamadı");
+  partSel.value = bayramOpt.value;
+  partSel.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await sleep(300);
+  assert.ok(app.innerHTML.includes(bayramOpt.value), "manuel katılımcı eklenmedi");
+
+  setVal(doc, "fWikiMtgDate", "2026-09-20");
+  await click(app, window, "wikiMeetingSave", { wait: 1200 });
+  assert.ok(app.innerHTML.includes("yalnızca burada kaldı"), "proje seçilmeyince doğru bildirim gösterilmedi");
 });
