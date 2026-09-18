@@ -286,7 +286,8 @@ test("wiki: sayfa oluşturma, markdown render, düzenleme, versiyon geçmişi, s
   await click(app, window, "scr:w.pages", { wait: 300 });
   assert.ok(app.innerHTML.includes("Genel Bilgi Tabanı"), "Genel wiki space'i görünmüyor");
 
-  await click(app, window, "wikiNewPage", { wait: 300 });
+  await clickPrefix(app, window, "wikiNewPage:", { wait: 300 });
+  assert.ok(app.innerHTML.includes("üst düzey"), "yeni sayfa diyaloğu hedef space/konumu belirtmiyor");
   setVal(doc, "fWikiNewTitle", "Frontend Test Sayfası");
   await click(app, window, "wikiNewPageCreate", { wait: 300 });
   assert.ok(app.innerHTML.includes("Frontend Test Sayfası"), "yeni sayfa sidebar'da görünmüyor");
@@ -297,6 +298,27 @@ test("wiki: sayfa oluşturma, markdown render, düzenleme, versiyon geçmişi, s
   assert.ok(app.innerHTML.includes("<h2"), "markdown başlığı render edilmedi");
   assert.ok(app.innerHTML.includes("<b>kalın</b>"), "markdown kalın metni render edilmedi");
   assert.ok(app.innerHTML.includes("<li>Madde 1</li>"), "markdown liste öğesi render edilmedi");
+
+  // Alt sayfa oluşturma: mevcut sayfa görüntülenirken "+ Alt sayfa" butonu
+  // ile açılan diyalog, hedef üst sayfayı açıkça belirtmeli.
+  const childBtn = [...app.querySelectorAll("[data-a^='wikiNewPage:']")].find((e) => e.dataset.a !== "wikiNewPage:");
+  assert.ok(childBtn, "'+ Alt sayfa' butonu bulunamadı");
+  childBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  assert.ok(app.innerHTML.includes("ALTINA") && app.innerHTML.includes("Frontend Test Sayfası"),
+    "alt sayfa diyaloğu hedef üst sayfayı belirtmiyor");
+  setVal(doc, "fWikiNewTitle", "Alt Sayfa Testi");
+  await click(app, window, "wikiNewPageCreate", { wait: 300 });
+  await click(app, window, "wikiEditCancel", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Alt Sayfa Testi"), "alt sayfa sidebar'da (hiyerarşi içinde) görünmüyor");
+
+  // Breadcrumb: alt sayfaya gidince üst sayfanın adı yol olarak görünmeli.
+  const childLink = [...app.querySelectorAll("[data-a^='wikiOpenPage:']")].find((e) => e.textContent.includes("Alt Sayfa Testi"));
+  assert.ok(childLink, "alt sayfaya tıklanabilir link yok");
+  childLink.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+  assert.ok(app.innerHTML.includes("›") && app.innerHTML.includes("Frontend Test Sayfası"),
+    "breadcrumb'da üst sayfa görünmüyor");
 
   await click(app, window, "wikiEditStart", { wait: 300 });
   setVal(doc, "fWikiContent", "Güncellenmiş içerik");
@@ -309,9 +331,11 @@ test("wiki: sayfa oluşturma, markdown render, düzenleme, versiyon geçmişi, s
   await clickPrefix(app, window, "wikiDeletePage:", { wait: 300 });
   assert.ok(app.innerHTML.includes("Sayfayı sil"), "silme onay diyaloğu açılmadı");
   await click(app, window, "dlgClose", { wait: 300 });
-  assert.ok(app.innerHTML.includes("Frontend Test Sayfası"), "'Hayır' sonrası sayfa yanlışlıkla silindi");
+  assert.ok(app.innerHTML.includes("Güncellenmiş içerik") || app.innerHTML.includes("Alt Sayfa Testi"),
+    "'Hayır' sonrası sayfa yanlışlıkla silindi");
 
   await clickPrefix(app, window, "wikiDeletePage:", { wait: 300 });
   await clickPrefix(app, window, "wikiDeletePageConfirmed:", { wait: 300 });
-  assert.ok(!app.innerHTML.includes("Frontend Test Sayfası"), "'Evet' sonrası sayfa hâlâ görünüyor");
+  assert.ok(!app.innerHTML.includes("Alt Sayfa Testi"), "'Evet' sonrası sayfa hâlâ görünüyor");
+  assert.ok(app.innerHTML.includes("Frontend Test Sayfası"), "üst sayfa yanlışlıkla silinmemeli, sadece alt sayfa silinmeliydi");
 });
