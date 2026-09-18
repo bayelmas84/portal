@@ -732,6 +732,71 @@ router.post("/:k/issues", requireWrite("d.board"), async (req, res, next) => {
   }
 });
 
+// Toplu durum değiştirme: All Issues ekranından seçilen birden fazla konunun
+// durumunu tek istekte değiştirir. Aynı iş kuralları tekli PUT ile TUTARLI
+// tutulur (workflow geçiş kısıtlamaları, done kapanış kuralları), ama
+// isteğe bağlı olarak KISMİ BAŞARI mümkündür — bir konu kural ihlali
+// yüzünden reddedilirse diğerleri yine de güncellenir; sonuçta hangi
+// konuların başarılı/başarısız olduğu ayrı listeler halinde döner.
+// DİKKAT: Bu route, aşağıdaki tekli "/:k/issues/:issueKey" PUT route'undan
+// ÖNCE tanımlanmalı — aksi halde Express "bulk-status" değerini :issueKey
+// olarak yorumlar (bkz. notifications.js'deki aynı sınıf hata, /prefs notu).
+router.put("/:k/issues/bulk-status", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const { issueKeys, status } = req.body || {};
+    if (!Array.isArray(issueKeys) || !issueKeys.length) return res.status(400).json({ error: "issueKeys boş olamaz." });
+    if (!["backlog", "todo", "prog", "review", "test", "done"].includes(status)) {
+      return res.status(400).json({ error: "Geçersiz durum." });
+    }
+    const updated = [], failed = [];
+    for (const issueKey of issueKeys) {
+      try {
+        const { rows } = await query("SELECT * FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, issueKey]);
+        const issue = rows[0];
+        if (!issue) { failed.push({ issueKey, error: "Konu bulunamadı." }); continue; }
+        if (status === issue.status) { updated.push(issueKey); continue; } // zaten bu durumda, no-op başarı sayılır
+
+        const wf = await query(
+          "SELECT allowed_roles, enabled FROM project_workflow_transitions WHERE project_k=$1 AND from_status=$2 AND to_status=$3",
+          [req.params.k, issue.status, status]
+        );
+        if (wf.rowCount) {
+          const { allowed_roles: allowedRoles, enabled } = wf.rows[0];
+          const isOverride = req.user.role === "pmdir" || req.user.role === "admin";
+          if (!enabled && !isOverride) { failed.push({ issueKey, error: `${issue.status} -> ${status} geçişi devre dışı.` }); continue; }
+          if (allowedRoles && allowedRoles.length && !allowedRoles.includes(req.user.role) && !isOverride) {
+            failed.push({ issueKey, error: `${issue.status} -> ${status} geçiş yetkiniz yok.` }); continue;
+          }
+        }
+        if (status === "done" && issue.status !== "done") {
+          const openChildren = await query(
+            "SELECT issue_key FROM project_issues WHERE project_k=$1 AND parent_key=$2 AND status<>'done'",
+            [req.params.k, issueKey]
+          );
+          if (openChildren.rowCount) { failed.push({ issueKey, error: "Açık alt kayıtları var." }); continue; }
+          const blockers = await query(
+            `SELECT l.source_key, pi.status FROM project_issue_links l
+               JOIN project_issues pi ON pi.project_k=l.project_k AND pi.issue_key=l.source_key
+              WHERE l.project_k=$1 AND l.link_type='blocks' AND l.target_key=$2 AND pi.status<>'done'`,
+            [req.params.k, issueKey]
+          );
+          if (blockers.rowCount) { failed.push({ issueKey, error: "Bloklayan konular henüz tamamlanmadı." }); continue; }
+        }
+        await query(
+          "UPDATE project_issues SET status=$1, updated_at=now() WHERE project_k=$2 AND issue_key=$3",
+          [status, req.params.k, issueKey]
+        );
+        await logIssueHistory(query, req.user.username, req.params.k, issueKey, `Toplu güncelleme: durum ${FLOW_LABELS[issue.status] || issue.status} -> ${FLOW_LABELS[status] || status}`);
+        runAutomation(req.params.k, "status_changed", issueKey, { toValue: status }, req.user.username).catch(() => {});
+        updated.push(issueKey);
+      } catch (innerErr) {
+        failed.push({ issueKey, error: innerErr.message });
+      }
+    }
+    res.json({ updated, failed });
+  } catch (e) { next(e); }
+});
+
 router.put("/:k/issues/:issueKey", requireWrite("d.board"), async (req, res, next) => {
   try {
     const { rows } = await query("SELECT * FROM project_issues WHERE project_k=$1 AND issue_key=$2", [req.params.k, req.params.issueKey]);

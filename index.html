@@ -2550,20 +2550,30 @@ function screenView(){
   ${savedFilters.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
     ${savedFilters.map(sf=>`<span class="pl" style="cursor:pointer" data-a="savedFilterApply:${sf.id}">${esc(sf.name)}
      <span style="cursor:pointer;margin-left:4px" data-a="savedFilterDelete:${sf.id}" title="Delete">✕</span></span>`).join("")}</div>`:""}`;
+  const selected=(S.bulkSelected||[]).filter(k=>allItems.some(i=>i.key===k));
+  const allChecked=allItems.length>0&&selected.length===allItems.length;
+  const bulkBar=selected.length?`<div class="card" style="margin-bottom:10px;display:flex;gap:8px;align-items:center;background:var(--ba)">
+   <span class="m" style="font-size:12px">${selected.length} selected</span>
+   <select id="fBulkStatus" style="padding:6px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1);font-size:12px">
+    ${Object.keys(FLOW).map(s=>`<option value="${s}">${FLOW[s]}</option>`).join("")}</select>
+   <button class="b s p" data-a="bulkStatusApply:${S.proj}">Apply to selected</button>
+   <button class="b s" data-a="bulkSelectClear">Clear selection</button></div>`:"";
   return head("All Issues",p.k+" — "+p.n+" · "+allItems.length+"/"+sortedItems.length+" issues"+(LIVE_BACKEND?" · live backend":""),
    `<div style="display:flex;gap:7px;flex-wrap:wrap">${projSelectHTML(PROJ,true)}
     <button class="b s" data-a="exportCSV:allissues:${S.proj}">Export CSV</button>
     <button class="b s" data-a="exportPDF:allissues:${S.proj}">Export PDF</button></div>`)+
-  filterBar+
-  table(["Type","Epic","Key","Title","Status","Assignee","SP"],allItems.map(i=>{const par=i.parent?itemByKey(p,i.parent):null;
+  filterBar+bulkBar+
+  table(["<input type=\"checkbox\" data-a=\"bulkSelectAll:"+S.proj+"\" "+(allChecked?"checked":"")+">","Type","Epic","Key","Title","Status","Assignee","SP"],
+   allItems.map(i=>{const par=i.parent?itemByKey(p,i.parent):null;const checked=selected.includes(i.key);
    return `<tr>
+    <td><input type="checkbox" data-a="bulkSelectToggle:${esc(i.key)}" ${checked?"checked":""}></td>
     <td><span style="color:${TYC[i.ty]};font-size:11px">${i.ty}</span></td>
     <td class="m" style="color:var(--tm)">${par?esc(par.t):"—"}</td>
     <td>${issueKeyLink(S.proj,i.key)}</td><td>${esc(i.t)}</td>
     <td>${pill(FLOW[i.st],"")}</td>
     <td style="color:var(--t2)">${esc(i.as||"Unassigned")}</td>
     <td class="m">${i.pts||"—"}</td></tr>`;}).join("")||
-   `<tr><td colspan="7" style="color:var(--tm)">${hasActiveFilter?"No issues match this filter.":"This project has no issues yet."}</td></tr>`);}
+   `<tr><td colspan="8" style="color:var(--tm)">${hasActiveFilter?"No issues match this filter.":"This project has no issues yet."}</td></tr>`);}
 
  if(v==="d.gate"){
   if(LIVE_BACKEND){
@@ -4928,12 +4938,20 @@ function dialogView(){
   const annItems=canUse("a.list")?ANN.filter(a=>a.st==="yayında"&&!isAnnRead(a.id)):[];
   const trainItems=canUse("t.un")?myTrain():[];
   const issueNotifs=issueInboxOf();
+  if(LIVE_BACKEND&&TODO_ITEMS_LIVE===null)loadTodoLive(false);
+  const todoItems=LIVE_BACKEND?(TODO_ITEMS_LIVE||[]):TODO_ITEMS_DEMO;
+  const dueTodos=todoItems.filter(it=>it.due_date&&it.status!=="done"&&it.status!=="cancel"&&String(it.due_date).slice(0,10)<=today());
   const kindLabel={comment:"yeni yorum",mention:"sizden bahsedildi",assignment:"size atandı"};
   const section=(title,items,renderRow)=>items.length?`<div class="lbl" style="margin-top:12px">${title} (${items.length})</div>
     ${items.slice(0,5).map(renderRow).join("")}`:"";
-  const empty=!pendItems.length&&!annItems.length&&!trainItems.length&&!issueNotifs.length;
+  const empty=!pendItems.length&&!annItems.length&&!trainItems.length&&!issueNotifs.length&&!dueTodos.length;
   return wrap(`<div style="font-size:15px">Bildirimler</div>
    <div style="max-height:360px;overflow:auto">
+    ${section("Yaklaşan/gecikmiş notlarım",dueTodos,it=>{
+      const overdue=String(it.due_date).slice(0,10)<today();
+      return `<div class="card" style="margin:6px 0;padding:9px 12px;cursor:pointer;${overdue?"border-color:var(--er-fg)":""}" data-a="home">
+      <div style="font-size:12.5px">${esc(it.description)}</div>
+      <div class="m" style="color:${overdue?"var(--er-fg)":"var(--tm)"}">${overdue?"⚠ Gecikti":"Bugün son gün"} · Bitiş: ${esc(String(it.due_date).slice(0,10))}</div></div>`;})}
     ${section("Konu bildirimleri",issueNotifs,n=>`<div class="card" style="margin:6px 0;padding:9px 12px;cursor:pointer"
       data-a="issueNotifJump:${encodeURIComponent(n.id)}:${encodeURIComponent(n.project_k)}:${encodeURIComponent(n.issue_key)}">
       <div style="font-size:12.5px">${esc(n.actor_name||n.actor_username)} — ${esc(kindLabel[n.kind]||n.kind)}</div>
@@ -5330,7 +5348,10 @@ function railView(){const pending=inbox().length;
  const unreadAnn=canUse("a.list")?ANN.filter(a=>a.st==="yayında"&&!isAnnRead(a.id)).length:0;
  const unreadTrain=canUse("t.un")?myTrain().length:0;
  const unreadIssueNotifs=issueInboxOf().length;
- const bellTotal=pending+unreadAnn+unreadTrain+unreadIssueNotifs;
+ if(LIVE_BACKEND&&TODO_ITEMS_LIVE===null)loadTodoLive(false);
+ const todoItemsForBadge=LIVE_BACKEND?(TODO_ITEMS_LIVE||[]):TODO_ITEMS_DEMO;
+ const dueTodoCount=todoItemsForBadge.filter(it=>it.due_date&&it.status!=="done"&&it.status!=="cancel"&&String(it.due_date).slice(0,10)<=today()).length;
+ const bellTotal=pending+unreadAnn+unreadTrain+unreadIssueNotifs+dueTodoCount;
  return `<nav class="nv" aria-label="Modüller">
   <button class="rail ${S.view==="home"?"on":""}" data-a="home" title="Ana ekran" aria-label="Ana ekran">${ic("home",18)}</button>
   <button class="rail" data-a="bellOpen" title="Bildirimler" aria-label="Bildirimler">${ic("bell-ringing",18)}${bellTotal?`<span class="badge">${bellTotal}</span>`:""}</button>
@@ -6067,6 +6088,44 @@ app.addEventListener("click",async ev=>{
  if(k==="onlyMine"){S.onlyMine=!S.onlyMine;render();return;}
  if(k==="openProj"){S.proj=+p[1];S.projAll=false;S.mod="delivery";S.scr="d.board";S.dlg=null;render();return;}
  if(k==="viewAllIssues"){S.proj=+p[1];S.projAll=false;S.mod="delivery";S.scr="d.allissues";S.dlg=null;render();return;}
+ if(k==="bulkSelectToggle"){const key=p[1];
+  S.bulkSelected=S.bulkSelected||[];
+  const idx=S.bulkSelected.indexOf(key);
+  if(idx>=0)S.bulkSelected.splice(idx,1);else S.bulkSelected.push(key);
+  render();return;}
+ if(k==="bulkSelectAll"){const pi=+p[1],pr=PROJ[pi];
+  const f=S.allIssuesFilter||{};
+  const visible=pr.items.filter(i=>{
+   if(f.status&&i.st!==f.status)return false;
+   if(f.type&&i.ty!==f.type)return false;
+   if(f.priority&&i.pri!==f.priority)return false;
+   if(f.assigneeUsername){const uname=teamOf(pr.k).find(m=>m.n===i.as);
+    if((uname?(uname.username||nameToUsername(uname.n)):null)!==f.assigneeUsername)return false;}
+   if(f.q&&f.q.trim()){const q=f.q.trim().toLowerCase();
+    if(!i.key.toLowerCase().includes(q)&&!String(i.t).toLowerCase().includes(q))return false;}
+   return true;}).map(i=>i.key);
+  const allSelected=visible.length>0&&visible.every(k2=>(S.bulkSelected||[]).includes(k2));
+  S.bulkSelected=allSelected?[]:visible;
+  render();return;}
+ if(k==="bulkSelectClear"){S.bulkSelected=[];render();return;}
+ if(k==="bulkStatusApply"){const pi=+p[1],pr=PROJ[pi];
+  const status=(document.getElementById("fBulkStatus")||{}).value;
+  const issueKeys=S.bulkSelected||[];
+  if(!status||!issueKeys.length){toast("Seçim veya durum eksik.",1);return;}
+  if(LIVE_BACKEND){
+   try{
+    const res=await api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/issues/bulk-status",{issueKeys,status});
+    for(const key of res.updated){const it=pr.items.find(i=>i.key===key);if(it)it.st=status;}
+    S.bulkSelected=[];
+    if(res.failed.length)toast(res.updated.length+" güncellendi, "+res.failed.length+" başarısız (ilk hata: "+res.failed[0].error+").",1);
+    else toast(res.updated.length+" konu güncellendi.");
+    render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  let count=0;
+  for(const key of issueKeys){const it=pr.items.find(i=>i.key===key);if(it){it.st=status;count++;}}
+  S.bulkSelected=[];
+  toast(count+" konu güncellendi.");render();return;}
  if(k==="exportCSV"){const kind=p[1],pi=+p[2],pr=PROJ[pi];
   const items=kind==="backlog"?pr.items.filter(i=>i.st==="backlog"):[...pr.items].sort((a,b)=>a.key.localeCompare(b.key,undefined,{numeric:true}));
   if(!items.length){toast("Nothing to export.",1);return;}

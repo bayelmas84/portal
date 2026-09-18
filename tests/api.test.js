@@ -1188,6 +1188,41 @@ test("Kişisel to-do listesi: oluşturma, Done->Completion Date->arşiv akışı
   assert.equal(ownDelete.status, 200);
 });
 
+test("Toplu durum değiştirme: başarılı+kısmi başarı+doğrulama hataları doğru çalışır", async () => {
+  const u1 = await login("tolga.firat");
+
+  const before = await request(app).get("/api/projects/TRADE/issues").set("Cookie", u1.cookie);
+  const backlogItems = before.body.items.filter((i) => i.status === "backlog").slice(0, 2);
+  assert.ok(backlogItems.length >= 2, "test için en az 2 backlog kaydı gerekiyor");
+  const [keyA, keyB] = backlogItems.map((i) => i.issue_key);
+
+  // Başarılı senaryo: ikisi de backlog->todo.
+  const ok = await request(app).put("/api/projects/TRADE/issues/bulk-status").set("Cookie", u1.cookie).set("X-CSRF-Token", u1.csrf)
+    .send({ issueKeys: [keyA, keyB], status: "todo" });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.body.updated.sort(), [keyA, keyB].sort());
+  assert.equal(ok.body.failed.length, 0);
+  const afterOk = await request(app).get("/api/projects/TRADE/issues").set("Cookie", u1.cookie);
+  assert.equal(afterOk.body.items.find((i) => i.issue_key === keyA).status, "todo");
+  assert.equal(afterOk.body.items.find((i) => i.issue_key === keyB).status, "todo");
+
+  // Kısmi başarı: biri var biri yok.
+  const partial = await request(app).put("/api/projects/TRADE/issues/bulk-status").set("Cookie", u1.cookie).set("X-CSRF-Token", u1.csrf)
+    .send({ issueKeys: [keyA, "TRADE-DOESNOTEXIST"], status: "prog" });
+  assert.equal(partial.status, 200);
+  assert.deepEqual(partial.body.updated, [keyA]);
+  assert.equal(partial.body.failed.length, 1);
+  assert.equal(partial.body.failed[0].issueKey, "TRADE-DOESNOTEXIST");
+
+  // Geçersiz durum ve boş liste reddedilir.
+  const badStatus = await request(app).put("/api/projects/TRADE/issues/bulk-status").set("Cookie", u1.cookie).set("X-CSRF-Token", u1.csrf)
+    .send({ issueKeys: [keyA], status: "gecersiz" });
+  assert.equal(badStatus.status, 400);
+  const emptyKeys = await request(app).put("/api/projects/TRADE/issues/bulk-status").set("Cookie", u1.cookie).set("X-CSRF-Token", u1.csrf)
+    .send({ issueKeys: [], status: "todo" });
+  assert.equal(emptyKeys.status, 400);
+});
+
 test.after(async () => {
   await pool.end();
 });
