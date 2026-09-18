@@ -222,3 +222,55 @@ test("kişisel to-do: gecikmiş (overdue) kayıt kırmızı çerçeveli gösteri
   const rowStart = html.lastIndexOf('<div style="padding:8px 4px', idx);
   assert.ok(html.slice(rowStart, idx).includes("var(--er-fg)"), "gecikmiş kayıt kırmızı çerçeveli değil");
 });
+
+async function clickPrefix(app, window, prefix, { wait = 250 } = {}) {
+  const el = [...app.querySelectorAll("[data-a]")].find((e) => e.dataset.a.startsWith(prefix));
+  if (!el) throw new Error("data-a prefix bulunamadı: " + prefix);
+  el.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(wait);
+  return el;
+}
+
+test("özel alanlar (custom fields): tanımlama (pmdir), issue panelinde gösterim ve değer kaydetme", async () => {
+  const { window, doc, app } = await openDemoApp();
+  // d.projadmin ekranı yalnızca pmdir rolüne açıktır (bkz. ACCESS tablosu) —
+  // demo verideki pmdir kullanıcısı adına göre bulunur (index sabit değildir).
+  const bayramBtn = [...app.querySelectorAll("[data-a^='fill:']")].find((e) => e.textContent.includes("Bayram Elmas"));
+  assert.ok(bayramBtn, "pmdir demo kullanıcısı (Bayram Elmas) giriş ekranında bulunamadı");
+  bayramBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(700);
+
+  await click(app, window, "mod:delivery");
+  await click(app, window, "scr:d.projadmin", { wait: 300 });
+  const projSel = doc.getElementById("projSelectDropdown");
+  projSel.value = "0";
+  projSel.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await sleep(300);
+
+  assert.ok(app.innerHTML.includes("Özel Alanlar"), "Project Admin ekranında 'Özel Alanlar' kartı yok");
+
+  setVal(doc, "fCustomFieldName", "Frontend Test Alanı");
+  await clickPrefix(app, window, "customFieldAdd:", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Frontend Test Alanı"), "tanımlanan alan Project Admin listesinde görünmüyor");
+
+  // Backlog'a git, bir issue aç, alanın orada da göründüğünü ve değer
+  // girilip kaydedilebildiğini doğrula.
+  await click(app, window, "scr:d.backlog", { wait: 300 });
+  const projSel2 = doc.getElementById("projSelectDropdown");
+  projSel2.value = "0";
+  projSel2.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await sleep(300);
+  const keyLink = app.querySelector("a[data-a^='issue:']");
+  assert.ok(keyLink, "Backlog'da tıklanabilir issue key'i yok");
+  keyLink.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(300);
+
+  assert.ok(app.innerHTML.includes("Frontend Test Alanı"), "tanımlanan özel alan issue panelinde görünmüyor");
+  const cfInput = [...doc.querySelectorAll("input")].find((el) => el.id.startsWith("fCF"));
+  assert.ok(cfInput, "özel alan input'u issue panelinde bulunamadı");
+  cfInput.value = "Test Değeri 123";
+  await clickPrefix(app, window, "customValueSave:", { wait: 300 });
+  assert.ok(app.innerHTML.includes("Kaydedildi"), "değer kaydedilince toast görünmedi");
+  assert.ok(app.innerHTML.includes("Test Değeri 123"), "kaydedilen değer inputta kalıcı değil");
+});
+

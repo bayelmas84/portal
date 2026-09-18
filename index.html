@@ -1698,6 +1698,32 @@ const DEFAULT_WORKFLOW=[["backlog","todo"],["todo","prog"],["prog","review"],["p
 const WORKFLOW_ROLES_CLIENT=["pmdir","pm","dev"];
 const WORKFLOW_ROLE_LABEL={pmdir:"PM Director",pm:"Project Manager",dev:"Developer"};
 let PROJECT_WORKFLOW_LIVE={},PROJECT_WORKFLOW_DEMO={};
+/* Özel alanlar (custom fields) — proje bazlı ek metadata. Tanım (alan
+   ekleme/silme) yalnızca pm/pmdir; değer girme herkese (d.board write). */
+let CUSTOM_FIELDS_LIVE={},CUSTOM_FIELDS_DEMO={};
+let ISSUE_CUSTOM_VALUES_LIVE={},ISSUE_CUSTOM_VALUES_DEMO={};
+let nextCustomFieldId=1;
+async function loadCustomFieldsLive(pk){
+ try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/custom-fields");
+  CUSTOM_FIELDS_LIVE[pk]=data.items;render();}
+ catch(e){CUSTOM_FIELDS_LIVE[pk]=[];}}
+function customFieldsOf(pk){
+ if(LIVE_BACKEND){
+  if(CUSTOM_FIELDS_LIVE[pk]===undefined)loadCustomFieldsLive(pk);
+  return CUSTOM_FIELDS_LIVE[pk]||[];}
+ return CUSTOM_FIELDS_DEMO[pk]||[];}
+async function loadIssueCustomValuesLive(pk,key){
+ try{const data=await api("GET","/api/projects/"+encodeURIComponent(pk)+"/issues/"+encodeURIComponent(key)+"/custom-values");
+  ISSUE_CUSTOM_VALUES_LIVE[pk+"::"+key]=data.items;render();}
+ catch(e){ISSUE_CUSTOM_VALUES_LIVE[pk+"::"+key]=[];}}
+function issueCustomValuesOf(pk,key){
+ if(LIVE_BACKEND){
+  const k2=pk+"::"+key;
+  if(ISSUE_CUSTOM_VALUES_LIVE[k2]===undefined)loadIssueCustomValuesLive(pk,key);
+  return ISSUE_CUSTOM_VALUES_LIVE[k2]||[];}
+ return (CUSTOM_FIELDS_DEMO[pk]||[]).map(f=>({field_id:f.id,field_name:f.field_name,field_type:f.field_type,
+  select_options:f.select_options,value:((ISSUE_CUSTOM_VALUES_DEMO[pk+"::"+key]||{})[f.id])||null}));}
+
 /* Sprint kapasite planlama: her ekip üyesinin bu sprint'e ne kadar
    story point sığdırabileceği (izin/tatil gibi durumlarda düşürülebilir).
    Canlı backend'de proje bazında saklanır; demo modda bellek-içi. */
@@ -3350,6 +3376,26 @@ function screenView(){
      roles may perform each one. Only the Project Management Director can view or change this screen.</p>
     <div style="display:flex;justify-content:flex-end;margin-top:10px">
      <button class="b p" data-a="manageWorkflow:${S.proj}">Open workflow editor</button></div></div>
+   <div class="card" style="max-width:640px;margin-top:14px">
+    <div style="font-size:13.5px;font-weight:600">Özel Alanlar (Custom Fields)</div>
+    <p class="m" style="color:var(--tm);margin-top:6px">Bu proje için ek metadata alanları tanımlayın (ör. Müşteri Adı, Bütçe
+     Kodu). Alan tanımlamak yalnızca Proje Yöneticisi/Direktörü içindir; girilen değerleri herkes düzenleyebilir.</p>
+    ${customFieldsOf(p.k).map(f=>`<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:0.5px solid var(--bd)">
+      <span style="flex:1;font-size:12.5px">${esc(f.field_name)}</span>
+      <span class="m" style="color:var(--tm)">${f.field_type}${f.field_type==="select"?" ("+esc((f.select_options||[]).join(", "))+")":""}</span>
+      ${["pmdir","pm"].includes(S.me.r)?`<span data-a="customFieldDelete:${S.proj}:${f.id}" style="cursor:pointer">${ic("scissors",13,"color:var(--tm)")}</span>`:""}
+     </div>`).join("")||`<p class="m" style="color:var(--tm);margin-top:6px">Henüz özel alan tanımlanmamış.</p>`}
+    ${["pmdir","pm"].includes(S.me.r)?`<div style="border-top:0.5px solid var(--bd);margin-top:10px;padding-top:10px;display:flex;flex-direction:column;gap:6px">
+     <div style="display:flex;gap:6px">
+      <input id="fCustomFieldName" placeholder="Alan adı…" style="flex:1;padding:6px 8px;font-size:12px">
+      <select id="fCustomFieldType" style="padding:6px;font-size:12px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
+       <option value="text" ${(S.customFieldType||"text")==="text"?"selected":""}>Metin</option>
+       <option value="number" ${S.customFieldType==="number"?"selected":""}>Sayı</option>
+       <option value="date" ${S.customFieldType==="date"?"selected":""}>Tarih</option>
+       <option value="select" ${S.customFieldType==="select"?"selected":""}>Seçim listesi</option></select></div>
+     ${S.customFieldType==="select"?`<input id="fCustomFieldOptions" placeholder="Seçenekler (virgülle ayırın, en az 2)…" style="padding:6px 8px;font-size:12px">`:""}
+     <div style="display:flex;justify-content:flex-end"><button class="b p" data-a="customFieldAdd:${S.proj}">Alan ekle</button></div>
+    </div>`:""}</div>
    <div class="lbl" style="margin-top:18px">Screen & Role Permissions — entire project module</div>
    <p class="m" style="color:var(--tm);margin:4px 0 10px">Click a cell to cycle — · R · W. This covers every screen in the
     Project Management module (Board, Backlog, Sprint, Gate, Team, Documents, Roadmap, this very page, etc.) for every role.
@@ -4474,6 +4520,27 @@ function issueFullView(d){const f=S.f;const p=PROJ[d.pi],i=p.items.find(x=>x.key
      :``;})():""}
    ${i.desc?`<div class="lbl" style="margin-top:12px">Description</div>
     <div class="card" style="margin-top:6px;font-size:12.5px;white-space:pre-wrap">${esc(i.desc)}</div>`:""}
+   ${(()=>{const cfValues=issueCustomValuesOf(p.k,i.key);
+     if(!cfValues.length)return"";
+     return `<div class="lbl" style="margin-top:12px">Özel Alanlar</div>
+      <div class="card" style="margin-top:6px;display:flex;flex-direction:column;gap:8px">
+       ${cfValues.map(cf=>{
+        const inputId="fCF"+cf.field_id;
+        let inputHTML="";
+        if(cf.field_type==="select"){
+         inputHTML=`<select id="${inputId}" ${cw("d.board")?"":"disabled"} style="flex:1;padding:5px 8px;font-size:12px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t1)">
+          <option value="">—</option>
+          ${(cf.select_options||[]).map(o=>`<option value="${esc(o)}" ${cf.value===o?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
+        }else{
+         const type=cf.field_type==="number"?"number":cf.field_type==="date"?"date":"text";
+         inputHTML=`<input id="${inputId}" type="${type}" value="${esc(cf.value||"")}" ${cw("d.board")?"":"disabled"} style="flex:1;padding:5px 8px;font-size:12px">`;
+        }
+        return `<div style="display:flex;align-items:center;gap:8px">
+         <span class="m" style="width:120px;flex-shrink:0;color:var(--tm)">${esc(cf.field_name)}</span>
+         ${inputHTML}
+         ${cw("d.board")?`<button class="b s" data-a="customValueSave:${d.pi}:${esc(i.key)}:${cf.field_id}:${inputId}">Kaydet</button>`:""}
+        </div>`;}).join("")}
+      </div>`;})()}
    <div class="lbl" style="margin-top:12px">Documents</div>
    ${LIVE_BACKEND?(atts===null?`<p class="m" style="color:var(--tm);margin:4px 0 0">Loading…</p>`
      :atts.length?atts.map(a=>`<div class="card" style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:9px">
@@ -5651,6 +5718,8 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="k")clickIf('[data-a="scr:d.backlog"]');
   return;}});
 app.addEventListener("change",async e=>{
+ if(e.target.id==="fCustomFieldType"){
+  S.customFieldType=e.target.value;render();return;}
  if(e.target.id==="todoNewCategory"){
   S.todoNewCategoryMode=e.target.value==="__new__"?"new":"existing";
   S.todoNewCategorySelected=e.target.value==="__new__"?S.todoNewCategorySelected:e.target.value;
@@ -6585,6 +6654,47 @@ app.addEventListener("click",async ev=>{
   pr.wip=limits;S.dlg=null;toast("WIP limits saved.");render();return;}
  if(k==="manageWorkflow"){if(S.me.r!=="pmdir"){toast("Only the Project Management Director can change the workflow.",1);return;}
   const pi=+p[1];S.f={};S.dlg={type:"workflow",pi};render();return;}
+ if(k==="customValueSave"){const pi=+p[1],issueKey=p[2],fieldId=+p[3],inputId=p[4],pr=PROJ[pi];
+  const value=(document.getElementById(inputId)||{}).value||"";
+  if(LIVE_BACKEND){
+   try{await api("PUT","/api/projects/"+encodeURIComponent(pr.k)+"/issues/"+encodeURIComponent(issueKey)+"/custom-values/"+fieldId,{value});
+    const k2=pr.k+"::"+issueKey;
+    ISSUE_CUSTOM_VALUES_LIVE[k2]=(ISSUE_CUSTOM_VALUES_LIVE[k2]||[]).map(cf=>cf.field_id===fieldId?{...cf,value:value||null}:cf);
+    toast("Kaydedildi.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  const k2=pr.k+"::"+issueKey;
+  ISSUE_CUSTOM_VALUES_DEMO[k2]=ISSUE_CUSTOM_VALUES_DEMO[k2]||{};
+  ISSUE_CUSTOM_VALUES_DEMO[k2][fieldId]=value||null;
+  toast("Kaydedildi.");render();return;}
+ if(k==="customFieldAdd"){const pi=+p[1],pr=PROJ[pi];
+  if(!["pmdir","pm"].includes(S.me.r)){toast("Özel alan tanımlamayı yalnızca Proje Yöneticisi/Direktörü yapabilir.",1);return;}
+  const fieldName=(document.getElementById("fCustomFieldName")||{}).value||"";
+  const fieldType=S.customFieldType||"text";
+  const optionsRaw=(document.getElementById("fCustomFieldOptions")||{}).value||"";
+  const selectOptions=fieldType==="select"?optionsRaw.split(",").map(s=>s.trim()).filter(Boolean):undefined;
+  if(!fieldName.trim()){toast("Alan adı zorunlu.",1);return;}
+  if(fieldType==="select"&&(!selectOptions||selectOptions.length<2)){toast("Seçim listesi en az 2 seçenek içermeli.",1);return;}
+  if(LIVE_BACKEND){
+   try{const res=await api("POST","/api/projects/"+encodeURIComponent(pr.k)+"/custom-fields",{fieldName,fieldType,selectOptions});
+    CUSTOM_FIELDS_LIVE[pr.k]=[...(CUSTOM_FIELDS_LIVE[pr.k]||[]),res.item];
+    S.customFieldType="text";toast("Alan eklendi.");render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  CUSTOM_FIELDS_DEMO[pr.k]=CUSTOM_FIELDS_DEMO[pr.k]||[];
+  if(CUSTOM_FIELDS_DEMO[pr.k].some(f=>f.field_name===fieldName.trim())){toast("Bu isimde bir alan zaten var.",1);return;}
+  CUSTOM_FIELDS_DEMO[pr.k].push({id:nextCustomFieldId++,project_k:pr.k,field_name:fieldName.trim(),field_type:fieldType,select_options:selectOptions||null});
+  S.customFieldType="text";toast("Alan eklendi.");render();return;}
+ if(k==="customFieldDelete"){const pi=+p[1],fieldId=+p[2],pr=PROJ[pi];
+  if(!["pmdir","pm"].includes(S.me.r)){toast("Özel alan silmeyi yalnızca Proje Yöneticisi/Direktörü yapabilir.",1);return;}
+  if(LIVE_BACKEND){
+   try{await api("DELETE","/api/projects/"+encodeURIComponent(pr.k)+"/custom-fields/"+fieldId);
+    CUSTOM_FIELDS_LIVE[pr.k]=(CUSTOM_FIELDS_LIVE[pr.k]||[]).filter(f=>f.id!==fieldId);
+    render();}
+   catch(e){toast(e.message,1);}
+   return;}
+  CUSTOM_FIELDS_DEMO[pr.k]=(CUSTOM_FIELDS_DEMO[pr.k]||[]).filter(f=>f.id!==fieldId);
+  render();return;}
  if(k==="wfToggleEnabled"){const idx=+p[1];S.f.workflowRows[idx].enabled=!S.f.workflowRows[idx].enabled;render();return;}
  if(k==="wfToggleRole"){const idx=+p[1],role=p[2];const row=S.f.workflowRows[idx];
   row.allowed_roles=row.allowed_roles||[];

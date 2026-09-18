@@ -1751,6 +1751,99 @@ router.put("/:k/workflow", requireWrite("d.board"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Özel alanlar (custom fields): projeye özel ek metadata tanımlama ve
+// issue'lara değer atama. Alan TANIMLAMA (oluşturma/silme) yalnızca
+// pmdir/pm rolüne aittir (workflow kurallarıyla aynı mantık — bu bir
+// proje yapılandırma kararıdır); DEĞER girme/okuma ise normal d.board
+// yetkisine tabidir (herkes bir issue'nun özel alanını doldurabilir).
+router.get("/:k/custom-fields", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      "SELECT * FROM project_custom_fields WHERE project_k=$1 ORDER BY id", [req.params.k]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.post("/:k/custom-fields", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    if (!["pmdir", "pm"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Özel alan tanımlamayı yalnızca Proje Yöneticisi/Direktörü yapabilir." });
+    }
+    const { fieldName, fieldType, selectOptions } = req.body || {};
+    if (!fieldName || !fieldName.trim()) return res.status(400).json({ error: "Alan adı zorunlu." });
+    if (!["text", "number", "date", "select"].includes(fieldType)) return res.status(400).json({ error: "Geçersiz alan tipi." });
+    const opts = fieldType === "select"
+      ? (Array.isArray(selectOptions) ? selectOptions.map((o) => String(o).trim()).filter(Boolean) : [])
+      : null;
+    if (fieldType === "select" && (!opts || opts.length < 2)) {
+      return res.status(400).json({ error: "Seçim listesi en az 2 seçenek içermeli." });
+    }
+    const { rows } = await query(
+      `INSERT INTO project_custom_fields (project_k, field_name, field_type, select_options, created_by)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [req.params.k, fieldName.trim().slice(0, 60), fieldType, opts ? JSON.stringify(opts) : null, req.user.username]
+    );
+    res.status(201).json({ item: rows[0] });
+  } catch (e) {
+    if (e.code === "23505") return res.status(400).json({ error: "Bu isimde bir alan zaten var." });
+    next(e);
+  }
+});
+
+router.delete("/:k/custom-fields/:id", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    if (!["pmdir", "pm"].includes(req.user.role)) {
+      return res.status(403).json({ error: "Özel alan silmeyi yalnızca Proje Yöneticisi/Direktörü yapabilir." });
+    }
+    const { rowCount } = await query(
+      "DELETE FROM project_custom_fields WHERE id=$1 AND project_k=$2", [req.params.id, req.params.k]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Alan bulunamadı." });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// Bir issue'nun tüm özel alan değerlerini, alan tanımlarıyla birlikte döner
+// (tanımlı ama henüz değer girilmemiş alanlar için value:null gelir) —
+// frontend tek istekle formu tam olarak çizebilir.
+router.get("/:k/issues/:issueKey/custom-values", requireRead("d.board"), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT f.id AS field_id, f.field_name, f.field_type, f.select_options, v.value
+         FROM project_custom_fields f
+         LEFT JOIN issue_custom_values v ON v.field_id=f.id AND v.issue_key=$2
+        WHERE f.project_k=$1 ORDER BY f.id`,
+      [req.params.k, req.params.issueKey]
+    );
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+router.put("/:k/issues/:issueKey/custom-values/:fieldId", requireWrite("d.board"), async (req, res, next) => {
+  try {
+    const field = await query(
+      "SELECT * FROM project_custom_fields WHERE id=$1 AND project_k=$2", [req.params.fieldId, req.params.k]
+    );
+    if (!field.rowCount) return res.status(404).json({ error: "Alan bulunamadı." });
+    const { value } = req.body || {};
+    const f = field.rows[0];
+    if (f.field_type === "select" && value && !(f.select_options || []).includes(value)) {
+      return res.status(400).json({ error: "Geçersiz seçenek." });
+    }
+    if (f.field_type === "number" && value && isNaN(Number(value))) {
+      return res.status(400).json({ error: "Sayısal bir değer girilmeli." });
+    }
+    await query(
+      `INSERT INTO issue_custom_values (field_id, project_k, issue_key, value, updated_at)
+       VALUES ($1,$2,$3,$4,now())
+       ON CONFLICT (field_id, issue_key) DO UPDATE SET value=$4, updated_at=now()`,
+      [req.params.fieldId, req.params.k, req.params.issueKey, value === undefined || value === "" ? null : String(value)]
+    );
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 router.post("/:k/gate/criteria/:idx/toggle", requireWrite("d.board"), async (req, res, next) => {
   try {
     const proj = await query("SELECT gate_criteria FROM projects WHERE k=$1", [req.params.k]);

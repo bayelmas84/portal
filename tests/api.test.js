@@ -1223,6 +1223,55 @@ test("Toplu durum değiştirme: başarılı+kısmi başarı+doğrulama hataları
   assert.equal(emptyKeys.status, 400);
 });
 
+test("Özel alanlar: tanımlama (pm), yetki kontrolü (dev reddedilir), değer atama+validasyon, silme", async () => {
+  const pm = await login("tolga.firat"); // rol: pm
+  const dev = await login("mert.balkan"); // rol: dev
+
+  // dev alan tanımlayamaz.
+  const devTry = await request(app).post("/api/projects/TRADE/custom-fields").set("Cookie", dev.cookie).set("X-CSRF-Token", dev.csrf)
+    .send({ fieldName: "Yetkisiz", fieldType: "text" });
+  assert.equal(devTry.status, 403);
+
+  // pm text ve select alanı tanımlayabilir.
+  const textField = await request(app).post("/api/projects/TRADE/custom-fields").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ fieldName: "Test Müşteri Adı", fieldType: "text" });
+  assert.equal(textField.status, 201);
+  const fieldId = textField.body.item.id;
+
+  const badSelect = await request(app).post("/api/projects/TRADE/custom-fields").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ fieldName: "Test Bozuk Select", fieldType: "select", selectOptions: ["Tek"] });
+  assert.equal(badSelect.status, 400);
+
+  const selectField = await request(app).post("/api/projects/TRADE/custom-fields").set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ fieldName: "Test Bölge", fieldType: "select", selectOptions: ["Kuzey", "Güney"] });
+  assert.equal(selectField.status, 201);
+  const selectFieldId = selectField.body.item.id;
+
+  // dev mevcut bir alana DEĞER girebilir (tanımlama ile değer girme farklı yetkiler).
+  const setVal = await request(app).put(`/api/projects/TRADE/issues/TRADE-1/custom-values/${fieldId}`).set("Cookie", dev.cookie).set("X-CSRF-Token", dev.csrf)
+    .send({ value: "ACME Test A.Ş." });
+  assert.equal(setVal.status, 200);
+
+  // Geçersiz select değeri reddedilir.
+  const badVal = await request(app).put(`/api/projects/TRADE/issues/TRADE-1/custom-values/${selectFieldId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf)
+    .send({ value: "OlmayanSeçenek" });
+  assert.equal(badVal.status, 400);
+
+  // Okuma: tanım + girilen değer birlikte döner.
+  const read = await request(app).get("/api/projects/TRADE/issues/TRADE-1/custom-values").set("Cookie", pm.cookie);
+  const textEntry = read.body.items.find((i) => i.field_id === fieldId);
+  assert.equal(textEntry.value, "ACME Test A.Ş.");
+  const selectEntry = read.body.items.find((i) => i.field_id === selectFieldId);
+  assert.equal(selectEntry.value, null); // geçersiz değer denemesi kayıt bırakmamalı
+
+  // dev alan silemez, pm silebilir.
+  const devDelete = await request(app).delete(`/api/projects/TRADE/custom-fields/${fieldId}`).set("Cookie", dev.cookie).set("X-CSRF-Token", dev.csrf);
+  assert.equal(devDelete.status, 403);
+  const pmDelete = await request(app).delete(`/api/projects/TRADE/custom-fields/${fieldId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+  assert.equal(pmDelete.status, 200);
+  await request(app).delete(`/api/projects/TRADE/custom-fields/${selectFieldId}`).set("Cookie", pm.cookie).set("X-CSRF-Token", pm.csrf);
+});
+
 test.after(async () => {
   await pool.end();
 });
